@@ -14,6 +14,7 @@ from fastapi import (
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 import json
 import shutil
@@ -61,6 +62,14 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# 由 API 在同一来源托管随附前端
+# 前端访问地址：http://127.0.0.1:8000/web/
+app.mount(
+    "/web",
+    StaticFiles(directory=PROJECT_ROOT / "frontend", html=True),
+    name="web",
 )
 
 def require_task_dir(task_id: str) -> Path:
