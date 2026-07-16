@@ -1,0 +1,28 @@
+{
+  "model_type": "resnet50",
+  "num_classes": 2,
+  "class_names": [
+    "no",
+    "yes"
+  ],
+  "task": "image-classification",
+  "dataset": "Brain Tumor Detection (yes/no)",
+  "input_size": [
+    3,
+    224,
+    224
+  ],
+  "normalization": {
+    "mean": [
+      0.485,
+      0.456,
+      0.406
+    ],
+    "std": [
+      0.229,
+      0.224,
+      0.225
+    ]
+  },
+  "test_accuracy": 0.9933333333333333
+}

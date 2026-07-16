@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>脑肿瘤MRI图像识别</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            width: 100%;
+            max-width: 600px;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #1e3c72;
+            margin-bottom: 30px;
+            font-size: 28px;
+        }
+        
+        .input-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #2a5298;
+            font-weight: 500;
+        }
+        
+        input[type="text"] {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #b8d4e8;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #1e3c72;
+            box-shadow: 0 0 0 3px rgba(30, 60, 114, 0.1);
+        }
+        
+        button {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(30, 60, 114, 0.4);
+        }
+        
+        button:active:not(:disabled) {
+            transform: translateY(0);
+        }
+        
+        button:disabled {
+            background: #a0aec0;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .result-section {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 2px solid #e8f0f8;
+        }
+        
+        .result-title {
+            color: #1e3c72;
+            margin-bottom: 15px;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        .result-box {
+            background: #f7fafc;
+            border-radius: 8px;
+            padding: 16px;
+            min-height: 100px;
+        }
+        
+        .result-item {
+            margin-bottom: 12px;
+        }
+        
+        .result-label {
+            color: #4a5568;
+            font-size: 13px;
+            margin-bottom: 4px;
+        }
+        
+        .result-value {
+            color: #1e3c72;
+            font-size: 14px;
+            word-break: break-all;
+            font-family: 'Consolas', 'Monaco', monospace;
+        }
+        
+        .status-loading {
+            color: #2a5298;
+            font-style: italic;
+        }
+        
+        .status-error {
+            color: #e53e3e;
+        }
+        
+        .status-success {
+            color: #38a169;
+        }
+        
+        .json-display {
+            background: #1e3c72;
+            color: #e8f0f8;
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 15px;
+            overflow-x: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .loading-spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 3px solid #e8f0f8;
+            border-top: 3px solid #1e3c72;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <h1>脑肿瘤MRI图像识别</h1>
+            
+            <div class="input-group">
+                <label for="imagePath">图片路径：</label>
+                <input 
+                    type="text" 
+                    id="imagePath" 
+                    v-model="imagePath"
+                    placeholder="例如：E:/dataset/example.jpg"
+                    @keypress.enter="recognize"
+                >
+            </div>
+            
+            <button @click="recognize" :disabled="loading">
+                {{ loading ? '识别中...' : '识别' }}
+            </button>
+            
+            <div class="result-section">
+                <div class="result-title">识别结果</div>
+                <div class="result-box">
+                    <div class="result-item">
+                        <div class="result-label">状态：</div>
+                        <div class="result-value" v-html="statusText"></div>
+                    </div>
+                    <div class="result-item" v-if="taskId">
+                        <div class="result-label">任务ID：</div>
+                        <div class="result-value">{{ taskId }}</div>
+                    </div>
+                    <div class="result-item" v-if="jsonPath">
+                        <div class="result-label">JSON路径：</div>
+                        <div class="result-value">{{ jsonPath }}</div>
+                    </div>
+                </div>
+                <div class="json-display" v-if="jsonData">
+                    <pre>{{ jsonData }}</pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue
+        
+        createApp({
+            data() {
+                return {
+                    API_BASE: 'http://127.0.0.1:8000',
+                    imagePath: '',
+                    loading: false,
+                    statusText: '等待识别...',
+                    taskId: '',
+                    jsonPath: '',
+                    jsonData: ''
+                }
+            },
+            methods: {
+                async recognize() {
+                    if (!this.imagePath.trim()) {
+                        alert('请输入图片路径')
+                        return
+                    }
+                    
+                    this.loading = true
+                    this.statusText = '<span class="loading-spinner"></span>创建任务中...'
+                    this.taskId = ''
+                    this.jsonPath = ''
+                    this.jsonData = ''
+                    
+                    try {
+                        const createResponse = await fetch(`${this.API_BASE}/tasks/from-path`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                image_path: this.imagePath.trim(),
+                                name: 'vue-recognize',
+                                input_mode: 'auto'
+                            })
+                        })
+                        
+                        if (!createResponse.ok) {
+                            throw new Error(`创建任务失败: ${createResponse.status}`)
+                        }
+                        
+                        const createData = await createResponse.json()
+                        this.taskId = createData.task_id
+                        
+                        this.statusText = '<span class="loading-spinner"></span>运行模型中...'
+                        
+                        const runResponse = await fetch(`${this.API_BASE}/tasks/${this.taskId}/run`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                threshold: 0.5
+                            })
+                        })
+                        
+                        if (!runResponse.ok) {
+                            throw new Error(`运行模型失败: ${runResponse.status}`)
+                        }
+                        
+                        this.statusText = '<span class="loading-spinner"></span>获取结果中...'
+                        
+                        const resultResponse = await fetch(`${this.API_BASE}/tasks/${this.taskId}`)
+                        
+                        if (!resultResponse.ok) {
+                            throw new Error(`获取结果失败: ${resultResponse.status}`)
+                        }
+                        
+                        const resultData = await resultResponse.json()
+                        
+                        this.statusText = '<span class="status-success">✓ 识别完成</span>'
+                        this.jsonPath = `output/${this.taskId}/frontend_result.json`
+                        this.jsonData = JSON.stringify(resultData, null, 2)
+                        
+                    } catch (error) {
+                        this.statusText = `<span class="status-error">✗ ${error.message}</span>`
+                        console.error('识别错误:', error)
+                    } finally {
+                        this.loading = false
+                    }
+                }
+            }
+        }).mount('#app')
+    </script>
+</body>
+</html>
