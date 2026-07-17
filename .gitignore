@@ -1,10 +1,20 @@
+# 缓存 产物
 __pycache__/
 *.py[cod]
 *.so
+*.pyd
 build/
 dist/
 *.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+htmlcov/
+.coverage
+coverage.xml
 
+# 虚拟环境与本地环境变量
 .venv/
 venv/
 env/
@@ -12,17 +22,18 @@ env/
 .env.*
 !.env.example
 
-.pytest_cache/
-.mypy_cache/
-.coverage
-htmlcov/
-*.log
-
+# 运行时生成的文件和本地数据集
 output/
 dataset/
 models/**/output/
+*.log
+*.tmp
 
+# 编辑器、IDE 与本地 AI 工具配置
 .vscode/
 .idea/
+.vs/
 .agents/
-.codex/
+
+# 可选的前端工具链产物
+frontend/node_modules/

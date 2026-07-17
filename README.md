@@ -19,9 +19,6 @@
 
 ## 开始
 
-在项目根目录运行；
-请先使用项目所需的 Python 环境，并确保已安装 FastAPI、Uvicorn、`python-multipart` 及模型依赖
-
 ```powershell
 uvicorn api.app:app --reload
 ```
