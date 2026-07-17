@@ -14,6 +14,7 @@ from fastapi import (
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 import json
@@ -39,6 +40,7 @@ from services.task_service import (
     initialize_task,
     load_task_image,
     persist_model_result,
+    task_relative_path,
     validate_image_path,
     create_run_dir,
     initialize_uploaded_task
@@ -48,6 +50,16 @@ from services.task_service import (
 # 常用路径
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "output"
+PRIVATE_PATH_FIELDS = {
+    "frontend_result_path",
+    "history_result_path",
+    "image_path",
+    "mask_path",
+    "model_result_path",
+    "path",
+    "source_path",
+    "task_dir",
+}
 
 
 # FastAPI实例
@@ -71,6 +83,19 @@ app.mount(
     StaticFiles(directory=PROJECT_ROOT / "frontend", html=True),
     name="web",
 )
+
+
+def sanitize_public_payload(value):
+    '''移除历史结果 JSON 中可能存在的本机路径字段。'''
+    if isinstance(value, dict):
+        return {
+            key: sanitize_public_payload(item)
+            for key, item in value.items()
+            if key not in PRIVATE_PATH_FIELDS
+        }
+    if isinstance(value, list):
+        return [sanitize_public_payload(item) for item in value]
+    return value
 
 def require_task_dir(task_id: str) -> Path:
     '''获取指定任务的目录，如果不存在则抛出 HTTP 404 异常'''
@@ -114,8 +139,7 @@ def create_task_from_upload(
     
     return TaskCreatedResponse(
         task_id=task_dir.name,
-        task_dir=str(task_dir),
-        image_path=str(task_image),
+        input_file=task_image.name,
     )
     
 
@@ -145,8 +169,7 @@ def create_task_from_path(request: CreateTaskRequest) -> TaskCreatedResponse:
     
     return TaskCreatedResponse(
         task_id=task_dir.name,
-        task_dir=str(task_dir),
-        image_path=str(task_image),
+        input_file=task_image.name,
     )
 
 
@@ -186,7 +209,7 @@ def classify_task(task_id: str) -> ClassifyTaskResponse:
             confidence=prediction["confidence"],
             probabilities=prediction["probabilities"],
         ),
-        frontend_result_path=result["frontend_result_path"],
+        frontend_result_file=result["frontend_result_path"],
     )
 
 
@@ -202,13 +225,16 @@ def get_task(task_id: str) -> TaskStatusResponse:
         (task_dir / "task.json").read_text(encoding="utf-8")
     )
 
+    input_data = task_data["input"]
     frontend_path = task_dir / "frontend_result.json"
     frontend_result = (
         json.loads(frontend_path.read_text(encoding="utf-8"))
         if frontend_path.is_file() else None
     )
+    if frontend_result is not None:
+        frontend_result = sanitize_public_payload(frontend_result)
+        frontend_result.setdefault("image_file", Path(input_data["path"]).name)
 
-    input_data = task_data["input"]
     return TaskStatusResponse(
         task_id=task_data["task_id"],
         name=task_data["name"],
@@ -217,13 +243,53 @@ def get_task(task_id: str) -> TaskStatusResponse:
         updated_at=task_data["updated_at"],
         completed_models=task_data["completed_models"],
         input=TaskInputData(
-            path=input_data["path"],
+            filename=Path(input_data["path"]).name,
             storage_mode=input_data["storage_mode"],
             size_bytes=input_data["size_bytes"],
             sha256=input_data["sha256"],
         ),
         frontend_result=frontend_result,
     )
+
+
+@app.get(
+    "/tasks/{task_id}/files/{file_path:path}"
+) # 对app.get装饰器进行修饰
+def get_task_file(task_id: str, file_path: str) -> FileResponse:
+    '''安全读取任务目录中的结果文件。'''
+    task_dir = require_task_dir(task_id)
+    try:
+        file = (task_dir / file_path).resolve()
+        file.relative_to(task_dir.resolve())
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="任务文件不存在",
+        ) from exc
+
+    if not file.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="任务文件不存在",
+        )
+
+    if file.name == "task.json":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="任务文件不存在",
+        )
+
+    if file.suffix.lower() == ".json":
+        try:
+            data = json.loads(file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="任务文件不存在",
+            ) from exc
+        return JSONResponse(sanitize_public_payload(data))
+
+    return FileResponse(file, filename=file.name)
 
 
 @app.post(
@@ -257,12 +323,7 @@ def segment_task(
         task_record = json.loads(
             (task_dir / "task.json").read_text(encoding="utf-8")
         )
-        mask_file = (
-            Path(result["mask_path"])
-            .resolve()
-            .relative_to(task_dir)
-            .as_posix()
-        )
+        mask_file = task_relative_path(task_dir, Path(result["mask_path"]))
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -280,7 +341,7 @@ def segment_task(
             tumor_area_ratio=result["tumor_area_ratio"],
             mask_file=mask_file,
         ),
-        frontend_result_path=result["frontend_result_path"],
+        frontend_result_file=result["frontend_result_path"],
     )
 
 
@@ -324,11 +385,8 @@ def run_task(
         )
 
         prediction = classification_result["classification"]
-        mask_file = (
-            Path(segmentation_result["mask_path"])
-            .resolve()
-            .relative_to(task_dir)
-            .as_posix()
+        mask_file = task_relative_path(
+            task_dir, Path(segmentation_result["mask_path"])
         )
 
     except ValueError as exc:
@@ -353,5 +411,5 @@ def run_task(
             tumor_area_ratio=segmentation_result["tumor_area_ratio"],
             mask_file=mask_file,
         ),
-        frontend_result_path=segmentation_result["frontend_result_path"],
+        frontend_result_file=segmentation_result["frontend_result_path"],
     )

@@ -19,8 +19,16 @@ def validate_image_path(path: Path) -> Path:
     '''验证输入图像路径是否存在，并返回绝对路径'''
     resolved = path.expanduser().resolve()
     if not resolved.is_file():
-        raise ValueError(f"找不到输入图像：{resolved}")
+        raise ValueError("输入图像不存在或不可读取")
     return resolved
+
+
+def task_relative_path(task_dir: Path, path: Path) -> str:
+    '''将任务内文件转换为可安全返回的相对路径。'''
+    try:
+        return path.resolve().relative_to(task_dir.resolve()).as_posix()
+    except ValueError as exc:
+        raise ValueError("文件不属于当前任务") from exc
 
 
 def create_task_dir(output_root: Path) -> Path:
@@ -44,7 +52,7 @@ def get_task_dir(output_root: Path, task_id: str | None) -> Path:
 
     task_dir = output_root / task_id
     if not task_dir.is_dir():
-        raise ValueError(f"任务不存在：{task_dir}")
+        raise ValueError("任务不存在")
     return task_dir.resolve()
 
 
@@ -108,7 +116,7 @@ def initialize_task(
             "completed_models": [],
             "input": {
                 "path": stored_path,
-                "source_path": str(source_image),
+                "source_file": source_image.name,
                 "storage_mode": actual_mode,
                 "size_bytes": task_image.stat().st_size,
                 "sha256": sha256(task_image),
@@ -163,7 +171,6 @@ def initialize_uploaded_task(
             "completed_models": [],
             "input": {
                 "path": str(task_image.relative_to(task_dir)),
-                "source_path": None,
                 "original_filename": original_filename,
                 "storage_mode": "uploaded",
                 "size_bytes": task_image.stat().st_size,
@@ -179,13 +186,13 @@ def load_task_image(task_dir: Path) -> Path:
     '''加载任务目录中的输入图像路径，并验证其存在性'''
     task_file = task_dir / "task.json"
     if not task_file.is_file():
-        raise ValueError(f"任务元数据缺失：{task_file}")
+        raise ValueError("任务元数据缺失")
 
     record = json.loads(task_file.read_text(encoding="utf-8"))
     input_record = record.get("input", {})
     stored_path = input_record.get("path")
     if not stored_path:
-        raise ValueError(f"任务输入缺失：{task_file}")
+        raise ValueError("任务输入缺失")
 
     image_path = Path(stored_path)
     if not image_path.is_absolute():
@@ -224,8 +231,15 @@ def persist_model_result(
     result["run_id"] = run_dir.name
     result["run_directory"] = run_dir.relative_to(task_dir).as_posix()
 
-    latest_path = write_json(task_dir / f"{model_name}.json", result)
-    history_path = write_json(run_dir / "result.json", result)
+    stored_result = dict(result)
+    stored_result.pop("image_path", None)
+    if "mask_path" in stored_result:
+        stored_result["mask_file"] = task_relative_path(
+            task_dir, Path(stored_result.pop("mask_path"))
+        )
+
+    latest_path = write_json(task_dir / f"{model_name}.json", stored_result)
+    history_path = write_json(run_dir / "result.json", stored_result)
     frontend_data = build_frontend_result(
         task_dir,
         image_path,
@@ -233,10 +247,10 @@ def persist_model_result(
     )
     frontend_path = write_json(task_dir / "frontend_result.json", frontend_data)
 
-    result["task_dir"] = str(task_dir)
-    result["model_result_path"] = str(latest_path)
-    result["history_result_path"] = str(history_path)
-    result["frontend_result_path"] = str(frontend_path)
+    result["task_dir"] = task_dir.name
+    result["model_result_path"] = task_relative_path(task_dir, latest_path)
+    result["history_result_path"] = task_relative_path(task_dir, history_path)
+    result["frontend_result_path"] = task_relative_path(task_dir, frontend_path)
     record_task_run(task_dir, model_name, history_path)
     mark_task_completed(task_dir, model_name)
     return result
@@ -254,21 +268,22 @@ def build_frontend_result(
     if frontend_path.is_file():
         result = json.loads(frontend_path.read_text(encoding="utf-8"))
         if not isinstance(result, dict):
-            raise ValueError(f"前端结果文件格式无效：{frontend_path}")
-        existing_image_path = result.get("image_path")
-        if existing_image_path and existing_image_path != str(image_path):
+            raise ValueError("前端结果文件格式无效")
+        existing_image_file = result.get("image_file")
+        if existing_image_file and existing_image_file != image_path.name:
             raise ValueError("一个任务只能包含同一张输入图像的结果")
     else:
         result = {
             "task_id": task_dir.name,
             "created_at": datetime.now().astimezone().isoformat(),
-            "image_path": str(image_path),
+            "image_file": image_path.name,
             "result_files": {"frontend": "frontend_result.json"},
         }
 
     result["task_id"] = task_dir.name
     result["updated_at"] = datetime.now().astimezone().isoformat()
-    result["image_path"] = str(image_path)
+    result.pop("image_path", None)
+    result["image_file"] = image_path.name
     result.setdefault("result_files", {})
     result.setdefault("latest_runs", {})
     result["result_files"]["frontend"] = "frontend_result.json"
@@ -279,7 +294,7 @@ def build_frontend_result(
             f"{classification['run_directory']}/result.json"
         )
     if segmentation is not None:
-        mask_file = Path(segmentation["mask_path"]).resolve().relative_to(task_dir).as_posix()
+        mask_file = task_relative_path(task_dir, Path(segmentation["mask_path"]))
         result["segmentation"] = {
             "model": segmentation["model"],
             "threshold": segmentation["threshold"],
@@ -323,7 +338,7 @@ def record_task_run(task_dir: Path, model_name: str, result_path: Path) -> None:
         return
 
     record = json.loads(task_file.read_text(encoding="utf-8"))
-    relative_result_path = result_path.resolve().relative_to(task_dir).as_posix()
+    relative_result_path = task_relative_path(task_dir, result_path)
     record.setdefault("runs", []).append(
         {
             "run_id": result_path.parent.name,
