@@ -1,9 +1,11 @@
-fastapi==0.115.0
-uvicorn[standard]==0.30.6
-python-multipart==0.0.9
+# 统一使用 Python 3.11 运行依赖
+fastapi==0.139.0
+uvicorn[standard]==0.51.0
+python-multipart==0.0.32
 
-torch==2.4.0
-torchvision==0.19.0
+numpy==2.3.5
+Pillow==12.3.0
 
-numpy==1.26.4
-Pillow==10.4.0
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.13.0+cpu
+torchvision==0.28.0+cpu
