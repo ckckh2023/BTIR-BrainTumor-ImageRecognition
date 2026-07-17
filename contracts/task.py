@@ -23,8 +23,7 @@ class TaskCreatedResponse(BaseModel):
     schema_version: Literal["0.1"] = "0.1"
     task_id: str
     status: Literal["created"] = "created"
-    task_dir: str
-    image_path: str
+    input_file: str
 
 # 任务分类结果模型
 class ClassificationData(BaseModel):
@@ -39,12 +38,12 @@ class ClassifyTaskResponse(BaseModel):
     status: Literal["partial", "completed"]
     completed_models: list[str]
     classification: ClassificationData
-    frontend_result_path: str
+    frontend_result_file: str
 
 
 # 任务输入数据模型
 class TaskInputData(BaseModel):
-    path: str
+    filename: str
     storage_mode: str
     size_bytes: int
     sha256: str
@@ -84,7 +83,7 @@ class SegmentTaskResponse(BaseModel):
     status: Literal["partial", "completed"]
     completed_models: list[str]
     segmentation: SegmentationData
-    frontend_result_path: str
+    frontend_result_file: str
 
 
 # 任务运行请求模型
@@ -100,4 +99,4 @@ class RunTaskResponse(BaseModel):
     completed_models: list[str]
     classification: ClassificationData
     segmentation: SegmentationData
-    frontend_result_path: str
+    frontend_result_file: str
