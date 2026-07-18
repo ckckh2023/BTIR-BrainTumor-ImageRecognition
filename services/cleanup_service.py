@@ -14,6 +14,11 @@ def clear_generated_files(
     dry_run: bool,
 ) -> None:
     '''仅用于清理缓存和结果文件'''
+    project_root = project_root.resolve()
+    output_dir = output_dir.resolve()
+    if output_dir == output_dir.parent or output_dir == project_root:
+        raise ValueError("输出目录不能是磁盘根目录或项目根目录")
+
     targets = [output_dir, segmentation_dir / "output"]
     cache_directory_names = {"__pycache__", ".pytest_cache", ".mypy_cache"}
     targets.extend( # 寻找缓存目录
@@ -40,10 +45,18 @@ def clear_generated_files(
     # 打印处理结果
     print("将清理：" if dry_run else "已清理：")
     for path in existing_targets:
-        print(f"  {path.relative_to(project_root)}")
+        print(f"  {_display_path(path, project_root)}")
         if dry_run:
             continue
         if path.is_dir():
             shutil.rmtree(path)
         else:
             path.unlink()
+
+
+def _display_path(path: Path, project_root: Path) -> str:
+    '''项目内显示相对路径，项目外显示绝对路径。'''
+    try:
+        return str(path.relative_to(project_root))
+    except ValueError:
+        return str(path)
