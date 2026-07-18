@@ -35,6 +35,47 @@ Copy-Item .env.example .env
 
 `requirements.txt` 默认安装 CPU 版 PyTorch，所有成员都可运行
 
+### Linux 服务器部署
+
+以下命令适用于已安装 Python 3.11 的 x86_64 Linux 服务器  
+在项目根目录执行：
+
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+cp .env.example .env
+```
+
+默认依赖为 CPU 版 PyTorch
+若服务器使用 GPU，在安装基础依赖后，按显卡类型替换为对应的 PyTorch 后端：
+
+```bash
+# NVIDIA CUDA 服务器
+python -m accelerator.install --backend cuda
+
+# AMD ROCm 服务器
+python -m accelerator.install --backend rocm
+```
+
+编辑 `.env` 时，生产环境通常至少需要确认以下配置：
+
+```dotenv
+BTIR_DEVICE=auto
+BTIR_OUTPUT_DIR=/var/lib/btir/output
+BTIR_CORS_ORIGINS=https://你的前端域名
+```
+
+启动生产服务时不要使用 `--reload`，并建议先只启动一个工作进程；多个工作进程会分别加载一份模型，占用更多内存或显存：
+
+```bash
+python -m uvicorn api.app:app --host 0.0.0.0 --port 8000
+```
+
+建议通过 Nginx 等反向代理对外提供 HTTPS 服务  
+`POST /tasks/from-path` 仅适合服务器本地调试，正式前端应使用图片上传接口 `POST /tasks`
+
 ### GPU 加速安装
 
 基础依赖安装完成后，使用内置安装器为当前机器替换对应的 PyTorch 后端：
