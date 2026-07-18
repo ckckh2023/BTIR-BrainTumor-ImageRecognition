@@ -176,7 +176,9 @@ output/
 ## 代码结构
 
 ```text
-api/app.py                    # FastAPI 路由
+api/app.py                    # FastAPI 应用组装、CORS、静态前端
+api/routes/tasks.py           # 任务创建、推理、结果文件接口
+api/routes/runtime.py         # 运行环境状态接口
 contracts/task.py             # API 请求/响应数据模型
 services/task_service.py      # 任务创建、结果写入、统一结果合并
 services/inference_service.py # 分类/分割模型的统一调用入口
