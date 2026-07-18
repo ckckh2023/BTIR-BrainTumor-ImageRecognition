@@ -55,7 +55,7 @@ def clear_generated_files(
 
 
 def _display_path(path: Path, project_root: Path) -> str:
-    '''项目内显示相对路径，项目外显示绝对路径。'''
+    '''项目内显示相对路径，项目外显示绝对路径'''
     try:
         return str(path.relative_to(project_root))
     except ValueError:
