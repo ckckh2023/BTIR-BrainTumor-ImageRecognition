@@ -20,6 +20,8 @@ from fastapi.staticfiles import StaticFiles
 import json
 import shutil
 
+from accelerator import get_runtime_status
+from core.settings import SETTINGS
 from contracts.task import (
     ClassificationData,
     ClassifyTaskResponse,
@@ -32,6 +34,7 @@ from contracts.task import (
     SegmentationData,
     RunTaskRequest,
     RunTaskResponse,
+    RuntimeStatusResponse,
 )
 from services.inference_service import classify, segment
 from services.task_service import (
@@ -47,9 +50,6 @@ from services.task_service import (
 )
 
 
-# 常用路径
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "output"
 PRIVATE_PATH_FIELDS = {
     "frontend_result_path",
     "history_result_path",
@@ -70,7 +70,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=SETTINGS.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -80,13 +80,13 @@ app.add_middleware(
 # 前端访问地址：http://127.0.0.1:8000/web/
 app.mount(
     "/web",
-    StaticFiles(directory=PROJECT_ROOT / "frontend", html=True),
+    StaticFiles(directory=SETTINGS.frontend_dir, html=True),
     name="web",
 )
 
 
 def sanitize_public_payload(value):
-    '''移除历史结果 JSON 中可能存在的本机路径字段。'''
+    '''移除历史结果 JSON 中可能存在的本机路径字段'''
     if isinstance(value, dict):
         return {
             key: sanitize_public_payload(item)
@@ -100,12 +100,20 @@ def sanitize_public_payload(value):
 def require_task_dir(task_id: str) -> Path:
     '''获取指定任务的目录，如果不存在则抛出 HTTP 404 异常'''
     try:
-        return get_task_dir(DEFAULT_OUTPUT_DIR, task_id)
+        return get_task_dir(SETTINGS.output_dir, task_id)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="任务不存在",
         ) from exc
+
+
+@app.get("/runtime", response_model=RuntimeStatusResponse)
+def get_runtime() -> RuntimeStatusResponse:
+    '''查看当前 PyTorch 实际使用 CPU、CUDA 还是 ROCm'''
+    return RuntimeStatusResponse(
+        **get_runtime_status(SETTINGS.device).to_dict()
+    )
 
 
 @app.post(
@@ -121,7 +129,7 @@ def create_task_from_upload(
     task_dir: Path | None = None
 
     try:
-        task_dir = create_task_dir(DEFAULT_OUTPUT_DIR)
+        task_dir = create_task_dir(SETTINGS.output_dir)
         task_image = initialize_uploaded_task(
             task_dir=task_dir,
             upload=file.file,
@@ -153,7 +161,7 @@ def create_task_from_path(request: CreateTaskRequest) -> TaskCreatedResponse:
     '''创建一个新的任务'''
     try:
         source_image = validate_image_path(request.image_path)
-        task_dir = create_task_dir(DEFAULT_OUTPUT_DIR)
+        task_dir = create_task_dir(SETTINGS.output_dir)
         task_image = initialize_task(
             task_dir=task_dir,
             source_image=source_image,
@@ -355,7 +363,11 @@ def run_task(
 ) -> RunTaskResponse:
     '''对同一任务依次执行分类与分割'''
     task_dir = require_task_dir(task_id)
-    threshold = request.threshold if request is not None else 0.5
+    threshold = (
+        request.threshold
+        if request is not None
+        else SETTINGS.default_segment_threshold
+    )
 
     try:
         image_path = load_task_image(task_dir)

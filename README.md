@@ -19,13 +19,56 @@
 
 ## 开始
 
+统一用 Python 3.11 创建并启用虚拟环境后，安装依赖：
+
 ```powershell
-uvicorn api.app:app --reload
+python -m pip install -r requirements.txt
+```
+
+### 本机配置
+
+默认配置可直接运行 如需修改输出目录、模型位置、推理设备或前端跨域地址，复制模板：
+
+```powershell
+Copy-Item .env.example .env
+```
+
+`requirements.txt` 默认安装 CPU 版 PyTorch，所有成员都可运行
+
+### GPU 加速安装
+
+基础依赖安装完成后，使用内置安装器为当前机器替换对应的 PyTorch 后端：
+
+```powershell
+python -m accelerator.install --backend auto
+```
+
+可以先确认安装器将执行什么，而不修改环境：
+
+```powershell
+python -m accelerator.install --backend auto --dry-run
+```
+
+- NVIDIA 显卡：自动选择 CUDA 12.8；也可指定 `--backend cuda`
+- AMD 显卡：仅 Linux ROCm 服务器可用，指定 `--backend rocm`
+- 无兼容 GPU 或 AMD Windows：选择 CPU。
+
+保持 `.env` 中的 `BTIR_DEVICE=auto`
+若服务器有多张 NVIDIA 或 AMD 显卡，指定第一张可写为 `BTIR_DEVICE=cuda:0`
+
+项目内的 `accelerator/` 包统一识别 CPU、NVIDIA CUDA 与 AMD ROCm。安装对应平台的 PyTorch 后，`BTIR_DEVICE=auto` 会自动选择实际可用的后端
+
+### 启动服务
+
+```powershell
+python -m uvicorn api.app:app --reload
 ```
 
 打开接口文档：<http://127.0.0.1:8000/docs>
 
 打开前端页面：<http://127.0.0.1:8000/web/>
+
+查看当前后端实际使用的设备：<http://127.0.0.1:8000/runtime>
 
 推荐先用 Swagger 页面完成联调和接口测试
 > 除API调用 也可通过命令行框进行测试，但更推荐api测试  
@@ -139,6 +182,7 @@ services/task_service.py      # 任务创建、结果写入、统一结果合并
 services/inference_service.py # 分类/分割模型的统一调用入口
 services/cleanup_service.py   # 清理生成的缓存与结果
 services/presentation.py      # CLI 输出格式化
+accelerator/                  # CPU / CUDA / ROCm 设备适配包
 processing/                   # 通用预处理、后处理
 models/                       # 各模型的推理实现
 Main.py                       # 命令行入口

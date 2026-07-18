@@ -19,7 +19,11 @@ if str(PROJECT_ROOT) not in sys.path:
 from processing.preprocessing import build_image_transform, load_rgb_image
 
 
-def load_model(model_path: str | Path, config_path: str | Path) -> tuple[nn.Module, dict[str, Any]]:
+def load_model(
+    model_path: str | Path,
+    config_path: str | Path,
+    device: torch.device | str = "cpu",
+) -> tuple[nn.Module, dict[str, Any]]:
     '''加载模型和配置'''
     with Path(config_path).open(encoding="utf-8") as file:
         config = json.load(file) # 读取配置
@@ -33,8 +37,10 @@ def load_model(model_path: str | Path, config_path: str | Path) -> tuple[nn.Modu
         nn.Linear(256, config["num_classes"]),
     )
     # 加载训练好的模型权重
-    checkpoint = torch.load(model_path, map_location="cpu")
+    device = torch.device(device)
+    checkpoint = torch.load(model_path, map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
+    model.to(device)
     model.eval() # 切换推理模式
     return model, config
 
@@ -52,7 +58,8 @@ def get_transform(config: dict[str, Any]):
 def predict(model: nn.Module, image_path: str | Path, config: dict[str, Any]) -> dict[str, Any]:
     '''对单张图像进行预测'''
     image = load_rgb_image(image_path)
-    input_tensor = get_transform(config)(image).unsqueeze(0)
+    device = next(model.parameters()).device
+    input_tensor = get_transform(config)(image).unsqueeze(0).to(device)
     with torch.no_grad(): # 不计算梯度，计算推理结果
         output = model(input_tensor)
         probabilities = torch.nn.functional.softmax(output, dim=1)

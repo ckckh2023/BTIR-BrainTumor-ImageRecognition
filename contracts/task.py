@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field
 
 from datetime import datetime
 
+from core.settings import SETTINGS
+
 
 # 请求模型
 class CreateTaskRequest(BaseModel):
@@ -62,9 +64,28 @@ class TaskStatusResponse(BaseModel):
     frontend_result: dict[str, Any] | None = None
 
 
+class RuntimeStatusResponse(BaseModel):
+    '''当前后端实际使用的推理设备'''
+
+    schema_version: Literal["0.1"] = "0.1"
+    requested_device: str
+    active_device: str
+    backend: Literal["cpu", "cuda", "rocm"]
+    accelerator_available: bool
+    device_name: str | None
+    device_count: int
+    torch_version: str
+    cuda_version: str | None
+    rocm_version: str | None
+
+
 # 任务分割请求模型
 class SegmentTaskRequest(BaseModel):
-    threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+    threshold: float = Field(
+        default=SETTINGS.default_segment_threshold,
+        ge=0.0,
+        le=1.0,
+    )
 
 
 # 任务分割结果模型
@@ -88,7 +109,11 @@ class SegmentTaskResponse(BaseModel):
 
 # 任务运行请求模型
 class RunTaskRequest(BaseModel):
-    threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+    threshold: float = Field(
+        default=SETTINGS.default_segment_threshold,
+        ge=0.0,
+        le=1.0,
+    )
 
 
 # 任务运行响应模型
