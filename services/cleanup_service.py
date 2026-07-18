@@ -34,7 +34,7 @@ def clear_generated_files(
     ] # 寻找删除目标集的根目录
     existing_targets = [path for path in root_targets if path.exists()]
     if not existing_targets:
-        print("没有可清理的缓存或结果文件。")
+        print("没有可清理的缓存或结果文件")
         return
 
     # 打印处理结果

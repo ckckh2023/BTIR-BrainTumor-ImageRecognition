@@ -24,11 +24,16 @@ MODEL_PATH = PROJECT_DIR / "model" / "best_unet_model.pth" # 模型权重路径
 DEFAULT_OUTPUT_DIR = PROJECT_DIR / "output" # 默认输出目录
 
 
-def load_model(model_path: Path = MODEL_PATH) -> ResNet34UNet:
+def load_model(
+    model_path: Path = MODEL_PATH,
+    device: torch.device | str = "cpu",
+) -> ResNet34UNet:
     '''加载分割模型'''
     model = ResNet34UNet(out_classes=1)
-    state_dict = torch.load(model_path, map_location="cpu")
+    device = torch.device(device)
+    state_dict = torch.load(model_path, map_location=device)
     model.load_state_dict(state_dict)
+    model.to(device)
     model.eval() # 切换为推理模式
     return model
 
@@ -41,10 +46,11 @@ def preprocess_image(image_path: str | Path) -> torch.Tensor:
 
 def predict(model: ResNet34UNet, image_path: str | Path, threshold: float = 0.5) -> np.ndarray:
     '''对单张图像进行分割预测'''
-    image_tensor = preprocess_image(image_path)
+    device = next(model.parameters()).device
+    image_tensor = preprocess_image(image_path).to(device)
     with torch.no_grad():
         output = model(image_tensor)
-    return (output > threshold).float().squeeze().numpy()
+    return (output > threshold).float().squeeze().cpu().numpy()
 
 
 def _print_segmentation_result(result: dict) -> None:

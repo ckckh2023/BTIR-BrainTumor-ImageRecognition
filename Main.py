@@ -8,8 +8,9 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
+from core.settings import SETTINGS
 from services.cleanup_service import clear_generated_files
-from services.inference_service import SEGMENTER_DIR, classify, segment
+from services.inference_service import classify, segment
 from services.presentation import print_result
 from services.task_service import (
     create_run_dir,
@@ -23,9 +24,10 @@ from services.task_service import (
 )
 
 
-# 获取项目根目录和默认输出目录
-PROJECT_ROOT = Path(__file__).resolve().parent
-DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "output"
+# 统一使用项目配置中的路径与默认阈值
+PROJECT_ROOT = SETTINGS.project_root
+DEFAULT_OUTPUT_DIR = SETTINGS.output_dir
+SEGMENTER_DIR = SETTINGS.segmenter_script.parent
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -193,7 +195,12 @@ def _add_model_arguments(
     '''为模型运行命令添加通用参数'''
     command.add_argument("image_path", type=Path, nargs="?", help="旧用法；建议改用 --task-id") # image_path 参数
     if with_threshold:
-        command.add_argument("--threshold", type=float, default=0.5, help="分割阈值，默认 0.5") # --threshold 参数
+        command.add_argument(
+            "--threshold",
+            type=float,
+            default=SETTINGS.default_segment_threshold,
+            help=f"分割阈值，默认 {SETTINGS.default_segment_threshold}",
+        ) # --threshold 参数
     command.add_argument("--json", action="store_true", help="输出完整 JSON 结果") # --json 参数
     command.add_argument("--task-id", help="写入已有任务；省略时自动创建新任务") # --task-id 参数
     command.add_argument( # --input-mode 参数

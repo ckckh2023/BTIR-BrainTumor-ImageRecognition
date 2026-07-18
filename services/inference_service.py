@@ -7,25 +7,24 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from accelerator import resolve_device
+from core.settings import SETTINGS
 from processing.postprocessing import analyze_mask, save_mask
-
-
-# 常用路径
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-MODELS_DIR = PROJECT_ROOT / "models"
-CLASSIFIER_DIR = MODELS_DIR / "classification"
-CLASSIFIER_SCRIPT = CLASSIFIER_DIR / "inference.py"
-CLASSIFIER_MODEL = CLASSIFIER_DIR / "model" / "pytorch_model.pth"
-CLASSIFIER_CONFIG = CLASSIFIER_DIR / "model" / "config.json"
-SEGMENTER_DIR = MODELS_DIR / "segmentation"
-SEGMENTER_SCRIPT = SEGMENTER_DIR / "inference.py"
-SEGMENTER_MODEL = SEGMENTER_DIR / "model" / "best_unet_model.pth"
 
 
 def classify(image_path: Path) -> dict[str, Any]:
     '''跑分类模型，返回预测结果'''
-    namespace = runpy.run_path(str(CLASSIFIER_SCRIPT), run_name="codearts_classifier")
-    model, config = namespace["load_model"](str(CLASSIFIER_MODEL), str(CLASSIFIER_CONFIG))
+    namespace = runpy.run_path(
+        str(SETTINGS.classifier_script),
+        run_name="codearts_classifier",
+    )
+    torch = namespace["torch"]
+    device = resolve_device(torch, SETTINGS.device)
+    model, config = namespace["load_model"](
+        str(SETTINGS.classifier_model),
+        str(SETTINGS.classifier_config),
+        device=device,
+    )
     prediction = namespace["predict"](model, str(image_path), config)
     return {
         "model": "models/classification/resnet50",
@@ -41,9 +40,11 @@ def segment(image_path: Path, threshold: float, output_dir: Path) -> dict[str, A
 
     namespace = _load_segmentation_namespace()
     torch = namespace["torch"]
+    device = resolve_device(torch, SETTINGS.device)
     model = namespace["ResNet34UNet"](out_classes=1)
-    state_dict = torch.load(SEGMENTER_MODEL, map_location="cpu")
+    state_dict = torch.load(SETTINGS.segmenter_model, map_location=device)
     model.load_state_dict(state_dict)
+    model.to(device)
     model.eval()
 
     mask = namespace["predict"](model, str(image_path), threshold)
@@ -63,7 +64,10 @@ def _load_segmentation_namespace() -> dict[str, Any]:
     '''加载分割模型的命名空间，避免重复导入'''
     original_sys_path = sys.path[:]
     try:
-        sys.path.insert(0, str(SEGMENTER_DIR))
-        return runpy.run_path(str(SEGMENTER_SCRIPT), run_name="codearts_segmenter")
+        sys.path.insert(0, str(SETTINGS.segmenter_script.parent))
+        return runpy.run_path(
+            str(SETTINGS.segmenter_script),
+            run_name="codearts_segmenter",
+        )
     finally:
         sys.path[:] = original_sys_path
