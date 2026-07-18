@@ -45,7 +45,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "clear":
             clear_generated_files(
                 PROJECT_ROOT,
-                DEFAULT_OUTPUT_DIR,
+                args.output_dir.resolve(),
                 SEGMENTER_DIR,
                 dry_run=args.dry_run,
             )
@@ -162,6 +162,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         help="仅列出将清理的文件，不实际删除",
+    )
+    clear.add_argument(
+        "--output-dir",
+        type=Path,
+        default=DEFAULT_OUTPUT_DIR,
+        help=f"任务结果根目录，默认 {DEFAULT_OUTPUT_DIR}",
     )
 
     # 添加create子命令

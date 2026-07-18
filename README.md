@@ -198,6 +198,7 @@ python Main.py classify --task-id <task_id>
 python Main.py segment --task-id <task_id>
 python Main.py all <image_path>
 python Main.py clear --dry-run
+python Main.py clear --output-dir D:\btir-output --dry-run
 ```
 
 ## 协定
