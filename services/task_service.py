@@ -12,6 +12,7 @@ import uuid
 from pathlib import Path
 from typing import Any, BinaryIO
 from PIL import Image, UnidentifiedImageError
+from repositories.task_repository import task_repository
 from services.task_lock import task_write_lock
 
 # 允许传入的图像文件后缀
@@ -109,8 +110,8 @@ def initialize_task(
         else str(task_image)
     )
     now = datetime.now().astimezone().isoformat()
-    write_json(
-        task_dir / "task.json",
+    task_repository.save(
+        task_dir,
         {
             "task_id": task_dir.name,
             "name": name.strip() if name and name.strip() else task_dir.name,
@@ -164,8 +165,8 @@ def initialize_uploaded_task(
     task_image = task_image.resolve()
     now = datetime.now().astimezone().isoformat()
 
-    write_json(
-        task_dir / "task.json",
+    task_repository.save(
+        task_dir,
         {
             "task_id": task_dir.name,
             "name": name.strip() if name and name.strip() else task_dir.name,
@@ -188,11 +189,7 @@ def initialize_uploaded_task(
 
 def load_task_image(task_dir: Path) -> Path:
     '''加载任务目录中的输入图像路径，并验证其存在性'''
-    task_file = task_dir / "task.json"
-    if not task_file.is_file():
-        raise ValueError("任务元数据缺失")
-
-    record = json.loads(task_file.read_text(encoding="utf-8"))
+    record = task_repository.load(task_dir)
     input_record = record.get("input", {})
     stored_path = input_record.get("path")
     if not stored_path:
@@ -358,11 +355,10 @@ def build_frontend_result(
 
 def mark_task_completed(task_dir: Path, *models: str) -> None:
     '''将指定模型标记为已完成，并更新任务元数据'''
-    task_file = task_dir / "task.json"
-    if not task_file.is_file():
+    if not task_repository.exists(task_dir):
         return
 
-    record = json.loads(task_file.read_text(encoding="utf-8"))
+    record = task_repository.load(task_dir)
     completed = set(record.get("completed_models", []))
     completed.update(models)
     record["completed_models"] = sorted(completed)
@@ -373,7 +369,7 @@ def mark_task_completed(task_dir: Path, *models: str) -> None:
             else "partial"
         )
     record["updated_at"] = datetime.now().astimezone().isoformat()
-    write_json(task_file, record)
+    task_repository.save(task_dir, record)
 
 
 def update_task_execution_status(
@@ -388,12 +384,8 @@ def update_task_execution_status(
     if status not in ASYNC_TASK_STATUSES:
         raise ValueError(f"不支持的异步任务状态: {status}")
 
-    task_file = task_dir / "task.json"
-    if not task_file.is_file():
-        raise ValueError("任务元数据缺失")
-
     with task_write_lock(task_dir.name):
-        record = json.loads(task_file.read_text(encoding="utf-8"))
+        record = task_repository.load(task_dir)
         job = dict(record.get("job") or {})
         existing_job_id = job.get("id")
         if existing_job_id and existing_job_id != job_id:
@@ -418,17 +410,16 @@ def update_task_execution_status(
             record["error"] = {"message": error, "updated_at": now}
         elif status != "failed":
             record.pop("error", None)
-        write_json(task_file, record)
+        task_repository.save(task_dir, record)
         return record
 
 
 def record_task_run(task_dir: Path, model_name: str, result_path: Path) -> None:
     '''记录模型运行结果到任务元数据中'''
-    task_file = task_dir / "task.json"
-    if not task_file.is_file():
+    if not task_repository.exists(task_dir):
         return
 
-    record = json.loads(task_file.read_text(encoding="utf-8"))
+    record = task_repository.load(task_dir)
     relative_result_path = task_relative_path(task_dir, result_path)
     record.setdefault("runs", []).append(
         {
@@ -439,7 +430,7 @@ def record_task_run(task_dir: Path, model_name: str, result_path: Path) -> None:
         }
     )
     record["updated_at"] = datetime.now().astimezone().isoformat()
-    write_json(task_file, record)
+    task_repository.save(task_dir, record)
 
 
 def sha256(path: Path) -> str:
