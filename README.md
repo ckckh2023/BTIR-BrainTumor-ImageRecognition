@@ -19,6 +19,20 @@
 
 ## 开始
 
+### 拉取模型权重
+
+项目中的 `.pth` 模型权重由 Git LFS 管理。首次克隆项目或模型加载报错时，先执行：
+
+```bash
+git lfs install
+git lfs pull
+git lfs status
+```
+
+确认以下模型文件不是 Git LFS 指针文本，而是实际二进制权重文件：
+models/classification/model/pytorch_model.pth  
+models/segmentation/model/best_unet_model.pth  
+
 统一用 Python 3.11 创建并启用虚拟环境后，安装依赖：
 
 ```powershell
@@ -113,7 +127,24 @@ python -c "from redis import Redis; print(Redis.from_url('redis://127.0.0.1:6379
 BTIR_REDIS_URL=redis://127.0.0.1:6379/0
 BTIR_TASK_LOCK_TIMEOUT_SECONDS=30
 BTIR_TASK_LOCK_WAIT_SECONDS=5
+BTIR_TASK_QUEUE_NAME=inference
+BTIR_TASK_JOB_TIMEOUT_SECONDS=3600
+BTIR_TASK_JOB_RESULT_TTL_SECONDS=86400
 ```
+
+RQ 队列负责运行后台推理任务；同一任务已有 `queued` 或 `running` 作业时，重复提交会复用原作业，不会重复入队
+
+启动 API 后，另开一个已启用相同虚拟环境的终端启动 worker：
+
+```cmd
+python -m workers.run_worker
+```
+
+Windows 本地开发会自动使用单进程 `SimpleWorker`；Linux 服务器使用标准 RQ worker  
+两种模式均一次执行一个推理任务，适合单张 GPU，避免并发模型推理抢占显存
+
+Worker 名称会自动包含主机名和进程号  
+即使旧 Worker 异常退出、Redis 尚未清理旧记录，也可以直接重新执行启动命令  
 
 ### GPU 加速安装
 
@@ -168,13 +199,15 @@ python -m uvicorn api.app:app --reload
 1. 确认 Redis 容器运行，且 Redis `ping()` 输出 `True`  
 2. 启动 API 后，调用 `GET /runtime`，确认当前 CPU/GPU 后端  
 3. 在 Swagger 的 `POST /tasks` 上传一张 `.jpg`、`.jpeg` 或 `.png` 图片，保存响应中的 `task_id`  
-4. 调用 `POST /tasks/{task_id}/run`，请求体可使用：
+4. 另开终端执行 `python -m workers.run_worker`，再调用 `POST /tasks/{task_id}/run-async`  
+接口会立即返回 HTTP `202`、`job.id` 和 `queued` 状态；请求体可使用：
 
    ```json
    {"threshold": 0.5}
    ```
 
-5. 调用 `GET /tasks/{task_id}`；成功时 `completed_models` 应同时包含 `classification` 与 `segmentation`，状态为 `completed`  
+5. 轮询 `GET /tasks/{task_id}`；状态应依次为 `queued`、`running`、`succeeded`  
+成功时 `completed_models` 应同时包含 `classification` 与 `segmentation`  
 6. 调用 `GET /tasks/{task_id}/files/frontend_result.json`，确认前端结果文件可读取  
 
 清理输出目录前，建议先使用 `python Main.py clear --dry-run` 预览将删除的内容  
@@ -213,7 +246,7 @@ python -m uvicorn api.app:app --reload
 正常分析流程建议使用一键运行接口：
 
 ```text
-POST /tasks/{task_id}/run
+POST /tasks/{task_id}/run-async
 ```
 
 该接口会依次执行分类和分割，并将两项结果合并至同一份 `frontend_result.json`请求体可省略；省略时分割阈值默认是 `0.5`  
@@ -287,12 +320,15 @@ api/routes/runtime.py         # 运行环境状态接口
 contracts/task.py             # API 请求/响应数据模型
 services/task_service.py      # 任务创建、结果写入、统一结果合并
 services/task_lock.py         # Redis 任务结果写入锁
+services/task_queue.py        # RQ 作业提交与队列连接
 services/inference_service.py # 分类/分割模型的统一调用入口
 services/cleanup_service.py   # 清理生成的缓存与结果
 services/presentation.py      # CLI 输出格式化
 accelerator/                  # CPU / CUDA / ROCm 设备适配包
 processing/                   # 通用预处理、后处理
 models/                       # 各模型的推理实现
+workers/inference_jobs.py     # RQ 后台推理作业
+workers/run_worker.py         # 启动 RQ worker
 Main.py                       # 命令行入口
 output/                       # 运行生成的数据
 ```

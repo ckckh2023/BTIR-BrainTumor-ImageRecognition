@@ -51,16 +51,28 @@ class TaskInputData(BaseModel):
     sha256: str
 
 
+class TaskJobData(BaseModel):
+    id: str
+    queue: str
+    status: Literal["queued", "running", "succeeded", "failed"]
+    queued_at: datetime | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
 # 任务状态响应模型
 class TaskStatusResponse(BaseModel):
     schema_version: Literal["0.1"] = "0.1"
     task_id: str
     name: str
-    status: Literal["created", "partial", "completed", "failed"]
+    status: Literal[
+        "created", "queued", "running", "partial", "completed", "succeeded", "failed"
+    ]
     created_at: datetime
     updated_at: datetime
     completed_models: list[str]
     input: TaskInputData
+    job: TaskJobData | None = None
     frontend_result: dict[str, Any] | None = None
 
 
@@ -125,3 +137,11 @@ class RunTaskResponse(BaseModel):
     classification: ClassificationData
     segmentation: SegmentationData
     frontend_result_file: str
+
+
+class TaskEnqueuedResponse(BaseModel):
+    schema_version: Literal["0.1"] = "0.1"
+    task_id: str
+    status: Literal["queued", "running"]
+    job: TaskJobData
+    reused_existing_job: bool

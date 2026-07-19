@@ -16,6 +16,8 @@ from services.task_lock import task_write_lock
 
 # 允许传入的图像文件后缀
 ALLOWED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png"}
+# 任务状态
+ASYNC_TASK_STATUSES = {"queued", "running", "succeeded", "failed"}
 
 def validate_image_path(path: Path) -> Path:
     '''验证输入图像路径是否存在，并返回绝对路径'''
@@ -364,9 +366,60 @@ def mark_task_completed(task_dir: Path, *models: str) -> None:
     completed = set(record.get("completed_models", []))
     completed.update(models)
     record["completed_models"] = sorted(completed)
-    record["status"] = "completed" if {"classification", "segmentation"} <= completed else "partial"
+    if record.get("status") not in {"queued", "running"}:
+        record["status"] = (
+            "completed"
+            if {"classification", "segmentation"} <= completed
+            else "partial"
+        )
     record["updated_at"] = datetime.now().astimezone().isoformat()
     write_json(task_file, record)
+
+
+def update_task_execution_status(
+    task_dir: Path,
+    status: str,
+    *,
+    job_id: str,
+    queue_name: str | None = None,
+    error: str | None = None,
+) -> dict[str, Any]:
+    '''更新异步任务状态，并将状态写入任务元数据'''
+    if status not in ASYNC_TASK_STATUSES:
+        raise ValueError(f"不支持的异步任务状态: {status}")
+
+    task_file = task_dir / "task.json"
+    if not task_file.is_file():
+        raise ValueError("任务元数据缺失")
+
+    with task_write_lock(task_dir.name):
+        record = json.loads(task_file.read_text(encoding="utf-8"))
+        job = dict(record.get("job") or {})
+        existing_job_id = job.get("id")
+        if existing_job_id and existing_job_id != job_id:
+            raise ValueError("任务正在由另一异步作业处理")
+
+        now = datetime.now().astimezone().isoformat()
+        job["id"] = job_id
+        job["status"] = status
+        if queue_name:
+            job["queue"] = queue_name
+        if status == "queued":
+            job["queued_at"] = now
+        elif status == "running":
+            job["started_at"] = now
+        else:
+            job["finished_at"] = now
+
+        record["status"] = status
+        record["job"] = job
+        record["updated_at"] = now
+        if error:
+            record["error"] = {"message": error, "updated_at": now}
+        elif status != "failed":
+            record.pop("error", None)
+        write_json(task_file, record)
+        return record
 
 
 def record_task_run(task_dir: Path, model_name: str, result_path: Path) -> None:
