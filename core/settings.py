@@ -91,6 +91,9 @@ class Settings:
     redis_url: str
     task_lock_timeout_seconds: int
     task_lock_wait_seconds: float
+    task_queue_name: str
+    task_job_timeout_seconds: int
+    task_job_result_ttl_seconds: int
 
 
 def _build_settings() -> Settings:
@@ -134,6 +137,15 @@ def _build_settings() -> Settings:
         task_lock_wait_seconds=_get_nonnegative_float(
             "BTIR_TASK_LOCK_WAIT_SECONDS",
             5.0,
+        ),
+        task_queue_name=os.getenv("BTIR_TASK_QUEUE_NAME", "inference").strip(),
+        task_job_timeout_seconds=_get_positive_int(
+            "BTIR_TASK_JOB_TIMEOUT_SECONDS",
+            3600,
+        ),
+        task_job_result_ttl_seconds=_get_positive_int(
+            "BTIR_TASK_JOB_RESULT_TTL_SECONDS",
+            86400,
         ),
     )
 

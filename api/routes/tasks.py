@@ -19,6 +19,7 @@ from contracts.task import (
     SegmentTaskResponse,
     SegmentationData,
     TaskCreatedResponse,
+    TaskEnqueuedResponse,
     TaskInputData,
     TaskStatusResponse,
 )
@@ -36,6 +37,7 @@ from services.task_service import (
     validate_image_path,
 )
 from services.task_lock import TaskLockBusyError, TaskLockUnavailableError
+from services.task_queue import TaskQueueUnavailableError, enqueue_task_run
 
 router = APIRouter(prefix="/tasks", tags=["任务"])
 
@@ -203,6 +205,7 @@ def get_task(task_id: str) -> TaskStatusResponse:
             size_bytes=input_data["size_bytes"],
             sha256=input_data["sha256"],
         ),
+        job=task_data.get("job"),
         frontend_result=frontend_result,
     )
 
@@ -361,4 +364,46 @@ def run_task(
             mask_file=mask_file,
         ),
         frontend_result_file=segmentation_result["frontend_result_path"],
+    )
+
+
+@router.post(
+    "/{task_id}/run-async",
+    response_model=TaskEnqueuedResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def enqueue_task(
+    task_id: str,
+    request: RunTaskRequest | None = None,
+) -> TaskEnqueuedResponse:
+    '''将完整推理提交到 RQ 队列，并立即返回作业信息'''
+    task_dir = require_task_dir(task_id)
+    threshold = (
+        request.threshold
+        if request is not None
+        else SETTINGS.default_segment_threshold
+    )
+    try:
+        job, reused = enqueue_task_run(task_dir, threshold)
+    except TaskLockBusyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    except (TaskLockUnavailableError, TaskQueueUnavailableError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    return TaskEnqueuedResponse(
+        task_id=task_id,
+        status=job["status"],
+        job=job,
+        reused_existing_job=reused,
     )
