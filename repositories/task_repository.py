@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import sqlite3
+from core.settings import SETTINGS
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -71,5 +73,99 @@ class JsonTaskRepository:
         return path.resolve()
 
 
-# 接入 SQLite 时替换
-task_repository: TaskRepository = JsonTaskRepository()
+class SqliteTaskRepository:
+    '''以 SQLite 保存任务元数据'''
+    def __init__(self, database_path: Path) -> None:
+        self.database_path = database_path
+        self._initialize_database()
+
+
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(self.database_path, timeout=5)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA busy_timeout = 5000")
+        return connection
+
+
+    def _initialize_database(self) -> None:
+        self.database_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with self._connect() as connection:
+            connection.execute("PRAGMA journal_mode = WAL")
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS tasks (
+                    task_id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    record_json TEXT NOT NULL
+                )"""
+            )
+
+
+    def exists(self, task_dir: Path) -> bool:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT 1 FROM tasks WHERE task_id = ?",
+                (task_dir.name,),
+            ).fetchone()
+        return row is not None
+    
+
+    def load(self, task_dir: Path) -> dict[str, Any]:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT record_json FROM tasks WHERE task_id = ?",
+                (task_dir.name,),
+            ).fetchone()
+
+        if row is None:
+            raise ValueError("任务元数据缺失")
+
+        try:
+            record = json.loads(row["record_json"])
+        except json.JSONDecodeError as exc:
+            raise ValueError("任务元数据格式无效") from exc
+
+        if not isinstance(record, dict):
+            raise ValueError("任务元数据格式无效")
+        return record
+
+
+    def save(self, task_dir: Path, record: dict[str, Any]) -> Path:
+        if record.get("task_id") != task_dir.name:
+            raise ValueError("任务 ID 与任务目录不一致")
+
+        record_json = json.dumps(record, ensure_ascii=False)
+
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO tasks (
+                    task_id, name, status, created_at, updated_at, record_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(task_id) DO UPDATE SET
+                    name = excluded.name,
+                    status = excluded.status,
+                    updated_at = excluded.updated_at,
+                    record_json = excluded.record_json
+                """,
+                (
+                    record["task_id"],
+                    record["name"],
+                    record["status"],
+                    record["created_at"],
+                    record["updated_at"],
+                    record_json,
+                ),
+            )
+
+        return self.database_path.resolve()
+
+
+task_repository: TaskRepository = SqliteTaskRepository(
+    SETTINGS.task_database_path
+)

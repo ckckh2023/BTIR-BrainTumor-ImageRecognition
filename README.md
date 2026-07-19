@@ -14,8 +14,8 @@
 | 结果管理 | √ | 保存当前模型结果、历史运行结果、统一前端结果和错误文件 |
 | REST API | √ | 已提供上传建任务、单模型调用、一键运行全部模型、查询任务状态等接口 |
 | 接口协议 | x | 当前已有请求/响应模型；待前端开始后共同确定最终 JSON 字段与错误格式 |
-| 异步调度 | x | 当前模型调用为同步执行；后续增加排队、运行进度、失败重试和任务取消 |
-| 数据库 | x | 前端需要任务列表、筛选或多人访问时，保存任务元数据与状态；图像和掩码继续存文件系统或对象存储 |
+| 异步调度 | √ | 使用 Redis 与 RQ 执行后台推理；支持 `queued`、`running`、`succeeded`、`failed` 状态查询；失败重试和取消任务待补充 |
+| 数据库 | √ | SQLite 保存任务元数据与状态；图像、掩码和前端结果继续保存在文件系统 |
 
 ## 开始
 
@@ -130,6 +130,7 @@ BTIR_TASK_LOCK_WAIT_SECONDS=5
 BTIR_TASK_QUEUE_NAME=inference
 BTIR_TASK_JOB_TIMEOUT_SECONDS=3600
 BTIR_TASK_JOB_RESULT_TTL_SECONDS=86400
+BTIR_TASK_DATABASE_PATH=data/btir.db
 ```
 
 RQ 队列负责运行后台推理任务；同一任务已有 `queued` 或 `running` 作业时，重复提交会复用原作业，不会重复入队
@@ -139,6 +140,10 @@ RQ 队列负责运行后台推理任务；同一任务已有 `queued` 或 `runni
 ```cmd
 python -m workers.run_worker
 ```
+
+### SQLite 任务元数据
+
+任务 ID、状态、RQ 作业信息和运行记录保存在 `data/btir.db`。首次启动时会自动创建该文件，无需手动安装数据库服务
 
 Windows 本地开发会自动使用单进程 `SimpleWorker`；Linux 服务器使用标准 RQ worker  
 两种模式均一次执行一个推理任务，适合单张 GPU，避免并发模型推理抢占显存
@@ -297,12 +302,14 @@ output/
 └── 20260715_120000_001/       # task_id
     ├── input/
     │   └── image.jpg           # 上传或复制后的输入图像
-    ├── task.json               # 任务元数据与状态
-    ├── classification/         # 最新分类模型结果
-    ├── segmentation/           # 最新分割模型结果
+    ├── classification.json      # 最新分类模型结果
+    ├── segmentation.json        # 最新分割模型结果
     ├── runs/                   # 模型调用的历史结果
     ├── frontend_result.json    # 供前端读取的统一结果
     └── error.json              # 调用失败时的错误记录（如存在）
+
+data/
+└── btir.db                     # 本机 SQLite 任务元数据（不提交）
 ```
 
 同一模型在同一任务内重复运行时：
@@ -318,6 +325,7 @@ api/app.py                    # FastAPI 应用组装、CORS、静态前端
 api/routes/tasks.py           # 任务创建、推理、结果文件接口
 api/routes/runtime.py         # 运行环境状态接口
 contracts/task.py             # API 请求/响应数据模型
+repositories/task_repository.py # 任务元数据仓储（当前 SQLite 实现）
 services/task_service.py      # 任务创建、结果写入、统一结果合并
 services/task_lock.py         # Redis 任务结果写入锁
 services/task_queue.py        # RQ 作业提交与队列连接
@@ -350,9 +358,9 @@ python Main.py clear --output-dir D:\btir-output --dry-run
 1. 不直接读取或修改其他任务目录；所有模型调用均通过 `task_id` 定位任务
 2. 新增模型时，在 `services/inference_service.py` 提供统一入口，并通过 `persist_model_result()` 写入结果，避免自行拼接 JSON
 3. 修改前端字段前，先同步修改 `contracts/task.py`、`services/task_service.py` 和本 README 的接口说明
-4. `output/`、模型权重、缓存和本地数据集属于本地产物，避免提交到版本库
+4. `output/`、`data/*.db*`、模型权重、缓存和本地数据集属于本地产物，避免提交到版本库
 
 ## 下一阶段
 
 1. 确认 `frontend_result.json` 的字段与错误格式
-2. 模型调用改为异步任务，增加 `queued / running / succeeded / failed` 状态
+2. 为 SQLite 增加旧任务 JSON 迁移脚本，以及失败重试、取消任务和任务列表查询
