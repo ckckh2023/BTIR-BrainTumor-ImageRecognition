@@ -35,7 +35,7 @@ from services.task_service import (
     task_relative_path,
     validate_image_path,
 )
-
+from services.task_lock import TaskLockBusyError, TaskLockUnavailableError
 
 router = APIRouter(prefix="/tasks", tags=["任务"])
 
@@ -143,6 +143,16 @@ def classify_task(task_id: str) -> ClassifyTaskResponse:
             result=classify(image_path),
         )
         task_record = json.loads((task_dir / "task.json").read_text(encoding="utf-8"))
+    except TaskLockBusyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    except TaskLockUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -252,6 +262,16 @@ def segment_task(
         )
         task_record = json.loads((task_dir / "task.json").read_text(encoding="utf-8"))
         mask_file = task_relative_path(task_dir, Path(result["mask_path"]))
+    except TaskLockBusyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    except TaskLockUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -308,6 +328,16 @@ def run_task(
         task_record = json.loads((task_dir / "task.json").read_text(encoding="utf-8"))
         prediction = classification_result["classification"]
         mask_file = task_relative_path(task_dir, Path(segmentation_result["mask_path"]))
+    except TaskLockBusyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    except TaskLockUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
