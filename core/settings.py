@@ -85,6 +85,7 @@ class Settings:
     classifier_config: Path
     segmenter_script: Path
     segmenter_model: Path
+    task_database_path: Path
     device: str
     default_segment_threshold: float
     cors_origins: list[str]
@@ -146,6 +147,10 @@ def _build_settings() -> Settings:
         task_job_result_ttl_seconds=_get_positive_int(
             "BTIR_TASK_JOB_RESULT_TTL_SECONDS",
             86400,
+        ),
+        task_database_path=_get_path(
+            "BTIR_TASK_DATABASE_PATH",
+            "data/btir.db",
         ),
     )
 
