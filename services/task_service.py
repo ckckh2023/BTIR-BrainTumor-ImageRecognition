@@ -12,6 +12,7 @@ import uuid
 from pathlib import Path
 from typing import Any, BinaryIO
 from PIL import Image, UnidentifiedImageError
+from services.task_lock import task_write_lock
 
 # 允许传入的图像文件后缀
 ALLOWED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png"}
@@ -232,6 +233,24 @@ def write_json(path: Path, data: dict[str, Any]) -> Path:
 
 
 def persist_model_result(
+        task_dir: Path,
+        image_path: Path,
+        model_name: str,
+        result: dict[str, Any],
+        run_dir: Path | None = None,
+) -> dict[str, Any]:
+    '''在 Redis 保护下写入结果与元数据'''
+    with task_write_lock(task_dir.name):
+        return _persist_model_result_unlocked(
+            task_dir=task_dir,
+            image_path=image_path,
+            model_name=model_name,
+            result=result,
+            run_dir=run_dir,
+        )
+
+
+def _persist_model_result_unlocked(
     task_dir: Path,
     image_path: Path,
     model_name: str,

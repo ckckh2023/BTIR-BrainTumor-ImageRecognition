@@ -76,6 +76,45 @@ python -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 建议通过 Nginx 等反向代理对外提供 HTTPS 服务  
 `POST /tasks/from-path` 仅适合服务器本地调试，正式前端应使用图片上传接口 `POST /tasks`
 
+### Windows 临时虚拟环境
+
+Windows 开发请确认使用 Python 3.11 虚拟环境，而不是系统 Python  
+以下为 CMD 示例：
+
+```cmd
+py -3.11 -m venv E:\btir311
+E:\btir311\Scripts\activate.bat
+cd /d E:\code-content\code-content\programme\BTIR-BrainTumor-ImageRecognition
+python --version
+python -m pip install -r requirements.txt
+```
+
+提示符显示 `(btir311)` 且 `python --version` 为 Python 3.11 后，再执行项目命令  
+
+### Redis 任务写入锁
+
+任务结果写入时会使用 Redis 锁保护 `task.json` 与 `frontend_result.json` 等共享 JSON，避免分类、分割或后续异步任务同时写回时互相覆盖  
+JSON 文件本身也采用原子写入，读取方只会看到完整的旧文件或完整的新文件
+
+Redis 是独立服务，本地 Windows 开发可使用 Docker Desktop 启动 Redis：
+
+```cmd
+docker run --name btir-redis -p 6379:6379 -d redis:7-alpine
+docker ps
+python -c "from redis import Redis; print(Redis.from_url('redis://127.0.0.1:6379/0').ping())"
+```
+
+最后一条命令输出 `True` 表示 Python 可以连接 Redis  
+若容器已创建但未运行，使用 `docker start btir-redis`。
+
+`.env` 中的相关配置如下：
+
+```dotenv
+BTIR_REDIS_URL=redis://127.0.0.1:6379/0
+BTIR_TASK_LOCK_TIMEOUT_SECONDS=30
+BTIR_TASK_LOCK_WAIT_SECONDS=5
+```
+
 ### GPU 加速安装
 
 基础依赖安装完成后，使用内置安装器为当前机器替换对应的 PyTorch 后端：
@@ -99,6 +138,15 @@ python -m accelerator.install --backend auto --dry-run
 
 项目内的 `accelerator/` 包统一识别 CPU、NVIDIA CUDA 与 AMD ROCm。安装对应平台的 PyTorch 后，`BTIR_DEVICE=auto` 会自动选择实际可用的后端
 
+安装 CUDA 后，可用以下命令确认当前虚拟环境是否真的识别到 GPU：
+
+```cmd
+python -c "import torch; print(torch.__version__); print(torch.cuda.is_available()); print(torch.version.cuda); print(torch.cuda.get_device_name(0))"
+```
+
+若 `torch.cuda.is_available()` 为 `False`，说明当前环境仍是 CPU 版 PyTorch，或 NVIDIA 驱动与 CUDA 环境不可用  
+更换 PyTorch 后需重启 Uvicorn，再访问 `/runtime` 确认 `backend` 为 `cuda`。
+
 ### 启动服务
 
 ```powershell
@@ -114,6 +162,22 @@ python -m uvicorn api.app:app --reload
 推荐先用 Swagger 页面完成联调和接口测试
 > 除API调用 也可通过命令行框进行测试，但更推荐api测试  
 > [点此命令行使用说明](#命令行运行方式开发调试用)   
+
+### 完整联调流程
+
+1. 确认 Redis 容器运行，且 Redis `ping()` 输出 `True`  
+2. 启动 API 后，调用 `GET /runtime`，确认当前 CPU/GPU 后端  
+3. 在 Swagger 的 `POST /tasks` 上传一张 `.jpg`、`.jpeg` 或 `.png` 图片，保存响应中的 `task_id`  
+4. 调用 `POST /tasks/{task_id}/run`，请求体可使用：
+
+   ```json
+   {"threshold": 0.5}
+   ```
+
+5. 调用 `GET /tasks/{task_id}`；成功时 `completed_models` 应同时包含 `classification` 与 `segmentation`，状态为 `completed`  
+6. 调用 `GET /tasks/{task_id}/files/frontend_result.json`，确认前端结果文件可读取  
+
+清理输出目录前，建议先使用 `python Main.py clear --dry-run` 预览将删除的内容  
 
 ## API 使用流程
 
@@ -222,6 +286,7 @@ api/routes/tasks.py           # 任务创建、推理、结果文件接口
 api/routes/runtime.py         # 运行环境状态接口
 contracts/task.py             # API 请求/响应数据模型
 services/task_service.py      # 任务创建、结果写入、统一结果合并
+services/task_lock.py         # Redis 任务结果写入锁
 services/inference_service.py # 分类/分割模型的统一调用入口
 services/cleanup_service.py   # 清理生成的缓存与结果
 services/presentation.py      # CLI 输出格式化

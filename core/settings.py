@@ -57,6 +57,22 @@ def _get_origins() -> list[str]:
     return [origin.strip() for origin in raw_value.split(",") if origin.strip()]
 
 
+def _get_positive_int(name: str, default: int) -> int:
+    '''获取int类型正数'''
+    value = int(os.getenv(name, str(default)))
+    if value <= 0:
+        raise ValueError(f"{name} 必须是大于 0 的整数")
+    return value
+
+
+def _get_nonnegative_float(name: str, default: float) -> float:
+    '''获取float类型非负数'''
+    value = float(os.getenv(name, str(default)))
+    if value < 0:
+        raise ValueError(f"{name} 不能小于 0")
+    return value
+
+
 @dataclass(frozen=True)
 class Settings:
     '''由环境变量和 .env 文件构建的不可变运行配置'''
@@ -72,6 +88,9 @@ class Settings:
     device: str
     default_segment_threshold: float
     cors_origins: list[str]
+    redis_url: str
+    task_lock_timeout_seconds: int
+    task_lock_wait_seconds: float
 
 
 def _build_settings() -> Settings:
@@ -104,6 +123,18 @@ def _build_settings() -> Settings:
         device=device,
         default_segment_threshold=_get_threshold(),
         cors_origins=_get_origins(),
+        redis_url=os.getenv(
+            "BTIR_REDIS_URL",
+            "redis://127.0.0.1:6379/0",
+        ).strip(),
+        task_lock_timeout_seconds=_get_positive_int(
+            "BTIR_TASK_LOCK_TIMEOUT_SECONDS",
+            30,
+        ),
+        task_lock_wait_seconds=_get_nonnegative_float(
+            "BTIR_TASK_LOCK_WAIT_SECONDS",
+            5.0,
+        ),
     )
 
 

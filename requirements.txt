@@ -1,5 +1,6 @@
 # Python 3.11 通用运行依赖（默认 CPU 版 PyTorch）
 fastapi==0.139.0
+redis==5.2.1
 uvicorn[standard]==0.51.0
 python-multipart==0.0.32
 
