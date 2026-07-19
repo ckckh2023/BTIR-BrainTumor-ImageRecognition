@@ -24,6 +24,7 @@ from contracts.task import (
     TaskStatusResponse,
 )
 from core.settings import SETTINGS
+from repositories.task_repository import task_repository
 from services.inference_service import classify, segment
 from services.task_service import (
     create_run_dir,
@@ -144,7 +145,7 @@ def classify_task(task_id: str) -> ClassifyTaskResponse:
             model_name="classification",
             result=classify(image_path),
         )
-        task_record = json.loads((task_dir / "task.json").read_text(encoding="utf-8"))
+        task_record = task_repository.load(task_dir)
     except TaskLockBusyError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -179,7 +180,7 @@ def classify_task(task_id: str) -> ClassifyTaskResponse:
 def get_task(task_id: str) -> TaskStatusResponse:
     '''获取指定任务状态和当前结果'''
     task_dir = require_task_dir(task_id)
-    task_data = json.loads((task_dir / "task.json").read_text(encoding="utf-8"))
+    task_data = task_repository.load(task_dir)
 
     input_data = task_data["input"]
     frontend_path = task_dir / "frontend_result.json"
@@ -263,7 +264,7 @@ def segment_task(
             ),
             run_dir=run_dir,
         )
-        task_record = json.loads((task_dir / "task.json").read_text(encoding="utf-8"))
+        task_record = task_repository.load(task_dir)
         mask_file = task_relative_path(task_dir, Path(result["mask_path"]))
     except TaskLockBusyError as exc:
         raise HTTPException(
@@ -328,7 +329,7 @@ def run_task(
             ),
             run_dir=run_dir,
         )
-        task_record = json.loads((task_dir / "task.json").read_text(encoding="utf-8"))
+        task_record = task_repository.load(task_dir)
         prediction = classification_result["classification"]
         mask_file = task_relative_path(task_dir, Path(segmentation_result["mask_path"]))
     except TaskLockBusyError as exc:

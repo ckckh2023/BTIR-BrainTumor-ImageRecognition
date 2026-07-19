@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from functools import lru_cache
-import json
 from pathlib import Path
 from typing import Any
 
@@ -13,8 +12,8 @@ from redis.exceptions import RedisError
 from rq import Queue
 
 from core.settings import SETTINGS
+from repositories.task_repository import task_repository
 from services.task_lock import task_write_lock
-from services.task_service import write_json
 
 
 class TaskQueueUnavailableError(RuntimeError):
@@ -46,12 +45,11 @@ def enqueue_task_run(
     threshold: float,
 ) -> tuple[dict[str, Any], bool]:
     '''提交一次完整推理；同一任务已有活动作业时返回原作业'''
-    task_file = task_dir / "task.json"
-    if not task_file.is_file():
+    if not task_repository.exists(task_dir):
         raise ValueError("任务元数据缺失")
 
     with task_write_lock(task_dir.name):
-        record = json.loads(task_file.read_text(encoding="utf-8"))
+        record = task_repository.load(task_dir)
         current_status = record.get("status")
         existing_job = record.get("job")
         if current_status in {"queued", "running"} and existing_job:
@@ -80,5 +78,5 @@ def enqueue_task_run(
         record["job"] = job_record
         record["updated_at"] = now
         record.pop("error", None)
-        write_json(task_file, record)
+        task_repository.save(task_dir, record)
         return job_record, False
