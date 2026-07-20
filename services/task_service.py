@@ -1,4 +1,4 @@
-'''任务服务，对于任务存储，分类和分割模型的推理结果进行管理'''
+'''任务服务，对于任务存储，分类和分割模型的推理结果进行管理。'''
 
 from __future__ import annotations
 
@@ -440,3 +440,29 @@ def sha256(path: Path) -> str:
         for chunk in iter(lambda: file.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+# 兼容旧导入路径
+from services.task_files import (  # noqa: E402
+    ALLOWED_IMAGE_SUFFIXES,
+    create_run_dir,
+    create_task_dir,
+    get_task_dir,
+    initialize_task,
+    initialize_uploaded_task,
+    load_task_image,
+    sha256,
+    task_relative_path,
+    validate_image_path,
+    write_json,
+)
+from services.task_results import (  # noqa: E402
+    build_frontend_result,
+    persist_model_result,
+)
+from services.task_state import (  # noqa: E402
+    ASYNC_TASK_STATUSES,
+    mark_task_completed,
+    record_task_run,
+    update_task_execution_status,
+)
