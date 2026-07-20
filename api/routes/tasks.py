@@ -25,19 +25,19 @@ from contracts.task import (
 )
 from core.settings import SETTINGS
 from repositories.task_repository import task_repository
-from services.inference_service import classify, segment
 from services.task_files import (
-    create_run_dir,
     create_task_dir,
     get_task_dir,
     initialize_task,
     initialize_uploaded_task,
-    load_task_image,
     task_relative_path,
     validate_image_path,
 )
-from services.task_results import persist_model_result
-from services.task_runner import run_task_models
+from services.task_runner import (
+    run_classification,
+    run_segmentation,
+    run_task_models,
+)
 from services.task_lock import TaskLockBusyError, TaskLockUnavailableError
 from services.task_queue import TaskQueueUnavailableError, enqueue_task_run
 
@@ -77,6 +77,32 @@ def require_task_dir(task_id: str) -> Path:
             status_code=status.HTTP_404_NOT_FOUND,
             detail="任务不存在",
         ) from exc
+
+
+def resolve_run_threshold(request: RunTaskRequest | None) -> float:
+    '''读取请求阈值；省略请求体时使用项目默认值'''
+    return (
+        request.threshold
+        if request is not None
+        else SETTINGS.default_segment_threshold
+    )
+
+
+def task_operation_http_error(
+    exc: TaskLockBusyError
+    | TaskLockUnavailableError
+    | TaskQueueUnavailableError
+    | ValueError,
+) -> HTTPException:
+    '''将任务执行过程中的预期异常转换为一致的 HTTP 响应'''
+    if isinstance(exc, TaskLockBusyError):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    if isinstance(exc, (TaskLockUnavailableError, TaskQueueUnavailableError)):
+        return HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        )
+    return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 
 @router.post(
@@ -139,29 +165,11 @@ def classify_task(task_id: str) -> ClassifyTaskResponse:
     '''对指定任务运行分类推理'''
     try:
         task_dir = require_task_dir(task_id)
-        image_path = load_task_image(task_dir)
-        result = persist_model_result(
-            task_dir=task_dir,
-            image_path=image_path,
-            model_name="classification",
-            result=classify(image_path),
-        )
+        model_run = run_classification(task_dir)
+        result = model_run.result
         task_record = task_repository.load(task_dir)
-    except TaskLockBusyError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=str(exc),
-        ) from exc
-    except TaskLockUnavailableError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(exc),
-        ) from exc
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
-        ) from exc
+    except (TaskLockBusyError, TaskLockUnavailableError, ValueError) as exc:
+        raise task_operation_http_error(exc) from exc
 
     prediction = result["classification"]
     return ClassifyTaskResponse(
@@ -252,36 +260,12 @@ def segment_task(
     '''对指定任务运行分割推理'''
     task_dir = require_task_dir(task_id)
     try:
-        image_path = load_task_image(task_dir)
-        run_dir = create_run_dir(task_dir, "segmentation")
-        result = persist_model_result(
-            task_dir=task_dir,
-            image_path=image_path,
-            model_name="segmentation",
-            result=segment(
-                image_path=image_path,
-                threshold=request.threshold,
-                output_dir=run_dir,
-            ),
-            run_dir=run_dir,
-        )
+        model_run = run_segmentation(task_dir, request.threshold)
+        result = model_run.result
         task_record = task_repository.load(task_dir)
         mask_file = task_relative_path(task_dir, Path(result["mask_path"]))
-    except TaskLockBusyError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=str(exc),
-        ) from exc
-    except TaskLockUnavailableError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(exc),
-        ) from exc
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
-        ) from exc
+    except (TaskLockBusyError, TaskLockUnavailableError, ValueError) as exc:
+        raise task_operation_http_error(exc) from exc
 
     return SegmentTaskResponse(
         task_id=task_id,
@@ -305,32 +289,15 @@ def run_task(
 ) -> RunTaskResponse:
     '''对同一任务依次执行分类与分割'''
     task_dir = require_task_dir(task_id)
-    threshold = (
-        request.threshold
-        if request is not None
-        else SETTINGS.default_segment_threshold
-    )
+    threshold = resolve_run_threshold(request)
     try:
         run_result = run_task_models(task_dir, threshold)
         task_record = task_repository.load(task_dir)
         prediction = run_result.classification_result["classification"]
         segmentation_result = run_result.segmentation_result
         mask_file = task_relative_path(task_dir, Path(segmentation_result["mask_path"]))
-    except TaskLockBusyError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=str(exc),
-        ) from exc
-    except TaskLockUnavailableError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(exc),
-        ) from exc
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
-        ) from exc
+    except (TaskLockBusyError, TaskLockUnavailableError, ValueError) as exc:
+        raise task_operation_http_error(exc) from exc
 
     return RunTaskResponse(
         task_id=task_id,
@@ -363,28 +330,16 @@ def enqueue_task(
 ) -> TaskEnqueuedResponse:
     '''将完整推理提交到 RQ 队列，并立即返回作业信息'''
     task_dir = require_task_dir(task_id)
-    threshold = (
-        request.threshold
-        if request is not None
-        else SETTINGS.default_segment_threshold
-    )
+    threshold = resolve_run_threshold(request)
     try:
         job, reused = enqueue_task_run(task_dir, threshold)
-    except TaskLockBusyError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=str(exc),
-        ) from exc
-    except (TaskLockUnavailableError, TaskQueueUnavailableError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(exc),
-        ) from exc
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
-        ) from exc
+    except (
+        TaskLockBusyError,
+        TaskLockUnavailableError,
+        TaskQueueUnavailableError,
+        ValueError,
+    ) as exc:
+        raise task_operation_http_error(exc) from exc
 
     return TaskEnqueuedResponse(
         task_id=task_id,

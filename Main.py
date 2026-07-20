@@ -11,19 +11,19 @@ from pathlib import Path
 from core.settings import SETTINGS
 from repositories.task_repository import task_repository
 from services.cleanup_service import clear_generated_files
-from services.inference_service import classify, segment
 from services.presentation import print_result
 from services.task_files import (
-    create_run_dir,
     create_task_dir,
     get_task_dir,
     initialize_task,
-    load_task_image,
     validate_image_path,
     write_json,
 )
-from services.task_results import persist_model_result
-from services.task_runner import run_task_models
+from services.task_runner import (
+    run_classification,
+    run_segmentation,
+    run_task_models,
+)
 
 
 # 统一使用项目配置中的路径与默认阈值
@@ -79,29 +79,19 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.task_id:
             task_dir = get_task_dir(output_root, args.task_id)
-            image_path = load_task_image(task_dir)
         else:
             source_image = validate_image_path(args.image_path)
             task_dir = create_task_dir(output_root)
-            image_path = initialize_task(task_dir, source_image, args.input_mode)
+            initialize_task(task_dir, source_image, args.input_mode)
 
         if args.command == "classify":
-            result = persist_model_result(
-                task_dir, image_path, "classification", classify(image_path)
-            )
-            print_result(result, args.json)
+            model_run = run_classification(task_dir)
+            print_result(model_run.result, args.json)
             return 0
 
         if args.command == "segment":
-            run_dir = create_run_dir(task_dir, "segmentation")
-            result = persist_model_result(
-                task_dir,
-                image_path,
-                "segmentation",
-                segment(image_path, args.threshold, run_dir),
-                run_dir,
-            )
-            print_result(result, args.json)
+            model_run = run_segmentation(task_dir, args.threshold)
+            print_result(model_run.result, args.json)
             return 0
 
         run_result = run_task_models(task_dir, args.threshold)

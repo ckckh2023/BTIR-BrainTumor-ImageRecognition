@@ -12,7 +12,11 @@ from unittest.mock import Mock, call, patch
 from redis.exceptions import RedisError
 
 from services.task_queue import TaskQueueUnavailableError, enqueue_task_run
-from services.task_runner import run_task_models
+from services.task_runner import (
+    run_classification,
+    run_segmentation,
+    run_task_models,
+)
 from workers.inference_jobs import run_task_job
 
 
@@ -100,6 +104,35 @@ class AsyncQueueTests(unittest.TestCase):
 
 class TaskRunnerTests(unittest.TestCase):
     '''验证完整推理统一入口的调用顺序与返回结果'''
+
+    def test_single_model_runners_share_the_same_input_loading(self) -> None:
+        task_dir = Path("output") / "task-runner-single-001"
+        image_path = task_dir / "input" / "image.png"
+        classification_result = {"model_result_path": "classification.json"}
+        segmentation_result = {"model_result_path": "segmentation.json"}
+
+        with (
+            patch(
+                "services.task_runner.load_task_image",
+                return_value=image_path,
+            ) as load_image,
+            patch(
+                "services.task_runner._run_classification",
+                return_value=classification_result,
+            ) as run_classification_model,
+            patch(
+                "services.task_runner._run_segmentation",
+                return_value=segmentation_result,
+            ) as run_segmentation_model,
+        ):
+            classification_run = run_classification(task_dir)
+            segmentation_run = run_segmentation(task_dir, 0.5)
+
+        self.assertEqual(classification_run.result, classification_result)
+        self.assertEqual(segmentation_run.result, segmentation_result)
+        self.assertEqual(load_image.call_count, 2)
+        run_classification_model.assert_called_once_with(task_dir, image_path)
+        run_segmentation_model.assert_called_once_with(task_dir, image_path, 0.5)
 
     def test_runner_executes_and_persists_both_models(self) -> None:
         task_dir = Path("output") / "task-runner-001"
