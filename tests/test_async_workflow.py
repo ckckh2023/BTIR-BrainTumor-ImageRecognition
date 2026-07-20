@@ -11,6 +11,8 @@ from unittest.mock import Mock, call, patch
 
 from redis.exceptions import RedisError
 
+from core.task_definitions import TaskStatus
+from core.task_records import StoredTaskInput, TaskRecord
 from services.task_queue import TaskQueueUnavailableError, enqueue_task_run
 from services.task_runner import (
     run_classification,
@@ -23,19 +25,19 @@ from workers.inference_jobs import run_task_job
 class FakeTaskRepository:
     '''仅供测试使用的内存任务仓储'''
 
-    def __init__(self, record: dict[str, object] | None) -> None:
+    def __init__(self, record: TaskRecord | None) -> None:
         self.record = deepcopy(record)
-        self.saved_records: list[dict[str, object]] = []
+        self.saved_records: list[TaskRecord] = []
 
     def exists(self, _: Path) -> bool:
         return self.record is not None
 
-    def load(self, _: Path) -> dict[str, object]:
+    def load(self, _: Path) -> TaskRecord:
         if self.record is None:
             raise AssertionError("测试仓储中不存在任务")
         return deepcopy(self.record)
 
-    def save(self, _: Path, record: dict[str, object]) -> Path:
+    def save(self, _: Path, record: TaskRecord) -> Path:
         self.record = deepcopy(record)
         self.saved_records.append(deepcopy(record))
         return Path("task.db")
@@ -53,15 +55,22 @@ class AsyncQueueTests(unittest.TestCase):
 
     def setUp(self) -> None:
         self.task_dir = Path("output") / "task-async-001"
-        self.record = {
-            "task_id": self.task_dir.name,
-            "name": "异步测试任务",
-            "status": "created",
-            "created_at": "2026-01-01T00:00:00+00:00",
-            "updated_at": "2026-01-01T00:00:00+00:00",
-            "completed_models": [],
-            "input": {},
-        }
+        self.record = TaskRecord.model_validate(
+            {
+                "task_id": self.task_dir.name,
+                "name": "异步测试任务",
+                "status": "created",
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "completed_models": [],
+                "input": {
+                    "path": "input/image.png",
+                    "storage_mode": "uploaded",
+                    "size_bytes": 1,
+                    "sha256": "a" * 64,
+                },
+            }
+        )
 
     @staticmethod
     def _no_lock(_: str):
@@ -84,7 +93,7 @@ class AsyncQueueTests(unittest.TestCase):
         self.assertEqual(first_job["id"], "job-001")
         self.assertEqual(second_job["id"], "job-001")
         self.assertEqual(queue.enqueue.call_count, 1)
-        self.assertEqual(repository.record["status"], "queued")
+        self.assertEqual(repository.record.status, TaskStatus.QUEUED)
 
     def test_queue_error_is_converted_to_service_error(self) -> None:
         repository = FakeTaskRepository(self.record)
@@ -99,7 +108,7 @@ class AsyncQueueTests(unittest.TestCase):
         ):
             enqueue_task_run(self.task_dir, 0.5)
 
-        self.assertEqual(repository.record["status"], "created")
+        self.assertEqual(repository.record.status, TaskStatus.CREATED)
 
 
 class TaskRunnerTests(unittest.TestCase):
@@ -201,10 +210,22 @@ class InferenceWorkerTests(unittest.TestCase):
 
     def test_worker_marks_task_succeeded_after_both_models_finish(self) -> None:
         update_status = Mock(
-            return_value={
-                "status": "succeeded",
-                "completed_models": ["classification", "segmentation"],
-            }
+            return_value=TaskRecord.model_validate(
+                {
+                    "task_id": self.task_id,
+                    "name": "worker 测试任务",
+                    "status": "succeeded",
+                    "created_at": "2026-01-01T00:00:00+00:00",
+                    "updated_at": "2026-01-01T00:00:00+00:00",
+                    "completed_models": ["classification", "segmentation"],
+                    "input": {
+                        "path": "input/image.png",
+                        "storage_mode": "uploaded",
+                        "size_bytes": 1,
+                        "sha256": "a" * 64,
+                    },
+                }
+            )
         )
         classification_result = {"model_result_path": "classification.json"}
         segmentation_result = {"model_result_path": "segmentation.json"}

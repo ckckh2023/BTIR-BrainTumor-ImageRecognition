@@ -14,6 +14,7 @@ from typing import Any, BinaryIO
 
 from PIL import Image, UnidentifiedImageError
 
+from core.task_records import StoredTaskInput, TaskRecord
 from repositories.task_repository import task_repository
 from core.task_definitions import InputStorageMode, TaskDirectory, TaskStatus
 
@@ -77,21 +78,20 @@ def create_run_dir(task_dir: Path, model_name: str) -> Path:
 def _save_created_task(
     task_dir: Path,
     name: str | None,
-    input_record: dict[str, Any],
+    input_record: StoredTaskInput,
 ) -> None:
     '''以统一结构写入新建任务的元数据'''
-    now = datetime.now().astimezone().isoformat()
+    now = datetime.now().astimezone()
     task_repository.save(
         task_dir,
-        {
-            "task_id": task_dir.name,
-            "name": name.strip() if name and name.strip() else task_dir.name,
-            "status": TaskStatus.CREATED.value,
-            "created_at": now,
-            "updated_at": now,
-            "completed_models": [],
-            "input": input_record,
-        },
+        TaskRecord(
+            task_id=task_dir.name,
+            name=name.strip() if name and name.strip() else task_dir.name,
+            status=TaskStatus.CREATED,
+            created_at=now,
+            updated_at=now,
+            input=input_record,
+        ),
     )
 
 
@@ -140,13 +140,13 @@ def initialize_task(
     _save_created_task(
         task_dir,
         name,
-        {
-            "path": stored_path,
-            "source_file": source_image.name,
-            "storage_mode": actual_mode,
-            "size_bytes": task_image.stat().st_size,
-            "sha256": sha256(task_image),
-        },
+        StoredTaskInput(
+            path=stored_path,
+            source_file=source_image.name,
+            storage_mode=actual_mode,
+            size_bytes=task_image.stat().st_size,
+            sha256=sha256(task_image),
+        ),
     )
     return task_image
 
@@ -183,13 +183,13 @@ def initialize_uploaded_task(
     _save_created_task(
         task_dir,
         name,
-        {
-            "path": str(task_image.relative_to(task_dir)),
-            "original_filename": original_filename,
-            "storage_mode": "uploaded",
-            "size_bytes": task_image.stat().st_size,
-            "sha256": sha256(task_image),
-        },
+        StoredTaskInput(
+            path=str(task_image.relative_to(task_dir)),
+            original_filename=original_filename,
+            storage_mode="uploaded",
+            size_bytes=task_image.stat().st_size,
+            sha256=sha256(task_image),
+        ),
     )
     return task_image
 
@@ -197,8 +197,8 @@ def initialize_uploaded_task(
 def load_task_image(task_dir: Path) -> Path:
     '''读取任务输入图片，并校验其未在创建后被修改'''
     record = task_repository.load(task_dir)
-    input_record = record.get("input", {})
-    stored_path = input_record.get("path")
+    input_record = record.input
+    stored_path = input_record.path
     if not stored_path:
         raise ValueError("任务输入缺失")
 
@@ -207,7 +207,7 @@ def load_task_image(task_dir: Path) -> Path:
         image_path = task_dir / image_path
     image_path = validate_image_path(image_path)
 
-    expected_hash = input_record.get("sha256")
+    expected_hash = input_record.sha256
     if expected_hash and sha256(image_path) != expected_hash:
         raise ValueError("任务创建后输入图像已发生变化")
     return image_path
