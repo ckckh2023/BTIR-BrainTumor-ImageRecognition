@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 from core.settings import SETTINGS
+from core.task_definitions import TaskStatus
 from repositories.task_repository import task_repository
 from services.cleanup_service import clear_generated_files
 from services.presentation import print_result
@@ -117,7 +118,7 @@ def main(argv: list[str] | None = None) -> int:
                 task_dir / "error.json",
                 {
                     "task_id": task_dir.name,
-                    "status": "failed",
+                    "status": TaskStatus.FAILED.value,
                     "created_at": datetime.now().astimezone().isoformat(),
                     "command": args.command,
                     "error": {"type": type(exc).__name__, "message": str(exc)},

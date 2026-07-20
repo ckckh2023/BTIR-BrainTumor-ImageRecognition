@@ -15,6 +15,7 @@ from typing import Any, BinaryIO
 from PIL import Image, UnidentifiedImageError
 
 from repositories.task_repository import task_repository
+from core.task_definitions import InputStorageMode, TaskDirectory, TaskStatus
 
 
 ALLOWED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png"}
@@ -63,7 +64,7 @@ def get_task_dir(output_root: Path, task_id: str | None) -> Path:
 
 def create_run_dir(task_dir: Path, model_name: str) -> Path:
     '''创建单次模型调用对应的不可变历史目录'''
-    run_root = task_dir / "runs" / model_name
+    run_root = task_dir / TaskDirectory.RUNS / model_name
     run_root.mkdir(parents=True, exist_ok=True)
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
     run_dir = run_root / run_id
@@ -85,7 +86,7 @@ def _save_created_task(
         {
             "task_id": task_dir.name,
             "name": name.strip() if name and name.strip() else task_dir.name,
-            "status": "created",
+            "status": TaskStatus.CREATED.value,
             "created_at": now,
             "updated_at": now,
             "completed_models": [],
@@ -97,19 +98,25 @@ def _save_created_task(
 def initialize_task(
     task_dir: Path,
     source_image: Path,
-    input_mode: str,
+    input_mode: InputStorageMode | str,
     name: str | None = None,
 ) -> Path:
     '''保存本机图片引用或副本，并创建任务元数据'''
     source_image = source_image.resolve()
-    input_dir = task_dir / "input"
+    input_dir = task_dir / TaskDirectory.INPUT
     input_dir.mkdir(exist_ok=True)
     stored_image = input_dir / f"image{source_image.suffix.lower()}"
 
-    actual_mode = input_mode
-    if input_mode == "reference":
+    try:
+        storage_mode = InputStorageMode(input_mode)
+    except ValueError as exc:
+        allowed = ", ".join(item.value for item in InputStorageMode)
+        raise ValueError(f"不支持的输入保存方式：{input_mode}；仅支持 {allowed}") from exc
+
+    actual_mode = storage_mode.value
+    if storage_mode is InputStorageMode.REFERENCE:
         task_image = source_image
-    elif input_mode == "copy":
+    elif storage_mode is InputStorageMode.COPY:
         shutil.copy2(source_image, stored_image)
         task_image = stored_image
     else:
@@ -118,7 +125,7 @@ def initialize_task(
             actual_mode = "hardlink"
             task_image = stored_image
         except OSError as exc:
-            if input_mode == "hardlink":
+            if storage_mode is InputStorageMode.HARDLINK:
                 raise ValueError(f"无法创建硬链接：{exc}") from exc
             shutil.copy2(source_image, stored_image)
             actual_mode = "copy"
@@ -157,7 +164,7 @@ def initialize_uploaded_task(
         allowed = ", ".join(sorted(ALLOWED_IMAGE_SUFFIXES))
         raise ValueError(f"仅支持以下图片格式：{allowed}")
 
-    input_dir = task_dir / "input"
+    input_dir = task_dir / TaskDirectory.INPUT
     input_dir.mkdir(exist_ok=True)
     task_image = input_dir / f"image{suffix}"
     try:

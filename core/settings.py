@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from accelerator import validate_device
+from core.task_definitions import ModelName
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -103,8 +104,8 @@ def _build_settings() -> Settings:
     models_dir = _get_path("BTIR_MODELS_DIR", "models")
     device = validate_device(os.getenv("BTIR_DEVICE", "auto"))
 
-    classifier_dir = models_dir / "classification"
-    segmenter_dir = models_dir / "segmentation"
+    classifier_dir = models_dir / ModelName.CLASSIFICATION
+    segmenter_dir = models_dir / ModelName.SEGMENTATION
     return Settings(
         project_root=PROJECT_ROOT,
         output_dir=_get_path("BTIR_OUTPUT_DIR", "output"),
