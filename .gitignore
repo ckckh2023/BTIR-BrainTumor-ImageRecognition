@@ -35,6 +35,8 @@ models/**/output/
 .idea/
 .vs/
 .agents/
+arts/
+codeartsdoer/
 
 # 前端工具链产物
 frontend/node_modules/
