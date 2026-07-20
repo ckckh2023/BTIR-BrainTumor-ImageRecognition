@@ -7,9 +7,11 @@ from pathlib import Path
 from typing import Any
 
 from services.inference_service import classify, segment
-from services.task_service import (
+from services.task_files import (
     create_run_dir,
     load_task_image,
+)
+from services.task_results import (
     persist_model_result,
 )
 
