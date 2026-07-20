@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from core.task_definitions import ModelName
 from services.inference_service import classify, segment
 from services.task_files import (
     create_run_dir,
@@ -38,7 +39,7 @@ def _run_classification(task_dir: Path, image_path: Path) -> dict[str, Any]:
     return persist_model_result(
         task_dir=task_dir,
         image_path=image_path,
-        model_name="classification",
+        model_name=ModelName.CLASSIFICATION,
         result=classify(image_path),
     )
 
@@ -49,11 +50,11 @@ def _run_segmentation(
     threshold: float,
 ) -> dict[str, Any]:
     '''执行分割并写入结果；调用方已负责加载输入图片。'''
-    run_dir = create_run_dir(task_dir, "segmentation")
+    run_dir = create_run_dir(task_dir, ModelName.SEGMENTATION)
     return persist_model_result(
         task_dir=task_dir,
         image_path=image_path,
-        model_name="segmentation",
+        model_name=ModelName.SEGMENTATION,
         result=segment(
             image_path=image_path,
             threshold=threshold,

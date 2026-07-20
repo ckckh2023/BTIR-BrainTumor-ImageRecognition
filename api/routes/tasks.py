@@ -24,6 +24,7 @@ from contracts.task import (
     TaskStatusResponse,
 )
 from core.settings import SETTINGS
+from core.task_definitions import TaskArtifact
 from repositories.task_repository import task_repository
 from services.task_files import (
     create_task_dir,
@@ -192,7 +193,7 @@ def get_task(task_id: str) -> TaskStatusResponse:
     task_data = task_repository.load(task_dir)
 
     input_data = task_data["input"]
-    frontend_path = task_dir / "frontend_result.json"
+    frontend_path = task_dir / TaskArtifact.FRONTEND_RESULT
     frontend_result = (
         json.loads(frontend_path.read_text(encoding="utf-8"))
         if frontend_path.is_file()
@@ -233,7 +234,7 @@ def get_task_file(task_id: str, file_path: str) -> FileResponse:
             detail="任务文件不存在",
         ) from exc
 
-    if not file.is_file() or file.name == "task.json":
+    if not file.is_file() or file.name == TaskArtifact.LEGACY_METADATA:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="任务文件不存在",

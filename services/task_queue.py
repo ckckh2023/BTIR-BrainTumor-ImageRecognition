@@ -11,6 +11,7 @@ from redis.exceptions import RedisError
 from rq import Queue
 
 from core.settings import SETTINGS
+from core.task_definitions import JobStatus, TaskStatus
 from repositories.task_repository import TaskNotFoundError, task_repository
 from services.redis_client import get_redis_client
 from services.task_lock import task_write_lock
@@ -42,7 +43,10 @@ def enqueue_task_run(
         record = task_repository.load(task_dir)
         current_status = record.get("status")
         existing_job = record.get("job")
-        if current_status in {"queued", "running"} and existing_job:
+        if current_status in {
+            TaskStatus.QUEUED.value,
+            TaskStatus.RUNNING.value,
+        } and existing_job:
             return existing_job, True
 
         try:
@@ -61,10 +65,10 @@ def enqueue_task_run(
         job_record = {
             "id": job.id,
             "queue": SETTINGS.task_queue_name,
-            "status": "queued",
+            "status": JobStatus.QUEUED.value,
             "queued_at": now,
         }
-        record["status"] = "queued"
+        record["status"] = TaskStatus.QUEUED.value
         record["job"] = job_record
         record["updated_at"] = now
         record.pop("error", None)

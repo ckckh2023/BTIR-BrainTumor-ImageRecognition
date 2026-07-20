@@ -7,6 +7,7 @@ from typing import Any
 from rq import get_current_job
 
 from core.settings import SETTINGS
+from core.task_definitions import JobStatus
 from services.task_runner import run_task_models
 from services.task_files import get_task_dir
 from services.task_state import update_task_execution_status
@@ -21,7 +22,7 @@ def run_task_job(task_id: str, threshold: float) -> dict[str, Any]:
     task_dir = get_task_dir(SETTINGS.output_dir, task_id)
     update_task_execution_status(
         task_dir,
-        "running",
+        JobStatus.RUNNING,
         job_id=job.id,
         queue_name=SETTINGS.task_queue_name,
     )
@@ -31,7 +32,7 @@ def run_task_job(task_id: str, threshold: float) -> dict[str, Any]:
     except Exception as exc:
         update_task_execution_status(
             task_dir,
-            "failed",
+            JobStatus.FAILED,
             job_id=job.id,
             error=f"{type(exc).__name__}: {exc}",
         )
@@ -39,7 +40,7 @@ def run_task_job(task_id: str, threshold: float) -> dict[str, Any]:
 
     task_record = update_task_execution_status(
         task_dir,
-        "succeeded",
+        JobStatus.SUCCEEDED,
         job_id=job.id,
     )
     return {
