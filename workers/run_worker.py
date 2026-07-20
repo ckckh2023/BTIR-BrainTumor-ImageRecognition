@@ -7,7 +7,8 @@ import socket
 
 from rq import SimpleWorker, Worker
 
-from services.task_queue import get_queue_redis, get_task_queue
+from services.redis_client import get_redis_client
+from services.task_queue import get_task_queue
 
 
 def main() -> None:
@@ -18,7 +19,7 @@ def main() -> None:
     worker_name = f"btir-inference-{socket.gethostname()}-{os.getpid()}"
     worker = worker_class(
         [queue],
-        connection=get_queue_redis(),
+        connection=get_redis_client(),
         name=worker_name,
     )
     worker.work()

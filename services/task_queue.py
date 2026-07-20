@@ -7,12 +7,12 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from redis import Redis
 from redis.exceptions import RedisError
 from rq import Queue
 
 from core.settings import SETTINGS
 from repositories.task_repository import TaskNotFoundError, task_repository
+from services.redis_client import get_redis_client
 from services.task_lock import task_write_lock
 
 
@@ -21,21 +21,11 @@ class TaskQueueUnavailableError(RuntimeError):
 
 
 @lru_cache(maxsize=1)
-def get_queue_redis() -> Redis:
-    '''获取 RQ 与任务锁共用的 Redis 连接'''
-    return Redis.from_url(
-        SETTINGS.redis_url,
-        socket_connect_timeout=3,
-        socket_timeout=3,
-    )
-
-
-@lru_cache(maxsize=1)
 def get_task_queue() -> Queue:
     '''获取推理任务队列'''
     return Queue(
         SETTINGS.task_queue_name,
-        connection=get_queue_redis(),
+        connection=get_redis_client(),
         default_timeout=SETTINGS.task_job_timeout_seconds,
     )
 
