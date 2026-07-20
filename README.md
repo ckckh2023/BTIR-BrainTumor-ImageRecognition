@@ -337,8 +337,13 @@ api/routes/tasks.py           # 任务创建、推理、结果文件接口
 api/routes/runtime.py         # 运行环境状态接口
 contracts/task.py             # API 请求/响应数据模型
 repositories/task_repository.py # 任务元数据仓储（当前 SQLite 实现）
-services/task_service.py      # 任务创建、结果写入、统一结果合并
+core/task_records.py          # SQLite 持久化任务记录的 Pydantic 模型
+services/task_files.py        # 任务目录、输入图像和原子 JSON 写入
+services/task_results.py      # 模型结果、历史结果和前端结果的持久化
+services/task_runner.py       # 分类、分割和完整推理的统一编排
+services/task_state.py        # 任务状态、RQ 作业状态和运行记录
 services/task_lock.py         # Redis 任务结果写入锁
+services/redis_client.py      # Redis 客户端唯一创建入口
 services/task_queue.py        # RQ 作业提交与队列连接
 services/inference_service.py # 分类/分割模型的统一调用入口
 services/cleanup_service.py   # 清理生成的缓存与结果
@@ -348,6 +353,7 @@ processing/                   # 通用预处理、后处理
 models/                       # 各模型的推理实现
 workers/inference_jobs.py     # RQ 后台推理作业
 workers/run_worker.py         # 启动 RQ worker
+tests/                        # 不依赖模型、GPU、Redis 的回归测试
 Main.py                       # 命令行入口
 output/                       # 运行生成的数据
 ```
@@ -368,7 +374,7 @@ python Main.py clear --output-dir D:\btir-output --dry-run
 
 1. 不直接读取或修改其他任务目录；所有模型调用均通过 `task_id` 定位任务
 2. 新增模型时，在 `services/inference_service.py` 提供统一入口，并通过 `persist_model_result()` 写入结果，避免自行拼接 JSON
-3. 修改前端字段前，先同步修改 `contracts/task.py`、`services/task_service.py` 和本 README 的接口说明
+3. 修改前端字段前，先同步修改 `contracts/task.py`、`api/routes/tasks.py` 和本 README 的接口说明；任务持久化字段同时检查 `core/task_records.py`
 4. `output/`、`data/*.db*`、模型权重、缓存和本地数据集属于本地产物，避免提交到版本库
 
 ## 下一阶段

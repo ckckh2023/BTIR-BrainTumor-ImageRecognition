@@ -162,8 +162,8 @@ def classify_task(task_id: str) -> ClassifyTaskResponse:
     prediction = result["classification"]
     return ClassifyTaskResponse(
         task_id=task_id,
-        status=task_record["status"],
-        completed_models=task_record["completed_models"],
+        status=task_record.status,
+        completed_models=[model.value for model in task_record.completed_models],
         classification=ClassificationData(
             label=prediction["class"],
             confidence=prediction["confidence"],
@@ -179,7 +179,7 @@ def get_task(task_id: str) -> TaskStatusResponse:
     task_dir = require_task_dir(task_id)
     task_data = task_repository.load(task_dir)
 
-    input_data = task_data["input"]
+    input_data = task_data.input
     frontend_path = task_dir / TaskArtifact.FRONTEND_RESULT
     frontend_result = (
         json.loads(frontend_path.read_text(encoding="utf-8"))
@@ -188,22 +188,22 @@ def get_task(task_id: str) -> TaskStatusResponse:
     )
     if frontend_result is not None:
         frontend_result = sanitize_public_payload(frontend_result)
-        frontend_result.setdefault("image_file", Path(input_data["path"]).name)
+        frontend_result.setdefault("image_file", Path(input_data.path).name)
 
     return TaskStatusResponse(
-        task_id=task_data["task_id"],
-        name=task_data["name"],
-        status=task_data["status"],
-        created_at=task_data["created_at"],
-        updated_at=task_data["updated_at"],
-        completed_models=task_data["completed_models"],
+        task_id=task_data.task_id,
+        name=task_data.name,
+        status=task_data.status,
+        created_at=task_data.created_at,
+        updated_at=task_data.updated_at,
+        completed_models=[model.value for model in task_data.completed_models],
         input=TaskInputData(
-            filename=Path(input_data["path"]).name,
-            storage_mode=input_data["storage_mode"],
-            size_bytes=input_data["size_bytes"],
-            sha256=input_data["sha256"],
+            filename=Path(input_data.path).name,
+            storage_mode=input_data.storage_mode,
+            size_bytes=input_data.size_bytes,
+            sha256=input_data.sha256,
         ),
-        job=task_data.get("job"),
+        job=(task_data.job.model_dump(mode="json") if task_data.job else None),
         frontend_result=frontend_result,
     )
 
@@ -257,8 +257,8 @@ def segment_task(
 
     return SegmentTaskResponse(
         task_id=task_id,
-        status=task_record["status"],
-        completed_models=task_record["completed_models"],
+        status=task_record.status,
+        completed_models=[model.value for model in task_record.completed_models],
         segmentation=SegmentationData(
             threshold=result["threshold"],
             tumor_pixels=result["tumor_pixels"],
@@ -289,8 +289,8 @@ def run_task(
 
     return RunTaskResponse(
         task_id=task_id,
-        status=task_record["status"],
-        completed_models=task_record["completed_models"],
+        status=task_record.status,
+        completed_models=[model.value for model in task_record.completed_models],
         classification=ClassificationData(
             label=prediction["class"],
             confidence=prediction["confidence"],

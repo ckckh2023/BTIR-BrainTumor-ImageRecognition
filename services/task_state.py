@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any
-
 from core.task_definitions import JobStatus, ModelName, TaskStatus
+from core.task_records import TaskErrorRecord, TaskJobRecord, TaskRecord, TaskRunRecord
 from repositories.task_repository import task_repository
 from services.task_files import task_relative_path
 from services.task_lock import task_write_lock
@@ -21,20 +20,20 @@ def mark_task_completed(task_dir: Path, *models: ModelName | str) -> None:
         return
 
     record = task_repository.load(task_dir)
-    completed = set(record.get("completed_models", []))
-    completed.update(ModelName(model).value for model in models)
-    record["completed_models"] = sorted(completed)
-    if record.get("status") not in {
-        TaskStatus.QUEUED.value,
-        TaskStatus.RUNNING.value,
+    completed = set(record.completed_models)
+    completed.update(ModelName(model) for model in models)
+    record.completed_models = sorted(completed, key=lambda model: model.value)
+    if record.status not in {
+        TaskStatus.QUEUED,
+        TaskStatus.RUNNING,
     }:
-        record["status"] = (
-            TaskStatus.COMPLETED.value
-            if {ModelName.CLASSIFICATION.value, ModelName.SEGMENTATION.value}
+        record.status = (
+            TaskStatus.COMPLETED
+            if {ModelName.CLASSIFICATION, ModelName.SEGMENTATION}
             <= completed
-            else TaskStatus.PARTIAL.value
+            else TaskStatus.PARTIAL
         )
-    record["updated_at"] = datetime.now().astimezone().isoformat()
+    record.updated_at = datetime.now().astimezone()
     task_repository.save(task_dir, record)
 
 
@@ -45,7 +44,7 @@ def update_task_execution_status(
     job_id: str,
     queue_name: str | None = None,
     error: str | None = None,
-) -> dict[str, Any]:
+) -> TaskRecord:
     '''更新 RQ 作业状态，并同步写入任务元数据'''
     try:
         job_status = JobStatus(status)
@@ -54,30 +53,27 @@ def update_task_execution_status(
 
     with task_write_lock(task_dir.name):
         record = task_repository.load(task_dir)
-        job = dict(record.get("job") or {})
-        existing_job_id = job.get("id")
+        job = record.job
+        existing_job_id = job.id if job else None
         if existing_job_id and existing_job_id != job_id:
             raise ValueError("任务正在由另一异步作业处理")
 
-        now = datetime.now().astimezone().isoformat()
-        job["id"] = job_id
-        job["status"] = job_status.value
-        if queue_name:
-            job["queue"] = queue_name
-        if job_status is JobStatus.QUEUED:
-            job["queued_at"] = now
-        elif job_status is JobStatus.RUNNING:
-            job["started_at"] = now
-        else:
-            job["finished_at"] = now
-
-        record["status"] = job_status.value
-        record["job"] = job
-        record["updated_at"] = now
+        now = datetime.now().astimezone()
+        job = TaskJobRecord(
+            id=job_id,
+            queue=queue_name or (job.queue if job else ""),
+            status=job_status,
+            queued_at=(now if job_status is JobStatus.QUEUED else (job.queued_at if job else None)),
+            started_at=(now if job_status is JobStatus.RUNNING else (job.started_at if job else None)),
+            finished_at=(now if job_status in {JobStatus.SUCCEEDED, JobStatus.FAILED} else (job.finished_at if job else None)),
+        )
+        record.status = TaskStatus(job_status)
+        record.job = job
+        record.updated_at = now
         if error:
-            record["error"] = {"message": error, "updated_at": now}
+            record.error = TaskErrorRecord(message=error, updated_at=now)
         elif job_status is not JobStatus.FAILED:
-            record.pop("error", None)
+            record.error = None
         task_repository.save(task_dir, record)
         return record
 
@@ -92,13 +88,15 @@ def record_task_run(
         return
 
     record = task_repository.load(task_dir)
-    record.setdefault("runs", []).append(
-        {
-            "run_id": result_path.parent.name,
-            "model": ModelName(model_name).value,
-            "result_file": task_relative_path(task_dir, result_path),
-            "created_at": datetime.now().astimezone().isoformat(),
-        }
+    if record.runs is None:
+        record.runs = []
+    record.runs.append(
+        TaskRunRecord(
+            run_id=result_path.parent.name,
+            model=ModelName(model_name),
+            result_file=task_relative_path(task_dir, result_path),
+            created_at=datetime.now().astimezone(),
+        )
     )
-    record["updated_at"] = datetime.now().astimezone().isoformat()
+    record.updated_at = datetime.now().astimezone()
     task_repository.save(task_dir, record)

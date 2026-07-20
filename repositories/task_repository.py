@@ -1,14 +1,16 @@
-'''SQLite 任务元数据仓储。'''
+'''SQLite 任务元数据仓储'''
 
 from __future__ import annotations
 
-import json
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterator, Protocol
+from typing import Iterator, Protocol
+
+from pydantic import ValidationError
 
 from core.settings import SETTINGS
+from core.task_records import TaskRecord
 
 
 class TaskNotFoundError(LookupError):
@@ -25,10 +27,10 @@ class TaskRepository(Protocol):
     def exists(self, task_dir: Path) -> bool:
         '''返回任务元数据是否存在。'''
 
-    def load(self, task_dir: Path) -> dict[str, Any]:
+    def load(self, task_dir: Path) -> TaskRecord:
         '''读取一条任务元数据。'''
 
-    def save(self, task_dir: Path, record: dict[str, Any]) -> Path:
+    def save(self, task_dir: Path, record: TaskRecord) -> Path:
         '''保存一条任务元数据。'''
 
     def count(self) -> int:
@@ -98,7 +100,7 @@ class SqliteTaskRepository:
             ).fetchone()
         return row is not None
 
-    def load(self, task_dir: Path) -> dict[str, Any]:
+    def load(self, task_dir: Path) -> TaskRecord:
         with self._connect() as connection:
             row = connection.execute(
                 "SELECT record_json FROM tasks WHERE task_id = ?",
@@ -109,19 +111,15 @@ class SqliteTaskRepository:
             raise TaskNotFoundError("任务元数据不存在")
 
         try:
-            record = json.loads(row["record_json"])
-        except json.JSONDecodeError as exc:
+            return TaskRecord.model_validate_json(row["record_json"])
+        except (ValidationError, ValueError) as exc:
             raise ValueError("任务元数据格式无效") from exc
 
-        if not isinstance(record, dict):
-            raise ValueError("任务元数据格式无效")
-        return record
-
-    def save(self, task_dir: Path, record: dict[str, Any]) -> Path:
-        if record.get("task_id") != task_dir.name:
+    def save(self, task_dir: Path, record: TaskRecord) -> Path:
+        if record.task_id != task_dir.name:
             raise ValueError("任务 ID 与任务目录不一致")
 
-        record_json = json.dumps(record, ensure_ascii=False)
+        record_json = record.model_dump_json(exclude_none=True)
         with self._connect() as connection:
             connection.execute(
                 """
@@ -136,11 +134,11 @@ class SqliteTaskRepository:
                     record_json = excluded.record_json
                 """,
                 (
-                    record["task_id"],
-                    record["name"],
-                    record["status"],
-                    record["created_at"],
-                    record["updated_at"],
+                    record.task_id,
+                    record.name,
+                    record.status.value,
+                    record.created_at.isoformat(),
+                    record.updated_at.isoformat(),
                     record_json,
                 ),
             )

@@ -45,8 +45,8 @@ def run_task_job(task_id: str, threshold: float) -> dict[str, Any]:
     )
     return {
         "task_id": task_id,
-        "status": task_record["status"],
-        "completed_models": task_record["completed_models"],
+        "status": task_record.status.value,
+        "completed_models": [model.value for model in task_record.completed_models],
         "classification_result_file": run_result.classification_result[
             "model_result_path"
         ],
