@@ -13,6 +13,7 @@ from repositories.task_repository import task_repository
 from services.cleanup_service import clear_generated_files
 from services.inference_service import classify, segment
 from services.presentation import print_result
+from services.task_runner import run_task_models
 from services.task_service import (
     create_run_dir,
     create_task_dir,
@@ -103,17 +104,10 @@ def main(argv: list[str] | None = None) -> int:
             print_result(result, args.json)
             return 0
 
-        classification = persist_model_result(
-            task_dir, image_path, "classification", classify(image_path)
-        )
-        segmentation_run_dir = create_run_dir(task_dir, "segmentation")
-        segmentation = persist_model_result(
-            task_dir,
-            image_path,
-            "segmentation",
-            segment(image_path, args.threshold, segmentation_run_dir),
-            segmentation_run_dir,
-        )
+        run_result = run_task_models(task_dir, args.threshold)
+        image_path = run_result.image_path
+        classification = run_result.classification_result
+        segmentation = run_result.segmentation_result
         result = {
             "image_path": str(image_path),
             "classification": classification,

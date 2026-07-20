@@ -7,12 +7,9 @@ from typing import Any
 from rq import get_current_job
 
 from core.settings import SETTINGS
-from services.inference_service import classify, segment
+from services.task_runner import run_task_models
 from services.task_service import (
-    create_run_dir,
     get_task_dir,
-    load_task_image,
-    persist_model_result,
     update_task_execution_status,
 )
 
@@ -32,25 +29,7 @@ def run_task_job(task_id: str, threshold: float) -> dict[str, Any]:
     )
 
     try:
-        image_path = load_task_image(task_dir)
-        classification_result = persist_model_result(
-            task_dir=task_dir,
-            image_path=image_path,
-            model_name="classification",
-            result=classify(image_path),
-        )
-        run_dir = create_run_dir(task_dir, "segmentation")
-        segmentation_result = persist_model_result(
-            task_dir=task_dir,
-            image_path=image_path,
-            model_name="segmentation",
-            result=segment(
-                image_path=image_path,
-                threshold=threshold,
-                output_dir=run_dir,
-            ),
-            run_dir=run_dir,
-        )
+        run_result = run_task_models(task_dir, threshold)
     except Exception as exc:
         update_task_execution_status(
             task_dir,
@@ -69,6 +48,10 @@ def run_task_job(task_id: str, threshold: float) -> dict[str, Any]:
         "task_id": task_id,
         "status": task_record["status"],
         "completed_models": task_record["completed_models"],
-        "classification_result_file": classification_result["model_result_path"],
-        "segmentation_result_file": segmentation_result["model_result_path"],
+        "classification_result_file": run_result.classification_result[
+            "model_result_path"
+        ],
+        "segmentation_result_file": run_result.segmentation_result[
+            "model_result_path"
+        ],
     }
