@@ -4,146 +4,210 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>脑肿瘤MRI图像识别</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
             font-family: 'Microsoft YaHei', Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(180deg, #1a3a6b 0%, #2d5aa0 100%);
             min-height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
+            align-items: flex-start;
             padding: 20px;
         }
-        
+
         .container {
             background: white;
             border-radius: 12px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
             padding: 40px;
-            width: 100%;
-            max-width: 600px;
+            margin: 40px auto;
+            width: 850px;
+            height: 600px;
+            max-width: 90vw;
+            max-height: 90vw;
         }
-        
+
         h1 {
             text-align: center;
-            color: #333;
+            color: #1e3c72;
             margin-bottom: 30px;
             font-size: 28px;
         }
-        
+
         .input-group {
             margin-bottom: 20px;
         }
-        
+
         label {
             display: block;
             margin-bottom: 8px;
-            color: #555;
+            color: #2a5298;
             font-weight: 500;
         }
-        
-        input[type="text"] {
+
+        .input-row {
+            display: flex;
+            gap: 8px;
+            align-items: stretch;
+        }
+
+        .input-wrapper {
+            position: relative;
+            flex: 1;
+        }
+
+        .input-wrapper input[type="text"] {
             width: 100%;
             padding: 12px 16px;
-            border: 2px solid #e0e0e0;
+            border: 2px solid #b8d4e8;
             border-radius: 8px;
             font-size: 14px;
-            transition: border-color 0.3s;
+            transition: border-color 0.3s, box-shadow 0.3s;
         }
-        
-        input[type="text"]:focus {
+
+        .input-wrapper input[type="text"]:focus {
             outline: none;
-            border-color: #667eea;
+            border-color: #335fb1;
+            box-shadow: 0 0 0 3px rgb(255, 255, 255);
         }
-        
-        button {
+
+        .browse-btn {
+            flex-shrink: 0;
+            width: auto;
+            min-width: 80px;
+            padding: 12px 16px;
+            white-space: nowrap;
+            background: linear-gradient(160deg, #2c3e66 0%, #1a2744 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .browse-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(30, 60, 114, 0.4);
+        }
+
+        .browse-btn:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .browse-btn:disabled {
+            background: #a0aec0;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .drop-hint {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgb(255, 255, 255);
+            color: #707070;
+            font-size: 14px;
+            border: 2px solid #b8d4e8;
+            border-radius: 8px;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        button.recognize-btn {
             width: 100%;
             padding: 14px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(160deg, #2c3e66 0%, #1a2744 100%);
             color: white;
             border: none;
             border-radius: 8px;
             font-size: 16px;
             font-weight: 600;
             cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
+            transition: all 0.3s;
         }
-        
-        button:hover {
+
+        button.recognize-btn:hover:not(:disabled) {
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 6px 20px rgba(30, 60, 114, 0.4);
         }
-        
-        button:active {
+
+        button.recognize-btn:active:not(:disabled) {
             transform: translateY(0);
         }
-        
-        button:disabled {
-            background: #ccc;
+
+        button.recognize-btn:disabled {
+            background: #a0aec0;
             cursor: not-allowed;
             transform: none;
             box-shadow: none;
         }
-        
+
         .result-section {
             margin-top: 30px;
             padding-top: 30px;
-            border-top: 2px solid #f0f0f0;
+            border-top: 2px solid #e8f0f8;
         }
-        
+
         .result-title {
-            color: #333;
+            color: #1e3c72;
             margin-bottom: 15px;
             font-size: 18px;
             font-weight: 600;
         }
-        
+
         .result-box {
-            background: #f8f9fa;
+            background: #f7fafc;
             border-radius: 8px;
             padding: 16px;
             min-height: 100px;
         }
-        
+
         .result-item {
             margin-bottom: 12px;
         }
-        
+
         .result-label {
-            color: #666;
+            color: #4a5568;
             font-size: 13px;
             margin-bottom: 4px;
         }
-        
+
         .result-value {
-            color: #333;
+            color: #1e3c72;
             font-size: 14px;
             word-break: break-all;
             font-family: 'Consolas', 'Monaco', monospace;
         }
-        
+
         .status-loading {
-            color: #667eea;
+            color: #2a5298;
             font-style: italic;
         }
-        
+
         .status-error {
-            color: #e74c3c;
+            color: #e53e3e;
         }
-        
+
         .status-success {
-            color: #27ae60;
+            color: #38a169;
         }
-        
+
         .json-display {
-            background: #2d2d2d;
-            color: #f8f8f2;
+            background: #407eb8;
+            color: #e8f0f8;
             border-radius: 8px;
             padding: 16px;
             margin-top: 15px;
@@ -154,19 +218,19 @@
             max-height: 400px;
             overflow-y: auto;
         }
-        
+
         .loading-spinner {
             display: inline-block;
             width: 16px;
             height: 16px;
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #667eea;
+            border: 3px solid #e8f0f8;
+            border-top: 3px solid #407eb8;
             border-radius: 50%;
             animation: spin 1s linear infinite;
             margin-right: 8px;
             vertical-align: middle;
         }
-        
+
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
@@ -174,127 +238,236 @@
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>脑肿瘤MRI图像识别</h1>
-        
-        <div class="input-group">
-            <label for="imagePath">图片路径：</label>
-            <input type="text" id="imagePath" placeholder="例如：E:/dataset/example.jpg">
-        </div>
-        
-        <button id="recognizeBtn" onclick="recognize()">识别</button>
-        
-        <div class="result-section">
-            <div class="result-title">识别结果</div>
-            <div class="result-box" id="resultBox">
-                <div class="result-item">
-                    <div class="result-label">状态：</div>
-                    <div class="result-value" id="statusText">等待识别...</div>
+    <div id="app">
+        <div class="container">
+            <h1>脑肿瘤MRI图像识别</h1>
+
+            <div class="input-group">
+                <label for="imagePath">图片路径：</label>
+
+                <div class="input-row">
+                    <div class="input-wrapper"
+                         @dragenter.prevent="onDragEnter"
+                         @dragover.prevent="onDragOver"
+                         @dragleave.prevent="onDragLeave"
+                         @drop.prevent="onDrop">
+                        <input
+                            type="text"
+                            id="imagePath"
+                            v-model="imagePath"
+                            placeholder="例如：E:/dataset/example.jpg"
+                            @keypress.enter="recognize"
+                        />
+                        <div class="drop-hint" v-if="isDragOver">
+                            <span>释放上传</span>
+                        </div>
+                    </div>
+
+                    <button class="browse-btn" @click="triggerFilePicker" :disabled="loading">
+                        浏览...
+                    </button>
                 </div>
-                <div class="result-item" id="taskIdSection" style="display: none;">
-                    <div class="result-label">任务ID：</div>
-                    <div class="result-value" id="taskIdText"></div>
+
+                <input
+                    type="file"
+                    ref="fileInput"
+                    accept=".jpg,.jpeg,.png,.bmp,.tif,.tiff,.webp,.gif,.dcm,.dicom"
+                    style="display: none"
+                    @change="onFileSelected"
+                />
+            </div>
+
+            <button class="recognize-btn" @click="recognize" :disabled="loading">
+                {{ loading ? '识别中...' : '识别' }}
+            </button>
+
+            <div class="result-section">
+                <div class="result-title">识别结果</div>
+                <div class="result-box">
+                    <div class="result-item">
+                        <div class="result-label">状态：</div>
+                        <div class="result-value" v-html="statusText"></div>
+                    </div>
+                    <div class="result-item" v-if="taskId">
+                        <div class="result-label">任务ID：</div>
+                        <div class="result-value">{{ taskId }}</div>
+                    </div>
+                    <div class="result-item" v-if="jsonPath">
+                        <div class="result-label">JSON路径：</div>
+                        <div class="result-value">{{ jsonPath }}</div>
+                    </div>
                 </div>
-                <div class="result-item" id="jsonPathSection" style="display: none;">
-                    <div class="result-label">JSON路径：</div>
-                    <div class="result-value" id="jsonPathText"></div>
+                <div class="json-display" v-if="jsonData">
+                    <pre>{{ jsonData }}</pre>
                 </div>
             </div>
-            <div class="json-display" id="jsonDisplay" style="display: none;"></div>
         </div>
     </div>
 
     <script>
-        const API_BASE = 'http://127.0.0.1:8000';
-        
-        async function recognize() {
-            const imagePath = document.getElementById('imagePath').value.trim();
-            
-            if (!imagePath) {
-                alert('请输入图片路径');
-                return;
-            }
-            
-            const btn = document.getElementById('recognizeBtn');
-            const statusText = document.getElementById('statusText');
-            const taskIdSection = document.getElementById('taskIdSection');
-            const jsonPathSection = document.getElementById('jsonPathSection');
-            const jsonDisplay = document.getElementById('jsonDisplay');
-            
-            btn.disabled = true;
-            statusText.innerHTML = '<span class="loading-spinner"></span>创建任务中...';
-            taskIdSection.style.display = 'none';
-            jsonPathSection.style.display = 'none';
-            jsonDisplay.style.display = 'none';
-            
-            try {
-                const createResponse = await fetch(`${API_BASE}/tasks/from-path`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        image_path: imagePath,
-                        name: 'web-recognize',
-                        input_mode: 'auto'
+        const { createApp } = Vue
+
+        createApp({
+            data() {
+                return {
+                    API_BASE: 'http://127.0.0.1:8000',
+                    imagePath: '',
+                    loading: false,
+                    statusText: '等待识别...',
+                    taskId: '',
+                    jsonPath: '',
+                    jsonData: '',
+                    selectedFile: null,
+                    isDragOver: false,
+                }
+            },
+            methods: {
+                resetState() {
+                    this.loading = true
+                    this.statusText = '<span class="loading-spinner"></span>创建任务中...'
+                    this.taskId = ''
+                    this.jsonPath = ''
+                    this.jsonData = ''
+                },
+                async runAndGetResult(taskId) {
+                    this.statusText = '<span class="loading-spinner"></span>运行模型中...'
+
+                    const runResponse = await fetch(`${this.API_BASE}/tasks/${taskId}/run`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ threshold: 0.5 }),
                     })
-                });
-                
-                if (!createResponse.ok) {
-                    throw new Error(`创建任务失败: ${createResponse.status}`);
-                }
-                
-                const createData = await createResponse.json();
-                const taskId = createData.task_id;
-                
-                statusText.innerHTML = '<span class="loading-spinner"></span>运行模型中...';
-                taskIdSection.style.display = 'block';
-                document.getElementById('taskIdText').textContent = taskId;
-                
-                const runResponse = await fetch(`${API_BASE}/tasks/${taskId}/run`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        threshold: 0.5
-                    })
-                });
-                
-                if (!runResponse.ok) {
-                    throw new Error(`运行模型失败: ${runResponse.status}`);
-                }
-                
-                statusText.innerHTML = '<span class="loading-spinner"></span>获取结果中...';
-                
-                const resultResponse = await fetch(`${API_BASE}/tasks/${taskId}`);
-                
-                if (!resultResponse.ok) {
-                    throw new Error(`获取结果失败: ${resultResponse.status}`);
-                }
-                
-                const resultData = await resultResponse.json();
-                
-                statusText.innerHTML = '<span class="status-success">✓ 识别完成</span>';
-                jsonPathSection.style.display = 'block';
-                document.getElementById('jsonPathText').textContent = `output/${taskId}/frontend_result.json`;
-                
-                jsonDisplay.style.display = 'block';
-                jsonDisplay.textContent = JSON.stringify(resultData, null, 2);
-                
-            } catch (error) {
-                statusText.innerHTML = `<span class="status-error">✗ ${error.message}</span>`;
-                console.error('识别错误:', error);
-            } finally {
-                btn.disabled = false;
-            }
-        }
-        
-        document.getElementById('imagePath').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                recognize();
-            }
-        });
+
+                    if (!runResponse.ok) {
+                        throw new Error(`运行模型失败: ${runResponse.status}`)
+                    }
+
+                    this.statusText = '<span class="loading-spinner"></span>获取结果中...'
+
+                    const resultResponse = await fetch(`${this.API_BASE}/tasks/${taskId}`)
+                    if (!resultResponse.ok) {
+                        throw new Error(`获取结果失败: ${resultResponse.status}`)
+                    }
+
+                    const resultData = await resultResponse.json()
+                    this.statusText = '<span class="status-success">✓ 识别完成</span>'
+                    this.jsonPath = `output/${taskId}/frontend_result.json`
+                    this.jsonData = JSON.stringify(resultData, null, 2)
+                },
+                async recognize() {
+                    if (!this.imagePath.trim()) {
+                        alert('请输入图片路径')
+                        return
+                    }
+
+                    this.resetState()
+
+                    try {
+                        const createResponse = await fetch(`${this.API_BASE}/tasks/from-path`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                image_path: this.imagePath.trim(),
+                                name: 'vue-recognize',
+                                input_mode: 'auto',
+                            }),
+                        })
+
+                        if (!createResponse.ok) {
+                            throw new Error(`创建任务失败: ${createResponse.status}`)
+                        }
+
+                        const createData = await createResponse.json()
+                        this.taskId = createData.task_id
+
+                        await this.runAndGetResult(this.taskId)
+                    } catch (error) {
+                        this.statusText = `<span class="status-error">✗ ${error.message}</span>`
+                        console.error('识别错误:', error)
+                    } finally {
+                        this.loading = false
+                    }
+                },
+                triggerFilePicker() {
+                    this.$refs.fileInput.click()
+                },
+                async onFileSelected(event) {
+                    const file = event.target.files[0]
+                    if (!file) return
+                    this.selectedFile = file
+                    this.imagePath = file.name
+                },
+                async recognizeFromUpload() {
+                    if (!this.selectedFile) return
+
+                    this.resetState()
+
+                    try {
+                        const formData = new FormData()
+                        formData.append('file', this.selectedFile)
+                        formData.append('name', 'vue-recognize')
+
+                        const createResponse = await fetch(`${this.API_BASE}/tasks`, {
+                            method: 'POST',
+                            body: formData,
+                        })
+
+                        if (!createResponse.ok) {
+                            throw new Error(`创建任务失败: ${createResponse.status}`)
+                        }
+
+                        const createData = await createResponse.json()
+                        this.taskId = createData.task_id
+
+                        await this.runAndGetResult(this.taskId)
+                    } catch (error) {
+                        this.statusText = `<span class="status-error">✗ ${error.message}</span>`
+                        console.error('识别错误:', error)
+                    } finally {
+                        this.loading = false
+                    }
+                },
+                onDragEnter(e) {
+                    // 类似于 QML 的 onEntered，检查是否有文件
+                    if (e.dataTransfer.types.includes('Files')) {
+                        this.isDragOver = true
+                    }
+                },
+                onDragOver(e) {
+                    e.dataTransfer.dropEffect = 'copy'
+                },
+                onDragLeave(e) {
+                    // 确保鼠标完全离开输入框区域时才关闭提示
+                    if (!e.currentTarget.contains(e.relatedTarget)) {
+                        this.isDragOver = false
+                    }
+                },
+                async onDrop(e) {
+                    this.isDragOver = false
+                    const file = e.dataTransfer.files[0]
+                    if (!file) return
+
+                    const validTypes = [
+                        'image/jpeg',
+                        'image/png',
+                        'image/bmp',
+                        'image/tiff',
+                        'image/webp',
+                        'image/gif',
+                    ]
+                    if (
+                        !validTypes.includes(file.type) &&
+                        !file.name.match(/\.(jpg|jpeg|png|bmp|tif|tiff|webp|gif|dcm|dicom)$/i)
+                    ) {
+                        alert('请拖入图片文件（支持 JPG/PNG/BMP/TIFF/WebP/GIF/DICOM）')
+                        return
+                    }
+
+                    this.selectedFile = file
+                    this.imagePath = file.name
+                },
+            },
+        }).mount('#app')
     </script>
 </body>
 </html>
