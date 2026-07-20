@@ -220,6 +220,14 @@ python -m uvicorn api.app:app --reload
 
 清理输出目录前，建议先使用 `python Main.py clear --dry-run` 预览将删除的内容。清理默认输出目录时，`clear` 会同步删除 SQLite 中的全部任务记录；使用自定义 `--output-dir` 时不会删除数据库记录
 
+### 自动化测试
+
+不依赖模型、GPU、Redis 或已有任务数据的基础测试可直接执行：
+
+```cmd
+python -m unittest discover -s tests -v
+```
+
 ## API 使用流程
 
 ### 1. 上传图片并创建任务
