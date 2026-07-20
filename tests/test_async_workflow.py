@@ -12,6 +12,7 @@ from unittest.mock import Mock, call, patch
 from redis.exceptions import RedisError
 
 from services.task_queue import TaskQueueUnavailableError, enqueue_task_run
+from services.task_runner import run_task_models
 from workers.inference_jobs import run_task_job
 
 
@@ -97,6 +98,64 @@ class AsyncQueueTests(unittest.TestCase):
         self.assertEqual(repository.record["status"], "created")
 
 
+class TaskRunnerTests(unittest.TestCase):
+    '''验证完整推理统一入口的调用顺序与返回结果'''
+
+    def test_runner_executes_and_persists_both_models(self) -> None:
+        task_dir = Path("output") / "task-runner-001"
+        image_path = task_dir / "input" / "image.png"
+        run_dir = task_dir / "runs" / "segmentation" / "run-001"
+        classification_result = {"model_result_path": "classification.json"}
+        segmentation_result = {"model_result_path": "segmentation.json"}
+
+        with (
+            patch("services.task_runner.load_task_image", return_value=image_path),
+            patch(
+                "services.task_runner.classify",
+                return_value={"class": "yes"},
+            ) as classify,
+            patch("services.task_runner.create_run_dir", return_value=run_dir),
+            patch(
+                "services.task_runner.segment",
+                return_value={"tumor_pixels": 1},
+            ) as segment,
+            patch(
+                "services.task_runner.persist_model_result",
+                side_effect=[classification_result, segmentation_result],
+            ) as persist_result,
+        ):
+            result = run_task_models(task_dir, 0.5)
+
+        self.assertEqual(result.image_path, image_path)
+        self.assertEqual(result.classification_result, classification_result)
+        self.assertEqual(result.segmentation_result, segmentation_result)
+        classify.assert_called_once_with(image_path)
+        segment.assert_called_once_with(
+            image_path=image_path,
+            threshold=0.5,
+            output_dir=run_dir,
+        )
+        self.assertEqual(persist_result.call_count, 2)
+        self.assertEqual(
+            persist_result.call_args_list,
+            [
+                call(
+                    task_dir=task_dir,
+                    image_path=image_path,
+                    model_name="classification",
+                    result={"class": "yes"},
+                ),
+                call(
+                    task_dir=task_dir,
+                    image_path=image_path,
+                    model_name="segmentation",
+                    result={"tumor_pixels": 1},
+                    run_dir=run_dir,
+                ),
+            ],
+        )
+
+
 class InferenceWorkerTests(unittest.TestCase):
     '''验证 Worker 的成功和失败状态转换'''
 
@@ -121,14 +180,13 @@ class InferenceWorkerTests(unittest.TestCase):
             patch("workers.inference_jobs.get_current_job", return_value=self.job),
             patch("workers.inference_jobs.get_task_dir", return_value=self.task_dir),
             patch("workers.inference_jobs.update_task_execution_status", update_status),
-            patch("workers.inference_jobs.load_task_image", return_value=self.image_path),
-            patch("workers.inference_jobs.classify", return_value={"class": "yes"}) as classify,
-            patch("workers.inference_jobs.create_run_dir", return_value=self.run_dir),
-            patch("workers.inference_jobs.segment", return_value={"tumor_pixels": 1}) as segment,
             patch(
-                "workers.inference_jobs.persist_model_result",
-                side_effect=[classification_result, segmentation_result],
-            ) as persist_result,
+                "workers.inference_jobs.run_task_models",
+                return_value=SimpleNamespace(
+                    classification_result=classification_result,
+                    segmentation_result=segmentation_result,
+                ),
+            ) as run_models,
         ):
             result = run_task_job(self.task_id, 0.5)
 
@@ -136,12 +194,7 @@ class InferenceWorkerTests(unittest.TestCase):
         self.assertEqual(result["completed_models"], ["classification", "segmentation"])
         self.assertEqual(result["classification_result_file"], "classification.json")
         self.assertEqual(result["segmentation_result_file"], "segmentation.json")
-        classify.assert_called_once_with(self.image_path)
-        segment.assert_called_once_with(
-            image_path=self.image_path,
-            threshold=0.5,
-            output_dir=self.run_dir,
-        )
+        run_models.assert_called_once_with(self.task_dir, 0.5)
         self.assertEqual(
             update_status.call_args_list,
             [
@@ -154,7 +207,6 @@ class InferenceWorkerTests(unittest.TestCase):
                 call(self.task_dir, "succeeded", job_id=self.job.id),
             ],
         )
-        self.assertEqual(persist_result.call_count, 2)
 
     def test_worker_marks_task_failed_when_model_raises_error(self) -> None:
         update_status = Mock()
@@ -163,9 +215,8 @@ class InferenceWorkerTests(unittest.TestCase):
             patch("workers.inference_jobs.get_current_job", return_value=self.job),
             patch("workers.inference_jobs.get_task_dir", return_value=self.task_dir),
             patch("workers.inference_jobs.update_task_execution_status", update_status),
-            patch("workers.inference_jobs.load_task_image", return_value=self.image_path),
             patch(
-                "workers.inference_jobs.classify",
+                "workers.inference_jobs.run_task_models",
                 side_effect=RuntimeError("simulated inference failure"),
             ),
             self.assertRaisesRegex(RuntimeError, "simulated inference failure"),

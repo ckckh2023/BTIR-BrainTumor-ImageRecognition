@@ -26,6 +26,7 @@ from contracts.task import (
 from core.settings import SETTINGS
 from repositories.task_repository import task_repository
 from services.inference_service import classify, segment
+from services.task_runner import run_task_models
 from services.task_service import (
     create_run_dir,
     create_task_dir,
@@ -310,27 +311,10 @@ def run_task(
         else SETTINGS.default_segment_threshold
     )
     try:
-        image_path = load_task_image(task_dir)
-        classification_result = persist_model_result(
-            task_dir=task_dir,
-            image_path=image_path,
-            model_name="classification",
-            result=classify(image_path),
-        )
-        run_dir = create_run_dir(task_dir, "segmentation")
-        segmentation_result = persist_model_result(
-            task_dir=task_dir,
-            image_path=image_path,
-            model_name="segmentation",
-            result=segment(
-                image_path=image_path,
-                threshold=threshold,
-                output_dir=run_dir,
-            ),
-            run_dir=run_dir,
-        )
+        run_result = run_task_models(task_dir, threshold)
         task_record = task_repository.load(task_dir)
-        prediction = classification_result["classification"]
+        prediction = run_result.classification_result["classification"]
+        segmentation_result = run_result.segmentation_result
         mask_file = task_relative_path(task_dir, Path(segmentation_result["mask_path"]))
     except TaskLockBusyError as exc:
         raise HTTPException(
