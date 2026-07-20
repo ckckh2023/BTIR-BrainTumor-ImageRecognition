@@ -6,9 +6,10 @@ import json
 import os
 import tempfile
 import sqlite3
+from contextlib import contextmanager
 from core.settings import SETTINGS
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Iterator, Protocol
 
 
 class TaskRepository(Protocol):
@@ -22,6 +23,13 @@ class TaskRepository(Protocol):
 
     def save(self, task_dir: Path, record: dict[str, Any]) -> Path:
         '''保存一条任务元数据'''
+
+
+    def count(self) -> int:
+        '''返回当前存储中的任务数量'''
+
+    def delete_all(self) -> int:
+        '''删除当前存储中的全部任务元数据，并返回删除数量'''
 
 
 class JsonTaskRepository:
@@ -73,6 +81,13 @@ class JsonTaskRepository:
         return path.resolve()
 
 
+    def count(self) -> int:
+        return 0
+
+    def delete_all(self) -> int:
+        return 0
+
+
 class SqliteTaskRepository:
     '''以 SQLite 保存任务元数据'''
     def __init__(self, database_path: Path) -> None:
@@ -80,11 +95,19 @@ class SqliteTaskRepository:
         self._initialize_database()
 
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
         connection = sqlite3.connect(self.database_path, timeout=5)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA busy_timeout = 5000")
-        return connection
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
 
     def _initialize_database(self) -> None:
@@ -164,6 +187,17 @@ class SqliteTaskRepository:
             )
 
         return self.database_path.resolve()
+
+
+    def count(self) -> int:
+        with self._connect() as connection:
+            row = connection.execute("SELECT COUNT(*) AS total FROM tasks").fetchone()
+        return int(row["total"])
+
+    def delete_all(self) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute("DELETE FROM tasks")
+        return cursor.rowcount
 
 
 task_repository: TaskRepository = SqliteTaskRepository(
