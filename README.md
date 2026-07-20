@@ -133,6 +133,9 @@ BTIR_TASK_JOB_RESULT_TTL_SECONDS=86400
 BTIR_TASK_DATABASE_PATH=data/btir.db
 ```
 
+`GET /runtime` 会返回 `task_database_backend` 与 `task_database_available`，用于确认任务数据库是否可用  
+任务目录存在但数据库没有对应元数据时，接口返回 HTTP `404`；SQLite 不可用时返回 HTTP `503`
+
 RQ 队列负责运行后台推理任务；同一任务已有 `queued` 或 `running` 作业时，重复提交会复用原作业，不会重复入队
 
 启动 API 后，另开一个已启用相同虚拟环境的终端启动 worker：

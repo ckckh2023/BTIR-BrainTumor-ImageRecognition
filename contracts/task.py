@@ -89,6 +89,8 @@ class RuntimeStatusResponse(BaseModel):
     torch_version: str
     cuda_version: str | None
     rocm_version: str | None
+    task_database_backend: Literal["sqlite"]
+    task_database_available: bool
 
 
 # 任务分割请求模型

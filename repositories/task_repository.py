@@ -12,6 +12,14 @@ from pathlib import Path
 from typing import Any, Iterator, Protocol
 
 
+class TaskNotFoundError(LookupError):
+    '''任务元数据不存在'''
+
+
+class TaskRepositoryUnavailableError(RuntimeError):
+    '''任务元数据存储不可用'''
+
+
 class TaskRepository(Protocol):
     '''任务元数据存储需要提供的最小接口'''
 
@@ -32,6 +40,10 @@ class TaskRepository(Protocol):
         '''删除当前存储中的全部任务元数据，并返回删除数量'''
 
 
+    def health_check(self) -> None:
+        '''检查任务元数据存储是否可用'''
+
+
 class JsonTaskRepository:
     '''以任务目录中的 task.json 保存任务元数据'''
 
@@ -46,7 +58,7 @@ class JsonTaskRepository:
     def load(self, task_dir: Path) -> dict[str, Any]:
         path = self._path(task_dir)
         if not path.is_file():
-            raise ValueError("任务元数据缺失")
+            raise TaskNotFoundError("任务元数据不存在")
 
         try:
             record = json.loads(path.read_text(encoding="utf-8"))
@@ -88,6 +100,10 @@ class JsonTaskRepository:
         return 0
 
 
+    def health_check(self) -> None:
+        return None
+
+
 class SqliteTaskRepository:
     '''以 SQLite 保存任务元数据'''
     def __init__(self, database_path: Path) -> None:
@@ -97,12 +113,18 @@ class SqliteTaskRepository:
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
-        connection = sqlite3.connect(self.database_path, timeout=5)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA busy_timeout = 5000")
+        try:
+            connection = sqlite3.connect(self.database_path, timeout=5)
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA busy_timeout = 5000")
+        except sqlite3.Error as exc:
+            raise TaskRepositoryUnavailableError("SQLite 任务数据库不可用") from exc
         try:
             yield connection
             connection.commit()
+        except sqlite3.Error as exc:
+            connection.rollback()
+            raise TaskRepositoryUnavailableError("SQLite 任务数据库不可用") from exc
         except Exception:
             connection.rollback()
             raise
@@ -111,7 +133,10 @@ class SqliteTaskRepository:
 
 
     def _initialize_database(self) -> None:
-        self.database_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            self.database_path.parent.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise TaskRepositoryUnavailableError("SQLite 任务数据库不可用") from exc
 
         with self._connect() as connection:
             connection.execute("PRAGMA journal_mode = WAL")
@@ -145,7 +170,7 @@ class SqliteTaskRepository:
             ).fetchone()
 
         if row is None:
-            raise ValueError("任务元数据缺失")
+            raise TaskNotFoundError("任务元数据不存在")
 
         try:
             record = json.loads(row["record_json"])
@@ -198,6 +223,11 @@ class SqliteTaskRepository:
         with self._connect() as connection:
             cursor = connection.execute("DELETE FROM tasks")
         return cursor.rowcount
+
+
+    def health_check(self) -> None:
+        with self._connect() as connection:
+            connection.execute("SELECT 1").fetchone()
 
 
 task_repository: TaskRepository = SqliteTaskRepository(
