@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 
-from redis import Redis
 from redis.exceptions import LockError, RedisError
 
 from core.settings import SETTINGS
+from services.redis_client import get_redis_client
 
 
 class TaskLockBusyError(RuntimeError):
@@ -18,18 +18,10 @@ class TaskLockUnavailableError(RuntimeError):
     '''Redis 不可用，无法保证任务结果一致'''
 
 
-redis_client = Redis.from_url(
-    SETTINGS.redis_url,
-    decode_responses=True,
-    socket_connect_timeout=3,
-    socket_timeout=3,
-)
-
-
 @contextmanager
 def task_write_lock(task_id: str):
     '''锁住一个任务的共享结果文件写入阶段'''
-    lock = redis_client.lock(
+    lock = get_redis_client().lock(
         name=f"btir:task:{task_id}:write",
         timeout=SETTINGS.task_lock_timeout_seconds,
         blocking_timeout=SETTINGS.task_lock_wait_seconds,
