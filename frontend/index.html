@@ -277,7 +277,7 @@
                 />
             </div>
 
-            <button class="recognize-btn" @click="recognize" :disabled="loading">
+            <button class="recognize-btn" @click="selectedFile ? recognizeFromUpload() : recognize()" :disabled="loading">
                 {{ loading ? '识别中...' : '识别' }}
             </button>
 
