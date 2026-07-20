@@ -107,8 +107,8 @@ python -m pip install -r requirements.txt
 
 ### Redis 任务写入锁
 
-任务结果写入时会使用 Redis 锁保护 `task.json` 与 `frontend_result.json` 等共享 JSON，避免分类、分割或后续异步任务同时写回时互相覆盖  
-JSON 文件本身也采用原子写入，读取方只会看到完整的旧文件或完整的新文件
+任务结果写入时会使用 Redis 锁保护 SQLite 任务元数据与 `frontend_result.json` 等共享结果，避免分类、分割或后续异步任务同时写回时互相覆盖  
+SQLite 任务元数据通过事务写入；结果 JSON 文件采用原子写入，读取方只会看到完整的旧文件或完整的新文件
 
 Redis 是独立服务，本地 Windows 开发可使用 Docker Desktop 启动 Redis：
 
@@ -374,4 +374,4 @@ python Main.py clear --output-dir D:\btir-output --dry-run
 ## 下一阶段
 
 1. 确认 `frontend_result.json` 的字段与错误格式
-2. 为 SQLite 增加旧任务 JSON 迁移脚本，以及失败重试、取消任务和任务列表查询
+2. 为异步任务增加失败重试、取消任务和任务列表查询
