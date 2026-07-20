@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import unittest
 
 from fastapi import status
 
-from api.routes.tasks import resolve_run_threshold, task_operation_http_error
+from api.app import app
+from api.routes.tasks import bad_request_http_error, resolve_run_threshold
 from contracts.task import RunTaskRequest
 from core.settings import SETTINGS
 from services.task_lock import TaskLockBusyError, TaskLockUnavailableError
@@ -20,18 +23,23 @@ class TaskRouteHelperTests(unittest.TestCase):
         self.assertEqual(resolve_run_threshold(RunTaskRequest(threshold=0.7)), 0.7)
         self.assertEqual(resolve_run_threshold(None), SETTINGS.default_segment_threshold)
 
-    def test_task_operation_error_statuses_are_stable(self) -> None:
+    def test_service_exceptions_are_registered_globally(self) -> None:
         cases = [
             (TaskLockBusyError("busy"), status.HTTP_409_CONFLICT),
             (TaskLockUnavailableError("lock unavailable"), status.HTTP_503_SERVICE_UNAVAILABLE),
             (TaskQueueUnavailableError("queue unavailable"), status.HTTP_503_SERVICE_UNAVAILABLE),
-            (ValueError("invalid request"), status.HTTP_400_BAD_REQUEST),
         ]
         for exc, expected_status in cases:
             with self.subTest(exc=type(exc).__name__):
-                response = task_operation_http_error(exc)
+                handler = app.exception_handlers[type(exc)]
+                response = asyncio.run(handler(None, exc))
                 self.assertEqual(response.status_code, expected_status)
-                self.assertEqual(response.detail, str(exc))
+                self.assertEqual(json.loads(response.body), {"detail": str(exc)})
+
+    def test_value_error_remains_a_route_level_bad_request(self) -> None:
+        response = bad_request_http_error(ValueError("invalid request"))
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.detail, "invalid request")
 
 
 if __name__ == "__main__":

@@ -12,6 +12,8 @@ from repositories.task_repository import (
     TaskNotFoundError,
     TaskRepositoryUnavailableError,
 )
+from services.task_lock import TaskLockBusyError, TaskLockUnavailableError
+from services.task_queue import TaskQueueUnavailableError
 
 
 app = FastAPI(title="脑肿瘤图像分析 API", version="0.1.0")
@@ -26,6 +28,20 @@ async def handle_task_not_found(_, exc: TaskNotFoundError) -> JSONResponse:
 async def handle_task_repository_unavailable(
     _,
     exc: TaskRepositoryUnavailableError,
+) -> JSONResponse:
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
+
+
+@app.exception_handler(TaskLockBusyError)
+async def handle_task_lock_busy(_, exc: TaskLockBusyError) -> JSONResponse:
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+
+@app.exception_handler(TaskLockUnavailableError)
+@app.exception_handler(TaskQueueUnavailableError)
+async def handle_task_service_unavailable(
+    _,
+    exc: TaskLockUnavailableError | TaskQueueUnavailableError,
 ) -> JSONResponse:
     return JSONResponse(status_code=503, content={"detail": str(exc)})
 

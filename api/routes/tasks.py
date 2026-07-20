@@ -39,8 +39,7 @@ from services.task_runner import (
     run_segmentation,
     run_task_models,
 )
-from services.task_lock import TaskLockBusyError, TaskLockUnavailableError
-from services.task_queue import TaskQueueUnavailableError, enqueue_task_run
+from services.task_queue import enqueue_task_run
 
 router = APIRouter(prefix="/tasks", tags=["任务"])
 
@@ -89,20 +88,8 @@ def resolve_run_threshold(request: RunTaskRequest | None) -> float:
     )
 
 
-def task_operation_http_error(
-    exc: TaskLockBusyError
-    | TaskLockUnavailableError
-    | TaskQueueUnavailableError
-    | ValueError,
-) -> HTTPException:
-    '''将任务执行过程中的预期异常转换为一致的 HTTP 响应'''
-    if isinstance(exc, TaskLockBusyError):
-        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
-    if isinstance(exc, (TaskLockUnavailableError, TaskQueueUnavailableError)):
-        return HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(exc),
-        )
+def bad_request_http_error(exc: ValueError) -> HTTPException:
+    '''将预期的业务校验错误转换为 HTTP 400'''
     return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 
@@ -169,8 +156,8 @@ def classify_task(task_id: str) -> ClassifyTaskResponse:
         model_run = run_classification(task_dir)
         result = model_run.result
         task_record = task_repository.load(task_dir)
-    except (TaskLockBusyError, TaskLockUnavailableError, ValueError) as exc:
-        raise task_operation_http_error(exc) from exc
+    except ValueError as exc:
+        raise bad_request_http_error(exc) from exc
 
     prediction = result["classification"]
     return ClassifyTaskResponse(
@@ -265,8 +252,8 @@ def segment_task(
         result = model_run.result
         task_record = task_repository.load(task_dir)
         mask_file = task_relative_path(task_dir, Path(result["mask_path"]))
-    except (TaskLockBusyError, TaskLockUnavailableError, ValueError) as exc:
-        raise task_operation_http_error(exc) from exc
+    except ValueError as exc:
+        raise bad_request_http_error(exc) from exc
 
     return SegmentTaskResponse(
         task_id=task_id,
@@ -297,8 +284,8 @@ def run_task(
         prediction = run_result.classification_result["classification"]
         segmentation_result = run_result.segmentation_result
         mask_file = task_relative_path(task_dir, Path(segmentation_result["mask_path"]))
-    except (TaskLockBusyError, TaskLockUnavailableError, ValueError) as exc:
-        raise task_operation_http_error(exc) from exc
+    except ValueError as exc:
+        raise bad_request_http_error(exc) from exc
 
     return RunTaskResponse(
         task_id=task_id,
@@ -334,13 +321,8 @@ def enqueue_task(
     threshold = resolve_run_threshold(request)
     try:
         job, reused = enqueue_task_run(task_dir, threshold)
-    except (
-        TaskLockBusyError,
-        TaskLockUnavailableError,
-        TaskQueueUnavailableError,
-        ValueError,
-    ) as exc:
-        raise task_operation_http_error(exc) from exc
+    except ValueError as exc:
+        raise bad_request_http_error(exc) from exc
 
     return TaskEnqueuedResponse(
         task_id=task_id,
