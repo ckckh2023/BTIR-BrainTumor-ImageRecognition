@@ -215,7 +215,7 @@ python -m uvicorn api.app:app --reload
 成功时 `completed_models` 应同时包含 `classification` 与 `segmentation`  
 6. 调用 `GET /tasks/{task_id}/files/frontend_result.json`，确认前端结果文件可读取  
 
-清理输出目录前，建议先使用 `python Main.py clear --dry-run` 预览将删除的内容  
+清理输出目录前，建议先使用 `python Main.py clear --dry-run` 预览将删除的内容。清理默认输出目录时，`clear` 会同步删除 SQLite 中的全部任务记录；使用自定义 `--output-dir` 时不会删除数据库记录
 
 ## API 使用流程
 

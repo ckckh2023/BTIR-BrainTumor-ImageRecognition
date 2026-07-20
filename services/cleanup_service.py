@@ -5,6 +5,8 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+from repositories.task_repository import TaskRepository
+
 
 def clear_generated_files(
     project_root: Path,
@@ -12,6 +14,8 @@ def clear_generated_files(
     segmentation_dir: Path,
     *,
     dry_run: bool,
+    task_repository: TaskRepository | None = None,
+    clear_task_metadata: bool = False,
 ) -> None:
     '''仅用于清理缓存和结果文件'''
     project_root = project_root.resolve()
@@ -38,7 +42,12 @@ def clear_generated_files(
         if not any(parent in unique_targets for parent in path.parents)
     ] # 寻找删除目标集的根目录
     existing_targets = [path for path in root_targets if path.exists()]
-    if not existing_targets:
+    task_count = (
+        task_repository.count()
+        if clear_task_metadata and task_repository is not None
+        else 0
+    )
+    if not existing_targets and task_count == 0:
         print("没有可清理的缓存或结果文件")
         return
 
@@ -52,6 +61,12 @@ def clear_generated_files(
             shutil.rmtree(path)
         else:
             path.unlink()
+
+    if task_count:
+        print(f"  SQLite 任务记录：{task_count} 条")
+        if not dry_run and task_repository is not None:
+            deleted_count = task_repository.delete_all()
+            print(f"  已删除 SQLite 任务记录：{deleted_count} 条")
 
 
 def _display_path(path: Path, project_root: Path) -> str:

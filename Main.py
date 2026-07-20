@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 from core.settings import SETTINGS
+from repositories.task_repository import task_repository
 from services.cleanup_service import clear_generated_files
 from services.inference_service import classify, segment
 from services.presentation import print_result
@@ -43,11 +44,14 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.command == "clear":
+            output_dir = args.output_dir.resolve()
             clear_generated_files(
                 PROJECT_ROOT,
-                args.output_dir.resolve(),
+                output_dir,
                 SEGMENTER_DIR,
                 dry_run=args.dry_run,
+                task_repository=task_repository,
+                clear_task_metadata=output_dir == SETTINGS.output_dir.resolve(),
             )
             return 0
 
