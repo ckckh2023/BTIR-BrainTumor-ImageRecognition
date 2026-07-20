@@ -92,11 +92,3 @@ def segment(image_path: Path, threshold: float, output_dir: Path) -> dict[str, A
         "mask_path": str(mask_path),
         **metrics,
     }
-
-
-def clear_model_cache() -> None:
-    '''清除模型缓存'''
-    _load_classifier_model.cache_clear()
-    _load_classifier_namespace.cache_clear()
-    _load_segmentation_model.cache_clear()
-    _load_segmentation_namespace.cache_clear()
