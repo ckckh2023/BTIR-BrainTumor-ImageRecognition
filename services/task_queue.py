@@ -12,7 +12,7 @@ from redis.exceptions import RedisError
 from rq import Queue
 
 from core.settings import SETTINGS
-from repositories.task_repository import task_repository
+from repositories.task_repository import TaskNotFoundError, task_repository
 from services.task_lock import task_write_lock
 
 
@@ -46,7 +46,7 @@ def enqueue_task_run(
 ) -> tuple[dict[str, Any], bool]:
     '''提交一次完整推理；同一任务已有活动作业时返回原作业'''
     if not task_repository.exists(task_dir):
-        raise ValueError("任务元数据缺失")
+        raise TaskNotFoundError("任务元数据不存在")
 
     with task_write_lock(task_dir.name):
         record = task_repository.load(task_dir)
