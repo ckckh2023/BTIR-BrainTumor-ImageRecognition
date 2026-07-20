@@ -13,17 +13,17 @@ from repositories.task_repository import task_repository
 from services.cleanup_service import clear_generated_files
 from services.inference_service import classify, segment
 from services.presentation import print_result
-from services.task_runner import run_task_models
-from services.task_service import (
+from services.task_files import (
     create_run_dir,
     create_task_dir,
     get_task_dir,
     initialize_task,
     load_task_image,
-    persist_model_result,
     validate_image_path,
     write_json,
 )
+from services.task_results import persist_model_result
+from services.task_runner import run_task_models
 
 
 # 统一使用项目配置中的路径与默认阈值

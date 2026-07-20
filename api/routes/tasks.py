@@ -26,18 +26,18 @@ from contracts.task import (
 from core.settings import SETTINGS
 from repositories.task_repository import task_repository
 from services.inference_service import classify, segment
-from services.task_runner import run_task_models
-from services.task_service import (
+from services.task_files import (
     create_run_dir,
     create_task_dir,
     get_task_dir,
     initialize_task,
     initialize_uploaded_task,
     load_task_image,
-    persist_model_result,
     task_relative_path,
     validate_image_path,
 )
+from services.task_results import persist_model_result
+from services.task_runner import run_task_models
 from services.task_lock import TaskLockBusyError, TaskLockUnavailableError
 from services.task_queue import TaskQueueUnavailableError, enqueue_task_run
 
