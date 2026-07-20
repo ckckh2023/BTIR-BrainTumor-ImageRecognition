@@ -157,11 +157,6 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # 添加clear子命令
     clear = commands.add_parser("clear", help="清理 Python 缓存和默认生成结果")
-    clear.add_argument( # --legacy-results 参数
-        "--legacy-results",
-        action="store_true",
-        help="旧版本；当前 clear 默认也会清理旧的分割结果",
-    )
     clear.add_argument( # --dry-run 参数
         "--dry-run",
         action="store_true",
