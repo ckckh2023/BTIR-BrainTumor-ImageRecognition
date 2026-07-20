@@ -8,10 +8,8 @@ from rq import get_current_job
 
 from core.settings import SETTINGS
 from services.task_runner import run_task_models
-from services.task_service import (
-    get_task_dir,
-    update_task_execution_status,
-)
+from services.task_files import get_task_dir
+from services.task_state import update_task_execution_status
 
 
 def run_task_job(task_id: str, threshold: float) -> dict[str, Any]:
