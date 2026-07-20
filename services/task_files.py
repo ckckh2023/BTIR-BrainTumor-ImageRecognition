@@ -73,6 +73,27 @@ def create_run_dir(task_dir: Path, model_name: str) -> Path:
     return run_dir
 
 
+def _save_created_task(
+    task_dir: Path,
+    name: str | None,
+    input_record: dict[str, Any],
+) -> None:
+    '''以统一结构写入新建任务的元数据'''
+    now = datetime.now().astimezone().isoformat()
+    task_repository.save(
+        task_dir,
+        {
+            "task_id": task_dir.name,
+            "name": name.strip() if name and name.strip() else task_dir.name,
+            "status": "created",
+            "created_at": now,
+            "updated_at": now,
+            "completed_models": [],
+            "input": input_record,
+        },
+    )
+
+
 def initialize_task(
     task_dir: Path,
     source_image: Path,
@@ -109,23 +130,15 @@ def initialize_task(
         if task_image.is_relative_to(task_dir)
         else str(task_image)
     )
-    now = datetime.now().astimezone().isoformat()
-    task_repository.save(
+    _save_created_task(
         task_dir,
+        name,
         {
-            "task_id": task_dir.name,
-            "name": name.strip() if name and name.strip() else task_dir.name,
-            "status": "created",
-            "created_at": now,
-            "updated_at": now,
-            "completed_models": [],
-            "input": {
-                "path": stored_path,
-                "source_file": source_image.name,
-                "storage_mode": actual_mode,
-                "size_bytes": task_image.stat().st_size,
-                "sha256": sha256(task_image),
-            },
+            "path": stored_path,
+            "source_file": source_image.name,
+            "storage_mode": actual_mode,
+            "size_bytes": task_image.stat().st_size,
+            "sha256": sha256(task_image),
         },
     )
     return task_image
@@ -160,23 +173,15 @@ def initialize_uploaded_task(
         raise ValueError("上传文件不是可读取的图片") from exc
 
     task_image = task_image.resolve()
-    now = datetime.now().astimezone().isoformat()
-    task_repository.save(
+    _save_created_task(
         task_dir,
+        name,
         {
-            "task_id": task_dir.name,
-            "name": name.strip() if name and name.strip() else task_dir.name,
-            "status": "created",
-            "created_at": now,
-            "updated_at": now,
-            "completed_models": [],
-            "input": {
-                "path": str(task_image.relative_to(task_dir)),
-                "original_filename": original_filename,
-                "storage_mode": "uploaded",
-                "size_bytes": task_image.stat().st_size,
-                "sha256": sha256(task_image),
-            },
+            "path": str(task_image.relative_to(task_dir)),
+            "original_filename": original_filename,
+            "storage_mode": "uploaded",
+            "size_bytes": task_image.stat().st_size,
+            "sha256": sha256(task_image),
         },
     )
     return task_image
