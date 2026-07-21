@@ -217,11 +217,7 @@ class SqliteTaskRepository:
                 (*parameters, limit, offset),
             ).fetchall()
 
-        try:
-            records = [TaskRecord.model_validate_json(row["record_json"]) for row in rows]
-        except (ValidationError, ValueError) as exc:
-            raise ValueError("任务元数据格式无效") from exc
-        return records, int(total_row["total"])
+        return self._records_from_rows(rows), int(total_row["total"])
 
     def list_archive_candidates(
         self,

@@ -264,6 +264,11 @@ python -m unittest discover -s tests -v
 
 ## API 使用流程
 
+### 服务健康检查
+
+- `GET /healthz`：仅确认 API 进程存活，不访问外部依赖。
+- `GET /readyz`：同时检查 SQLite、Redis 和模型文件；任一不可用时返回 HTTP `503`。
+
 ### 1. 上传图片并创建任务
 
 `POST /tasks`
