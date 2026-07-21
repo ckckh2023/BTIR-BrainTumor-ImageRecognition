@@ -11,6 +11,7 @@ from pathlib import Path
 from core.settings import SETTINGS
 from core.task_definitions import TaskStatus
 from repositories.task_repository import task_repository
+from services.archive_service import archive_expired_tasks, purge_expired_archives
 from services.cleanup_service import clear_generated_files
 from services.presentation import print_result
 from services.task_files import (
@@ -55,6 +56,22 @@ def main(argv: list[str] | None = None) -> int:
                 task_repository=task_repository,
                 clear_task_metadata=output_dir == SETTINGS.output_dir.resolve(),
             )
+            return 0
+
+        if args.command == "archive-tasks":
+            report = archive_expired_tasks(
+                dry_run=not args.apply,
+                limit=args.limit,
+            )
+            _print_archive_report(report)
+            return 0
+
+        if args.command == "purge-archive":
+            report = purge_expired_archives(
+                dry_run=not args.apply,
+                limit=args.limit,
+            )
+            _print_archive_report(report)
             return 0
 
         output_root = args.output_dir.resolve()
@@ -154,6 +171,25 @@ def _build_parser() -> argparse.ArgumentParser:
         help=f"任务结果根目录，默认 {DEFAULT_OUTPUT_DIR}",
     )
 
+    for command_name, help_text in (
+        ("archive-tasks", "将超过保留期的终态任务移入归档区"),
+        ("purge-archive", "永久删除超过归档宽限期的任务"),
+    ):
+        archive_command = commands.add_parser(command_name, help=help_text)
+        archive_command.add_argument(
+            "--apply",
+            action="store_true",
+            help="实际执行；省略时仅预览候选任务",
+        )
+        archive_command.add_argument(
+            "--limit",
+            type=int,
+            default=100,
+            choices=range(1, 1001),
+            metavar="1-1000",
+            help="本次最多处理的任务数，默认 100",
+        )
+
     # 添加create子命令
     create = commands.add_parser("create", help="创建任务并保存一次输入图片")
     create.add_argument("image_path", type=Path, help="输入 MRI 图像路径") # image_path 参数
@@ -217,8 +253,22 @@ def _print_help(parser: argparse.ArgumentParser) -> None:
         "  python Main.py segment --task-id <task_id>\n"
         "  python Main.py all --task-id <task_id>\n"
         "  python Main.py create dataset/yes/Y101.jpg --input-mode copy\n"
-        "  python Main.py clear --dry-run"
+        "  python Main.py clear --dry-run\n"
+        "  python Main.py archive-tasks\n"
+        "  python Main.py purge-archive"
     )
+
+
+def _print_archive_report(report) -> None:
+    '''输出归档或永久删除的预览/执行结果'''
+    action = "将处理" if report.dry_run else "已处理"
+    print(f"{action} {report.operation} 任务：{len(report.processed_task_ids)} 条")
+    for task_id in report.processed_task_ids:
+        print(f"  {task_id}")
+    if report.skipped_task_ids:
+        print(f"跳过任务：{len(report.skipped_task_ids)} 条")
+        for task_id in report.skipped_task_ids:
+            print(f"  {task_id}")
 
 
 if __name__ == "__main__":

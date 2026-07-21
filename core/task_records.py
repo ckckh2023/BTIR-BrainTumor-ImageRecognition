@@ -30,6 +30,8 @@ class TaskJobRecord(BaseModel):
     id: str
     queue: str
     status: JobStatus
+    attempt: int = 0
+    max_retries: int = 0
     queued_at: datetime | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
@@ -51,14 +53,16 @@ class TaskErrorRecord(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
+    code: str = "task_failed"
     message: str
+    detail: str | None = None
     updated_at: datetime
 
 
 class TaskRecord(BaseModel):
     '''一条完整的任务元数据记录'''
 
-    # 允许读取未来版本新增的字段，避免旧数据或滚动升级时丢失信息。
+    # 允许读取未来版本新增的字段，避免旧数据或滚动升级时丢失信息
     model_config = ConfigDict(extra="allow")
 
     task_id: str
@@ -66,6 +70,7 @@ class TaskRecord(BaseModel):
     status: TaskStatus
     created_at: datetime
     updated_at: datetime
+    archived_at: datetime | None = None
     completed_models: list[ModelName] = Field(default_factory=list)
     input: StoredTaskInput
     job: TaskJobRecord | None = None

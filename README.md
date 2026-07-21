@@ -130,6 +130,8 @@ BTIR_TASK_LOCK_WAIT_SECONDS=5
 BTIR_TASK_QUEUE_NAME=inference
 BTIR_TASK_JOB_TIMEOUT_SECONDS=3600
 BTIR_TASK_JOB_RESULT_TTL_SECONDS=86400
+BTIR_TASK_JOB_MAX_RETRIES=1
+BTIR_TASK_STALE_AFTER_SECONDS=3660
 BTIR_TASK_DATABASE_PATH=data/btir.db
 BTIR_MAX_UPLOAD_BYTES=20971520
 BTIR_MAX_IMAGE_PIXELS=40000000
@@ -140,7 +142,8 @@ BTIR_MAX_IMAGE_PIXELS=40000000
 `GET /runtime` 会返回 `task_database_backend` 与 `task_database_available`，用于确认任务数据库是否可用  
 任务目录存在但数据库没有对应元数据时，接口返回 HTTP `404`；SQLite 不可用时返回 HTTP `503`
 
-RQ 队列负责运行后台推理任务；同一任务已有 `queued` 或 `running` 作业时，重复提交会复用原作业，不会重复入队
+RQ 队列负责运行后台推理任务；同一任务已有 `queued` 或 `running` 作业时，重复提交会复用原作业，不会重复入队。默认首次失败后会立即自动重试一次；第二次失败才标记为 `failed`  
+查询任务时会与 RQ 作业状态对账，`running` 超过 `BTIR_TASK_STALE_AFTER_SECONDS` 仍未结束时也会标记为 `failed`
 
 启动 API 后，另开一个已启用相同虚拟环境的终端启动 worker：
 
@@ -222,7 +225,34 @@ python -m uvicorn api.app:app --reload
 成功时 `completed_models` 应同时包含 `classification` 与 `segmentation`  
 6. 调用 `GET /tasks/{task_id}/files/frontend_result.json`，确认前端结果文件可读取  
 
-清理输出目录前，建议先使用 `python Main.py clear --dry-run` 预览将删除的内容。清理默认输出目录时，`clear` 会同步删除 SQLite 中的全部任务记录；使用自定义 `--output-dir` 时不会删除数据库记录
+
+### 任务归档与永久删除
+
+归档策略由 `.env` 控制，默认关闭实际执行：
+
+```dotenv
+BTIR_TASK_CLEANUP_ENABLED=false
+BTIR_SUCCEEDED_TASK_RETENTION_DAYS=30
+BTIR_FAILED_TASK_RETENTION_DAYS=7
+BTIR_TASK_ARCHIVE_GRACE_DAYS=7
+BTIR_TASK_ARCHIVE_DIR=archive
+```
+
+归档与永久删除命令默认只预览候选任务，不会移动或删除任何文件：
+
+```cmd
+python Main.py archive-tasks
+python Main.py purge-archive
+```
+
+实际执行需要同时设置 `BTIR_TASK_CLEANUP_ENABLED=true` 和显式传入 `--apply`：
+
+```cmd
+python Main.py archive-tasks --apply
+python Main.py purge-archive --apply
+```
+
+归档只处理超过保留期的 `succeeded`、旧版 `completed` 与 `failed` 任务，且会在执行前再次确认任务不是活动状态。任务会先整体移动至 `archive/tasks/`，保留 `BTIR_TASK_ARCHIVE_GRACE_DAYS` 后才可能由 `purge-archive --apply` 永久删除。每项实际操作记录在 `archive/audit.jsonl`；模型、Python 缓存和活动任务不会被该流程触碰。
 
 ### 自动化测试
 
@@ -308,6 +338,26 @@ GET /tasks/{task_id}
 ["classification", "segmentation"]
 ```
 
+失败任务会返回可展示的 `error.code`、`error.message` 与作业 `attempt`、`max_retries`；内部异常详情不会经 API 返回
+
+### 4. 重试失败任务与任务列表
+
+自动重试耗尽后，可使用下列接口为失败任务提交一个新的作业：
+
+```text
+POST /tasks/{task_id}/retry
+```
+
+请求体可省略，也可传入新的分割阈值。仅 `failed` 任务可手动重试；重复请求正在排队或运行的重试任务时，会复用同一作业
+
+分页查询任务使用：
+
+```text
+GET /tasks?limit=20&offset=0&status=failed
+```
+
+`status` 可省略；`limit` 范围为 1 到 100。响应中的 `items` 只包含任务摘要，不包含完整推理结果
+
 ## 任务目录
 
 每次创建任务均在 `output/` 下创建时间戳目录：
@@ -349,6 +399,7 @@ services/task_state.py        # 任务状态、RQ 作业状态和运行记录
 services/task_lock.py         # Redis 任务结果写入锁
 services/redis_client.py      # Redis 客户端唯一创建入口
 services/task_queue.py        # RQ 作业提交与队列连接
+services/archive_service.py   # 任务归档与归档区永久删除
 services/inference_service.py # 分类/分割模型的统一调用入口
 services/cleanup_service.py   # 清理生成的缓存与结果
 services/presentation.py      # CLI 输出格式化
@@ -372,6 +423,8 @@ python Main.py segment --task-id <task_id>
 python Main.py all <image_path>
 python Main.py clear --dry-run
 python Main.py clear --output-dir D:\btir-output --dry-run
+python Main.py archive-tasks
+python Main.py purge-archive
 ```
 
 ## 协定
