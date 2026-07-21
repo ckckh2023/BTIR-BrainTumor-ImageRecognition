@@ -6,9 +6,11 @@ import asyncio
 from datetime import datetime
 import json
 from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
 
 from fastapi import HTTPException, status
+from fastapi.testclient import TestClient
 from redis.exceptions import RedisError
 
 from api.app import app
@@ -20,8 +22,8 @@ from api.routes.tasks import (
 )
 from api.routes.runtime import get_liveness, get_readiness
 from contracts.task import RunTaskRequest
-from core.task_definitions import TaskStatus
-from core.task_records import StoredTaskInput, TaskErrorRecord, TaskRecord
+from core.task_definitions import JobStatus, TaskStatus
+from core.task_records import StoredTaskInput, TaskErrorRecord, TaskJobRecord, TaskRecord
 from core.settings import SETTINGS
 from services.task_lock import TaskLockBusyError, TaskLockUnavailableError
 from services.task_queue import TaskQueueUnavailableError
@@ -141,6 +143,104 @@ class TaskRouteHelperTests(unittest.TestCase):
 
         self.assertEqual(caught.exception.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
         self.assertEqual(caught.exception.detail["components"]["redis"], "unavailable")
+
+
+class TaskHttpEndpointTests(unittest.TestCase):
+    '''通过 FastAPI TestClient 验证浏览器实际会经历的任务 HTTP 流程'''
+
+    def test_upload_enqueue_query_and_fetch_result(self) -> None:
+        now = datetime.fromisoformat("2026-01-01T00:00:00+00:00")
+        with TemporaryDirectory() as directory:
+            task_dir = Path(directory) / "task-http-001"
+            task_dir.mkdir()
+            input_path = task_dir / "input" / "image.png"
+            input_path.parent.mkdir()
+            input_path.write_bytes(b"not-used-by-mock")
+            frontend_result = task_dir / "frontend_result.json"
+            frontend_result.write_text(
+                json.dumps(
+                    {
+                        "task_id": task_dir.name,
+                        "image_file": "image.png",
+                        "classification": {"class": "yes"},
+                        "timing": {"classification_inference_ms": 12.5},
+                        "image_path": "private/path.png",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            record = TaskRecord(
+                task_id=task_dir.name,
+                name="HTTP workflow test",
+                status=TaskStatus.SUCCEEDED,
+                created_at=now,
+                updated_at=now,
+                completed_models=[],
+                input=StoredTaskInput(
+                    path="input/image.png",
+                    storage_mode="uploaded",
+                    size_bytes=1,
+                    sha256="a" * 64,
+                ),
+                job=TaskJobRecord(
+                    id="job-http-001",
+                    queue="inference",
+                    status=JobStatus.SUCCEEDED,
+                    queued_at=now,
+                    started_at=now,
+                    finished_at=now,
+                ),
+            )
+            queued_job = {
+                "id": "job-http-001",
+                "queue": "inference",
+                "status": "queued",
+                "attempt": 0,
+                "max_retries": 1,
+                "queued_at": now.isoformat(),
+            }
+
+            with (
+                patch("api.routes.tasks.create_task_dir", return_value=task_dir),
+                patch(
+                    "api.routes.tasks.initialize_uploaded_task",
+                    return_value=input_path,
+                ),
+                patch("api.routes.tasks.require_task_dir", return_value=task_dir),
+                patch(
+                    "api.routes.tasks.enqueue_task_run",
+                    return_value=(queued_job, False),
+                ),
+                patch("api.routes.tasks.reconcile_task_job", return_value=record),
+                TestClient(app) as client,
+            ):
+                created = client.post(
+                    "/tasks",
+                    files={"file": ("image.png", b"image-data", "image/png")},
+                    data={"name": "HTTP workflow test"},
+                )
+                enqueued = client.post(
+                    f"/tasks/{task_dir.name}/run-async",
+                    json={"threshold": 0.5},
+                )
+                task_status = client.get(f"/tasks/{task_dir.name}")
+                result_file = client.get(
+                    f"/tasks/{task_dir.name}/files/frontend_result.json"
+                )
+
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(created.json()["task_id"], task_dir.name)
+        self.assertEqual(enqueued.status_code, status.HTTP_202_ACCEPTED)
+        self.assertEqual(enqueued.json()["job"]["id"], "job-http-001")
+        self.assertEqual(task_status.status_code, status.HTTP_200_OK)
+        self.assertEqual(task_status.json()["status"], "succeeded")
+        self.assertEqual(
+            task_status.json()["frontend_result"]["timing"]["classification_inference_ms"],
+            12.5,
+        )
+        self.assertNotIn("image_path", task_status.json()["frontend_result"])
+        self.assertEqual(result_file.status_code, status.HTTP_200_OK)
+        self.assertNotIn("image_path", result_file.json())
 
 
 if __name__ == "__main__":
