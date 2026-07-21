@@ -5,6 +5,9 @@ rq>=2.0,<3.0
 uvicorn[standard]==0.51.0
 python-multipart==0.0.32
 
+# FastAPI TestClient 的 HTTP 端到端测试依赖
+httpx>=0.23,<1.0
+
 numpy==2.3.5
 Pillow==12.3.0
 
