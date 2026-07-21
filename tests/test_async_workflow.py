@@ -16,7 +16,7 @@ from rq.job import JobStatus as RqJobStatus
 
 from core.settings import SETTINGS
 from core.task_definitions import JobStatus, ModelName, TaskStatus
-from core.task_records import StoredTaskInput, TaskJobRecord, TaskRecord
+from core.task_records import StoredTaskInput, TaskErrorRecord, TaskJobRecord, TaskRecord
 from services.inference_service import preload_inference_models
 from services.task_queue import (
     TaskQueueUnavailableError,
@@ -29,7 +29,7 @@ from services.task_runner import (
     run_task_models,
 )
 from services.task_results import build_frontend_result
-from services.task_state import update_task_execution_status
+from services.task_state import mark_task_queued, update_task_execution_status
 from workers.inference_jobs import run_task_job
 from workers import run_worker
 
@@ -495,6 +495,30 @@ class TaskPerformanceRecordTests(unittest.TestCase):
         self.assertGreater(running.job.queue_wait_ms, 1_000)
         self.assertEqual(completed.job.queue_wait_ms, running.job.queue_wait_ms)
         self.assertEqual(completed.job.execution_ms, 123.456)
+
+    def test_queue_transition_is_owned_by_task_state(self) -> None:
+        record = deepcopy(self.record)
+        record.status = TaskStatus.FAILED
+        record.error = TaskErrorRecord(
+            message="previous attempt failed",
+            updated_at=datetime.now(timezone.utc),
+        )
+        repository = FakeTaskRepository(record)
+
+        updated = mark_task_queued(
+            self.task_dir,
+            job_id="job-performance-002",
+            queue_name="inference",
+            max_retries=1,
+            record=record,
+            repository=repository,
+        )
+
+        self.assertEqual(updated.status, TaskStatus.QUEUED)
+        self.assertEqual(updated.job.id, "job-performance-002")
+        self.assertEqual(updated.job.max_retries, 1)
+        self.assertIsNone(updated.error)
+        self.assertEqual(repository.record.job.id, "job-performance-002")
 
     def test_frontend_result_includes_model_timings(self) -> None:
         image_path = self.task_dir / "input" / "image.png"

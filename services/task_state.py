@@ -12,9 +12,35 @@ from core.task_definitions import (
     task_status_from_job_status,
 )
 from core.task_records import TaskErrorRecord, TaskJobRecord, TaskRecord, TaskRunRecord
-from repositories.task_repository import task_repository
+from repositories.task_repository import TaskRepository, task_repository
 from services.task_files import task_relative_path
 from services.task_lock import task_write_lock
+
+
+def mark_task_queued(
+    task_dir: Path,
+    *,
+    job_id: str,
+    queue_name: str,
+    max_retries: int,
+    record: TaskRecord | None = None,
+    repository: TaskRepository = task_repository,
+) -> TaskRecord:
+    '''记录已成功入队的作业；调用方需持有该任务写锁以保持入队原子性'''
+    record = record or repository.load(task_dir)
+    now = datetime.now().astimezone()
+    record.status = TaskStatus.QUEUED
+    record.job = TaskJobRecord(
+        id=job_id,
+        queue=queue_name,
+        status=JobStatus.QUEUED,
+        max_retries=max_retries,
+        queued_at=now,
+    )
+    record.updated_at = now
+    record.error = None
+    repository.save(task_dir, record)
+    return record
 
 
 def mark_models_completed(task_dir: Path, *models: ModelName | str) -> None:
