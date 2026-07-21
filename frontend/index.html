@@ -332,7 +332,7 @@
                 async runAndGetResult(taskId) {
                     this.statusText = '<span class="loading-spinner"></span>运行模型中...'
 
-                    const runResponse = await fetch(`${this.API_BASE}/tasks/${taskId}/run`, {
+                    const runResponse = await fetch(`${this.API_BASE}/tasks/${taskId}/run-async`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ threshold: 0.5 }),
@@ -342,17 +342,31 @@
                         throw new Error(`运行模型失败: ${runResponse.status}`)
                     }
 
-                    this.statusText = '<span class="loading-spinner"></span>获取结果中...'
+                    const deadline = Date.now() + 120000
+                    while (Date.now() < deadline) {
+                        const resultResponse = await fetch(`${this.API_BASE}/tasks/${taskId}`)
+                        if (!resultResponse.ok) {
+                            throw new Error(`获取结果失败: ${resultResponse.status}`)
+                        }
 
-                    const resultResponse = await fetch(`${this.API_BASE}/tasks/${taskId}`)
-                    if (!resultResponse.ok) {
-                        throw new Error(`获取结果失败: ${resultResponse.status}`)
+                        const resultData = await resultResponse.json()
+                        if (resultData.status === 'succeeded' || resultData.status === 'completed') {
+                            this.statusText = '<span class="status-success">✓ 识别完成</span>'
+                            this.jsonPath = `output/${taskId}/frontend_result.json`
+                            this.jsonData = JSON.stringify(resultData, null, 2)
+                            return
+                        }
+                        if (resultData.status === 'failed') {
+                            throw new Error(resultData.error?.message || '识别任务失败')
+                        }
+
+                        this.statusText = resultData.status === 'queued'
+                            ? '<span class="loading-spinner"></span>任务排队中...'
+                            : '<span class="loading-spinner"></span>运行模型中...'
+                        await new Promise(resolve => setTimeout(resolve, 1000))
                     }
 
-                    const resultData = await resultResponse.json()
-                    this.statusText = '<span class="status-success">✓ 识别完成</span>'
-                    this.jsonPath = `output/${taskId}/frontend_result.json`
-                    this.jsonData = JSON.stringify(resultData, null, 2)
+                    throw new Error('识别任务超时，请稍后重试')
                 },
                 async recognize() {
                     if (!this.imagePath.trim()) {
