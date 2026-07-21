@@ -7,7 +7,8 @@ from datetime import datetime
 import json
 import unittest
 
-from fastapi import status
+from fastapi import HTTPException, status
+from redis.exceptions import RedisError
 
 from api.app import app
 from api.routes.tasks import (
@@ -15,12 +16,14 @@ from api.routes.tasks import (
     resolve_run_threshold,
     task_summary_data,
 )
+from api.routes.runtime import get_liveness, get_readiness
 from contracts.task import RunTaskRequest
 from core.task_definitions import TaskStatus
 from core.task_records import StoredTaskInput, TaskErrorRecord, TaskRecord
 from core.settings import SETTINGS
 from services.task_lock import TaskLockBusyError, TaskLockUnavailableError
 from services.task_queue import TaskQueueUnavailableError
+from unittest.mock import Mock, patch
 
 
 class TaskRouteHelperTests(unittest.TestCase):
@@ -74,6 +77,38 @@ class TaskRouteHelperTests(unittest.TestCase):
 
         self.assertEqual(summary["error"]["code"], "inference_failed")
         self.assertNotIn("detail", summary["error"])
+
+    def test_liveness_never_checks_external_dependencies(self) -> None:
+        self.assertEqual(get_liveness(), {"status": "ok"})
+
+    def test_readiness_reports_all_critical_dependencies(self) -> None:
+        redis_client = Mock()
+        redis_client.ping.return_value = True
+        with (
+            patch("api.routes.runtime.task_repository.health_check"),
+            patch("api.routes.runtime.get_redis_client", return_value=redis_client),
+        ):
+            readiness = get_readiness()
+
+        self.assertEqual(readiness["status"], "ready")
+        self.assertEqual(
+            readiness["components"],
+            {"task_database": "ok", "redis": "ok", "models": "ok"},
+        )
+
+    def test_readiness_returns_503_when_redis_is_unavailable(self) -> None:
+        with (
+            patch("api.routes.runtime.task_repository.health_check"),
+            patch(
+                "api.routes.runtime.get_redis_client",
+                side_effect=RedisError("redis unavailable"),
+            ),
+            self.assertRaises(HTTPException) as caught,
+        ):
+            get_readiness()
+
+        self.assertEqual(caught.exception.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+        self.assertEqual(caught.exception.detail["components"]["redis"], "unavailable")
 
 
 if __name__ == "__main__":
