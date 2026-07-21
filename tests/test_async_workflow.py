@@ -17,6 +17,7 @@ from rq.job import JobStatus as RqJobStatus
 from core.settings import SETTINGS
 from core.task_definitions import JobStatus, ModelName, TaskStatus
 from core.task_records import StoredTaskInput, TaskJobRecord, TaskRecord
+from services.inference_service import preload_inference_models
 from services.task_queue import (
     TaskQueueUnavailableError,
     enqueue_task_run,
@@ -27,7 +28,10 @@ from services.task_runner import (
     run_segmentation,
     run_task_models,
 )
+from services.task_results import build_frontend_result
+from services.task_state import update_task_execution_status
 from workers.inference_jobs import run_task_job
+from workers import run_worker
 
 
 class FakeTaskRepository:
@@ -225,23 +229,25 @@ class TaskRunnerTests(unittest.TestCase):
         )
         self.assertEqual(persist_result.call_count, 2)
         self.assertEqual(
-            persist_result.call_args_list,
-            [
-                call(
-                    task_dir=task_dir,
-                    image_path=image_path,
-                    model_name="classification",
-                    result={"class": "yes"},
-                ),
-                call(
-                    task_dir=task_dir,
-                    image_path=image_path,
-                    model_name="segmentation",
-                    result={"tumor_pixels": 1},
-                    run_dir=run_dir,
-                ),
-            ],
+            persist_result.call_args_list[0].kwargs["model_name"],
+            ModelName.CLASSIFICATION,
         )
+        self.assertEqual(
+            persist_result.call_args_list[0].kwargs["result"]["class"], "yes"
+        )
+        self.assertIsInstance(
+            persist_result.call_args_list[0].kwargs["result"]["timing"]["inference_ms"],
+            float,
+        )
+        self.assertEqual(
+            persist_result.call_args_list[1].kwargs["model_name"],
+            ModelName.SEGMENTATION,
+        )
+        self.assertEqual(
+            persist_result.call_args_list[1].kwargs["result"]["tumor_pixels"], 1
+        )
+        self.assertEqual(persist_result.call_args_list[1].kwargs["run_dir"], run_dir)
+        self.assertGreaterEqual(result.total_inference_ms, 0)
 
 
 class InferenceWorkerTests(unittest.TestCase):
@@ -285,6 +291,7 @@ class InferenceWorkerTests(unittest.TestCase):
                 return_value=SimpleNamespace(
                     classification_result=classification_result,
                     segmentation_result=segmentation_result,
+                    total_inference_ms=12.5,
                 ),
             ) as run_models,
         ):
@@ -304,7 +311,12 @@ class InferenceWorkerTests(unittest.TestCase):
                     job_id=self.job.id,
                     queue_name=unittest.mock.ANY,
                 ),
-                call(self.task_dir, "succeeded", job_id=self.job.id),
+                call(
+                    self.task_dir,
+                    "succeeded",
+                    job_id=self.job.id,
+                    execution_ms=unittest.mock.ANY,
+                ),
             ],
         )
 
@@ -431,6 +443,165 @@ class TaskReconciliationTests(unittest.TestCase):
 
         self.assertEqual(update_status.call_args.args[1], JobStatus.FAILED)
         self.assertIn("超过允许执行时长", update_status.call_args.kwargs["error"])
+
+
+class TaskPerformanceRecordTests(unittest.TestCase):
+    '''验证任务性能字段会被持久化，并作为结果 JSON 的补充信息输出'''
+
+    def setUp(self) -> None:
+        self.task_dir = Path("output") / "task-performance-001"
+        now = datetime.now(timezone.utc)
+        self.record = TaskRecord(
+            task_id=self.task_dir.name,
+            name="性能记录测试任务",
+            status=TaskStatus.QUEUED,
+            created_at=now,
+            updated_at=now,
+            completed_models=[],
+            input=StoredTaskInput(
+                path="input/image.png",
+                storage_mode="uploaded",
+                size_bytes=1,
+                sha256="a" * 64,
+            ),
+            job=TaskJobRecord(
+                id="job-performance-001",
+                queue="inference",
+                status=JobStatus.QUEUED,
+                queued_at=now - timedelta(seconds=2),
+            ),
+        )
+
+    def test_job_records_queue_wait_and_execution_time(self) -> None:
+        repository = FakeTaskRepository(self.record)
+
+        with (
+            patch("services.task_state.task_repository", repository),
+            patch("services.task_state.task_write_lock", lambda _: nullcontext()),
+        ):
+            running = update_task_execution_status(
+                self.task_dir,
+                JobStatus.RUNNING,
+                job_id="job-performance-001",
+            )
+            completed = update_task_execution_status(
+                self.task_dir,
+                JobStatus.SUCCEEDED,
+                job_id="job-performance-001",
+                execution_ms=123.456,
+            )
+
+        self.assertIsNotNone(running.job.queue_wait_ms)
+        self.assertGreater(running.job.queue_wait_ms, 1_000)
+        self.assertEqual(completed.job.queue_wait_ms, running.job.queue_wait_ms)
+        self.assertEqual(completed.job.execution_ms, 123.456)
+
+    def test_frontend_result_includes_model_timings(self) -> None:
+        image_path = self.task_dir / "input" / "image.png"
+        result = build_frontend_result(
+            self.task_dir,
+            image_path,
+            classification={
+                "classification": {"class": "yes"},
+                "run_directory": "runs/classification/run-001",
+                "timing": {"inference_ms": 12.5},
+            },
+            segmentation={
+                "model": "segmentation",
+                "threshold": 0.5,
+                "tumor_pixels": 1,
+                "image_pixels": 4,
+                "tumor_area_ratio": 0.25,
+                "mask_path": self.task_dir / "runs" / "segmentation" / "run-001" / "mask.png",
+                "run_directory": "runs/segmentation/run-001",
+                "timing": {"inference_ms": 34.5},
+            },
+        )
+
+        self.assertEqual(
+            result["timing"],
+            {"classification_inference_ms": 12.5, "segmentation_inference_ms": 34.5},
+        )
+
+
+class ModelPreloadTests(unittest.TestCase):
+    '''验证模型预热会填充现有缓存，并且不会因单模型失败阻断 worker。'''
+
+    def test_preload_loads_both_models(self) -> None:
+        classifier_model = Mock()
+        segmentation_model = Mock()
+        with (
+            patch(
+                "services.inference_service._load_classifier_namespace",
+                return_value={"torch": Mock()},
+            ),
+            patch(
+                "services.inference_service._load_segmentation_namespace",
+                return_value={"torch": Mock()},
+            ),
+            patch("services.inference_service.resolve_device", return_value="cpu"),
+            patch(
+                "services.inference_service._load_classifier_model",
+                classifier_model,
+            ),
+            patch(
+                "services.inference_service._load_segmentation_model",
+                segmentation_model,
+            ),
+        ):
+            outcomes = preload_inference_models()
+
+        classifier_model.assert_called_once_with("cpu")
+        segmentation_model.assert_called_once_with("cpu")
+        self.assertIsInstance(outcomes["classification"], float)
+        self.assertIsInstance(outcomes["segmentation"], float)
+
+    def test_preload_continues_when_one_model_fails(self) -> None:
+        segmentation_model = Mock()
+        with (
+            patch(
+                "services.inference_service._load_classifier_namespace",
+                return_value={"torch": Mock()},
+            ),
+            patch(
+                "services.inference_service._load_segmentation_namespace",
+                return_value={"torch": Mock()},
+            ),
+            patch("services.inference_service.resolve_device", return_value="cpu"),
+            patch(
+                "services.inference_service._load_classifier_model",
+                side_effect=RuntimeError("classifier unavailable"),
+            ),
+            patch(
+                "services.inference_service._load_segmentation_model",
+                segmentation_model,
+            ),
+        ):
+            outcomes = preload_inference_models()
+
+        self.assertIn("failed: RuntimeError", outcomes["classification"])
+        segmentation_model.assert_called_once_with("cpu")
+        self.assertIsInstance(outcomes["segmentation"], float)
+
+    def test_windows_worker_preloads_before_processing_queue(self) -> None:
+        worker = Mock()
+        with (
+            patch("workers.run_worker.os.name", "nt"),
+            patch("workers.run_worker.get_task_queue", return_value=Mock()),
+            patch("workers.run_worker.get_redis_client", return_value=Mock()),
+            patch("workers.run_worker.SimpleWorker", return_value=worker),
+            patch(
+                "workers.run_worker.preload_inference_models", return_value={}
+            ) as preload,
+            patch(
+                "workers.run_worker.SETTINGS",
+                replace(SETTINGS, worker_preload_models=True),
+            ),
+        ):
+            run_worker.main()
+
+        preload.assert_called_once_with()
+        worker.work.assert_called_once_with()
 
 
 if __name__ == "__main__":

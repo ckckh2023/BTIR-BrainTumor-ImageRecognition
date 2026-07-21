@@ -76,7 +76,9 @@ def _persist_model_result_unlocked(
     result["model_result_path"] = task_relative_path(task_dir, latest_path)
     result["history_result_path"] = task_relative_path(task_dir, history_path)
     result["frontend_result_path"] = task_relative_path(task_dir, frontend_path)
-    record_task_run(task_dir, model, history_path)
+    timing = result.get("timing")
+    inference_ms = timing.get("inference_ms") if isinstance(timing, dict) else None
+    record_task_run(task_dir, model, history_path, inference_ms=inference_ms)
     mark_models_completed(task_dir, model)
     return result
 
@@ -118,6 +120,7 @@ def build_frontend_result(
         result["latest_runs"]["classification"] = (
             f"{classification['run_directory']}/{TaskArtifact.RUN_RESULT}"
         )
+        _set_model_timing(result, "classification", classification)
     if segmentation is not None:
         mask_file = task_relative_path(task_dir, Path(segmentation["mask_path"]))
         result["segmentation"] = {
@@ -133,9 +136,25 @@ def build_frontend_result(
         result["latest_runs"]["segmentation"] = (
             f"{segmentation['run_directory']}/{TaskArtifact.RUN_RESULT}"
         )
+        _set_model_timing(result, "segmentation", segmentation)
     completed_models = [
         name for name in ModelName if name.value in result
     ]
     result["completed_models"] = [name.value for name in completed_models]
     result["status"] = task_status_for_completed_models(completed_models).value
     return result
+
+
+def _set_model_timing(
+    frontend_result: dict[str, Any],
+    model: str,
+    model_result: dict[str, Any],
+) -> None:
+    timing = model_result.get("timing")
+    if not isinstance(timing, dict) or not isinstance(
+        timing.get("inference_ms"), (int, float)
+    ):
+        return
+    frontend_result.setdefault("timing", {})[f"{model}_inference_ms"] = timing[
+        "inference_ms"
+    ]

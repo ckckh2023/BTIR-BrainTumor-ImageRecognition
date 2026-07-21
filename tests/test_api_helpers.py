@@ -5,12 +5,14 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime
 import json
+from pathlib import Path
 import unittest
 
 from fastapi import HTTPException, status
 from redis.exceptions import RedisError
 
 from api.app import app
+from api.routes import tasks
 from api.routes.tasks import (
     bad_request_http_error,
     resolve_run_threshold,
@@ -77,6 +79,36 @@ class TaskRouteHelperTests(unittest.TestCase):
 
         self.assertEqual(summary["error"]["code"], "inference_failed")
         self.assertNotIn("detail", summary["error"])
+
+    def test_get_task_falls_back_to_recorded_input_filename(self) -> None:
+        task_dir = Path("output") / "task-result-image-001"
+        now = datetime.fromisoformat("2026-01-01T00:00:00+00:00")
+        record = TaskRecord(
+            task_id=task_dir.name,
+            name="结果图片回退测试",
+            status=TaskStatus.SUCCEEDED,
+            created_at=now,
+            updated_at=now,
+            input=StoredTaskInput(
+                path="input/uploaded-image.png",
+                storage_mode="uploaded",
+                size_bytes=1,
+                sha256="a" * 64,
+            ),
+        )
+
+        with (
+            patch("api.routes.tasks.require_task_dir", return_value=task_dir),
+            patch("api.routes.tasks.reconcile_task_job", return_value=record),
+            patch("api.routes.tasks.Path.is_file", return_value=True),
+            patch(
+                "api.routes.tasks.Path.read_text",
+                return_value='{"task_id": "task-result-image-001"}',
+            ),
+        ):
+            response = tasks.get_task(task_dir.name)
+
+        self.assertEqual(response.frontend_result["image_file"], "uploaded-image.png")
 
     def test_liveness_never_checks_external_dependencies(self) -> None:
         self.assertEqual(get_liveness(), {"status": "ok"})

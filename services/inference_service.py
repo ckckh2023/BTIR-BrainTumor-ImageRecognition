@@ -5,6 +5,7 @@ from __future__ import annotations
 import runpy
 import sys
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 from accelerator import resolve_device
@@ -92,3 +93,22 @@ def segment(image_path: Path, threshold: float, output_dir: Path) -> dict[str, A
         "mask_path": str(mask_path),
         **metrics,
     }
+
+
+def preload_inference_models() -> dict[str, float | str]:
+    '''预加载模型到当前进程缓存；单个模型失败不会阻止另一个模型预热'''
+    outcomes: dict[str, float | str] = {}
+    for name, namespace_loader, model_loader in (
+        ("classification", _load_classifier_namespace, _load_classifier_model),
+        ("segmentation", _load_segmentation_namespace, _load_segmentation_model),
+    ):
+        started_at = perf_counter()
+        try:
+            namespace = namespace_loader()
+            device = resolve_device(namespace["torch"], SETTINGS.device)
+            model_loader(str(device))
+        except Exception as exc:
+            outcomes[name] = f"failed: {type(exc).__name__}: {exc}"
+        else:
+            outcomes[name] = round((perf_counter() - started_at) * 1000, 3)
+    return outcomes

@@ -244,7 +244,7 @@ def get_task(task_id: str) -> TaskStatusResponse:
     )
     if frontend_result is not None:
         frontend_result = sanitize_public_payload(frontend_result)
-        frontend_result.setdefault("image_file", Path(input_data.path).name)
+        frontend_result.setdefault("image_file", Path(task_data.input.path).name)
 
     return TaskStatusResponse(
         task_id=task_data.task_id,

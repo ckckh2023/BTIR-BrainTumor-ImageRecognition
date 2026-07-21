@@ -45,6 +45,7 @@ def update_task_execution_status(
     error_code: str = "task_failed",
     error_detail: str | None = None,
     attempt: int | None = None,
+    execution_ms: float | None = None,
 ) -> TaskRecord:
     '''更新 RQ 作业状态，并同步写入任务元数据'''
     job_status = JobStatus(status)
@@ -57,15 +58,26 @@ def update_task_execution_status(
             raise ValueError("任务正在由另一异步作业处理")
 
         now = datetime.now().astimezone()
+        queued_at = now if job_status is JobStatus.QUEUED else (job.queued_at if job else None)
+        started_at = now if job_status is JobStatus.RUNNING else (job.started_at if job else None)
+        queue_wait_ms = job.queue_wait_ms if job else None
+        if job_status is JobStatus.RUNNING and queued_at is not None:
+            queue_wait_ms = round((now - queued_at).total_seconds() * 1000, 3)
         job = TaskJobRecord(
             id=job_id,
             queue=queue_name or (job.queue if job else ""),
             status=job_status,
             attempt=attempt if attempt is not None else (job.attempt if job else 0),
             max_retries=job.max_retries if job else 0,
-            queued_at=(now if job_status is JobStatus.QUEUED else (job.queued_at if job else None)),
-            started_at=(now if job_status is JobStatus.RUNNING else (job.started_at if job else None)),
+            queued_at=queued_at,
+            started_at=started_at,
             finished_at=(now if job_status in {JobStatus.SUCCEEDED, JobStatus.FAILED} else (job.finished_at if job else None)),
+            queue_wait_ms=queue_wait_ms,
+            execution_ms=(
+                None
+                if job_status is JobStatus.QUEUED
+                else (execution_ms if execution_ms is not None else (job.execution_ms if job else None))
+            ),
         )
         record.status = task_status_from_job_status(job_status)
         record.job = job
@@ -87,6 +99,8 @@ def record_task_run(
     task_dir: Path,
     model_name: ModelName | str,
     result_path: Path,
+    *,
+    inference_ms: float | None = None,
 ) -> None:
     '''记录一条模型运行历史到任务元数据中'''
     if not task_repository.exists(task_dir):
@@ -101,6 +115,7 @@ def record_task_run(
             model=ModelName(model_name),
             result_file=task_relative_path(task_dir, result_path),
             created_at=datetime.now().astimezone(),
+            inference_ms=inference_ms,
         )
     )
     record.updated_at = datetime.now().astimezone()

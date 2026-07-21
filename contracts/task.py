@@ -61,6 +61,8 @@ class TaskJobData(BaseModel):
     queued_at: datetime | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    queue_wait_ms: float | None = None
+    execution_ms: float | None = None
 
 
 class TaskErrorData(BaseModel):

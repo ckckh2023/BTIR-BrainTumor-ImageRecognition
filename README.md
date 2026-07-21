@@ -132,6 +132,7 @@ BTIR_TASK_JOB_TIMEOUT_SECONDS=3600
 BTIR_TASK_JOB_RESULT_TTL_SECONDS=86400
 BTIR_TASK_JOB_MAX_RETRIES=1
 BTIR_TASK_STALE_AFTER_SECONDS=3660
+BTIR_WORKER_PRELOAD_MODELS=true
 BTIR_TASK_DATABASE_PATH=data/btir.db
 BTIR_MAX_UPLOAD_BYTES=20971520
 BTIR_MAX_IMAGE_PIXELS=40000000
@@ -155,7 +156,8 @@ python -m workers.run_worker
 
 任务 ID、状态、RQ 作业信息和运行记录保存在 `data/btir.db`。首次启动时会自动创建该文件，无需手动安装数据库服务
 
-Windows 本地开发会自动使用单进程 `SimpleWorker`；Linux 服务器使用标准 RQ worker  
+Windows 本地开发会自动使用单进程 `SimpleWorker`，默认会在启动阶段预加载模型，因此首次任务不会再承担模型冷启动  
+Linux 服务器使用标准 RQ worker；为避免 fork 后 CUDA 初始化风险，默认不预加载，仍由任务进程按需加载
 两种模式均一次执行一个推理任务，适合单张 GPU，避免并发模型推理抢占显存
 
 Worker 名称会自动包含主机名和进程号  
