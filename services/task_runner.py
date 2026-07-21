@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 from core.task_definitions import ModelName
@@ -24,11 +25,12 @@ class TaskRunResult:
     image_path: Path
     classification_result: dict[str, Any]
     segmentation_result: dict[str, Any]
+    total_inference_ms: float
 
 
 @dataclass(frozen=True)
 class ModelRunResult:
-    '''单个模型调用生成的输入与持久化结果。'''
+    '''单个模型调用生成的输入与持久化结果'''
 
     image_path: Path
     result: dict[str, Any]
@@ -36,11 +38,14 @@ class ModelRunResult:
 
 def _run_classification(task_dir: Path, image_path: Path) -> dict[str, Any]:
     '''执行分类并写入结果；调用方已负责加载输入图片'''
+    started_at = perf_counter()
+    result = classify(image_path)
+    result["timing"] = {"inference_ms": _elapsed_ms(started_at)}
     return persist_model_result(
         task_dir=task_dir,
         image_path=image_path,
         model_name=ModelName.CLASSIFICATION,
-        result=classify(image_path),
+        result=result,
     )
 
 
@@ -49,17 +54,20 @@ def _run_segmentation(
     image_path: Path,
     threshold: float,
 ) -> dict[str, Any]:
-    '''执行分割并写入结果；调用方已负责加载输入图片。'''
+    '''执行分割并写入结果；调用方已负责加载输入图片'''
     run_dir = create_run_dir(task_dir, ModelName.SEGMENTATION)
+    started_at = perf_counter()
+    result = segment(
+        image_path=image_path,
+        threshold=threshold,
+        output_dir=run_dir,
+    )
+    result["timing"] = {"inference_ms": _elapsed_ms(started_at)}
     return persist_model_result(
         task_dir=task_dir,
         image_path=image_path,
         model_name=ModelName.SEGMENTATION,
-        result=segment(
-            image_path=image_path,
-            threshold=threshold,
-            output_dir=run_dir,
-        ),
+        result=result,
         run_dir=run_dir,
     )
 
@@ -84,6 +92,7 @@ def run_segmentation(task_dir: Path, threshold: float) -> ModelRunResult:
 
 def run_task_models(task_dir: Path, threshold: float) -> TaskRunResult:
     '''顺序执行分类、分割，并将两项结果写入同一任务目录'''
+    started_at = perf_counter()
     image_path = load_task_image(task_dir)
     classification_result = _run_classification(task_dir, image_path)
     segmentation_result = _run_segmentation(task_dir, image_path, threshold)
@@ -91,4 +100,9 @@ def run_task_models(task_dir: Path, threshold: float) -> TaskRunResult:
         image_path=image_path,
         classification_result=classification_result,
         segmentation_result=segmentation_result,
+        total_inference_ms=_elapsed_ms(started_at),
     )
+
+
+def _elapsed_ms(started_at: float) -> float:
+    return round((perf_counter() - started_at) * 1000, 3)

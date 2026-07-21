@@ -35,6 +35,8 @@ class TaskJobRecord(BaseModel):
     queued_at: datetime | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    queue_wait_ms: float | None = None
+    execution_ms: float | None = None
 
 
 class TaskRunRecord(BaseModel):
@@ -46,6 +48,7 @@ class TaskRunRecord(BaseModel):
     model: ModelName
     result_file: str
     created_at: datetime
+    inference_ms: float | None = None
 
 
 class TaskErrorRecord(BaseModel):
