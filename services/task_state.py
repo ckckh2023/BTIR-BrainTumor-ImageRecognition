@@ -4,17 +4,20 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from core.task_definitions import JobStatus, ModelName, TaskStatus
+from core.task_definitions import (
+    JobStatus,
+    ModelName,
+    TaskStatus,
+    task_status_for_completed_models,
+    task_status_from_job_status,
+)
 from core.task_records import TaskErrorRecord, TaskJobRecord, TaskRecord, TaskRunRecord
 from repositories.task_repository import task_repository
 from services.task_files import task_relative_path
 from services.task_lock import task_write_lock
 
 
-ASYNC_TASK_STATUSES = frozenset(JobStatus)
-
-
-def mark_task_completed(task_dir: Path, *models: ModelName | str) -> None:
+def mark_models_completed(task_dir: Path, *models: ModelName | str) -> None:
     '''将指定模型标记为已完成，并更新任务元数据'''
     if not task_repository.exists(task_dir):
         return
@@ -27,12 +30,7 @@ def mark_task_completed(task_dir: Path, *models: ModelName | str) -> None:
         TaskStatus.QUEUED,
         TaskStatus.RUNNING,
     }:
-        record.status = (
-            TaskStatus.COMPLETED
-            if {ModelName.CLASSIFICATION, ModelName.SEGMENTATION}
-            <= completed
-            else TaskStatus.PARTIAL
-        )
+        record.status = task_status_for_completed_models(completed)
     record.updated_at = datetime.now().astimezone()
     task_repository.save(task_dir, record)
 
@@ -46,10 +44,7 @@ def update_task_execution_status(
     error: str | None = None,
 ) -> TaskRecord:
     '''更新 RQ 作业状态，并同步写入任务元数据'''
-    try:
-        job_status = JobStatus(status)
-    except ValueError as exc:
-        raise ValueError(f"不支持的异步任务状态：{status}") from exc
+    job_status = JobStatus(status)
 
     with task_write_lock(task_dir.name):
         record = task_repository.load(task_dir)
@@ -67,7 +62,7 @@ def update_task_execution_status(
             started_at=(now if job_status is JobStatus.RUNNING else (job.started_at if job else None)),
             finished_at=(now if job_status in {JobStatus.SUCCEEDED, JobStatus.FAILED} else (job.finished_at if job else None)),
         )
-        record.status = TaskStatus(job_status)
+        record.status = task_status_from_job_status(job_status)
         record.job = job
         record.updated_at = now
         if error:

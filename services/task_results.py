@@ -10,12 +10,12 @@ from typing import Any
 from core.task_definitions import (
     ModelName,
     TaskArtifact,
-    TaskStatus,
     model_result_filename,
+    task_status_for_completed_models,
 )
 from services.task_files import create_run_dir, task_relative_path, write_json
 from services.task_lock import task_write_lock
-from services.task_state import mark_task_completed, record_task_run
+from services.task_state import mark_models_completed, record_task_run
 
 
 def persist_model_result(
@@ -77,7 +77,7 @@ def _persist_model_result_unlocked(
     result["history_result_path"] = task_relative_path(task_dir, history_path)
     result["frontend_result_path"] = task_relative_path(task_dir, frontend_path)
     record_task_run(task_dir, model, history_path)
-    mark_task_completed(task_dir, model)
+    mark_models_completed(task_dir, model)
     return result
 
 
@@ -137,9 +137,5 @@ def build_frontend_result(
         name for name in ModelName if name.value in result
     ]
     result["completed_models"] = [name.value for name in completed_models]
-    result["status"] = (
-        TaskStatus.COMPLETED.value
-        if len(completed_models) == len(ModelName)
-        else TaskStatus.PARTIAL.value
-    )
+    result["status"] = task_status_for_completed_models(completed_models).value
     return result

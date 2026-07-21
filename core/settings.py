@@ -89,6 +89,8 @@ class Settings:
     task_database_path: Path
     device: str
     default_segment_threshold: float
+    max_upload_bytes: int
+    max_image_pixels: int
     cors_origins: list[str]
     redis_url: str
     task_lock_timeout_seconds: int
@@ -127,6 +129,14 @@ def _build_settings() -> Settings:
         ),
         device=device,
         default_segment_threshold=_get_threshold(),
+        max_upload_bytes=_get_positive_int(
+            "BTIR_MAX_UPLOAD_BYTES",
+            20 * 1024 * 1024,
+        ),
+        max_image_pixels=_get_positive_int(
+            "BTIR_MAX_IMAGE_PIXELS",
+            40_000_000,
+        ),
         cors_origins=_get_origins(),
         redis_url=os.getenv(
             "BTIR_REDIS_URL",

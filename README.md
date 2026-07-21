@@ -131,7 +131,11 @@ BTIR_TASK_QUEUE_NAME=inference
 BTIR_TASK_JOB_TIMEOUT_SECONDS=3600
 BTIR_TASK_JOB_RESULT_TTL_SECONDS=86400
 BTIR_TASK_DATABASE_PATH=data/btir.db
+BTIR_MAX_UPLOAD_BYTES=20971520
+BTIR_MAX_IMAGE_PIXELS=40000000
 ```
+
+`POST /tasks` 会在落盘时限制上传文件大小，并在图片解码前检查像素数量；默认分别为 20 MiB 和 4,000 万像素。可按部署资源通过上述环境变量调整。
 
 `GET /runtime` 会返回 `task_database_backend` 与 `task_database_available`，用于确认任务数据库是否可用  
 任务目录存在但数据库没有对应元数据时，接口返回 HTTP `404`；SQLite 不可用时返回 HTTP `503`

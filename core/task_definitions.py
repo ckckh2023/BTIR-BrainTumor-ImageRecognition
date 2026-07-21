@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from enum import StrEnum
 
 
@@ -12,6 +13,7 @@ class TaskStatus(StrEnum):
     QUEUED = "queued"
     RUNNING = "running"
     PARTIAL = "partial"
+    # 保留旧任务记录的兼容性；新任务完成统一使用 SUCCEEDED
     COMPLETED = "completed"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
@@ -31,6 +33,30 @@ class ModelName(StrEnum):
 
     CLASSIFICATION = "classification"
     SEGMENTATION = "segmentation"
+
+
+ALL_MODELS = frozenset(ModelName)
+
+
+def task_status_from_job_status(status: JobStatus | str) -> TaskStatus:
+    '''将队列作业状态显式映射为任务状态'''
+    try:
+        job_status = JobStatus(status)
+    except ValueError as exc:
+        raise ValueError(f"不支持的异步任务状态：{status}") from exc
+    return TaskStatus(job_status.value)
+
+
+def task_status_for_completed_models(
+    models: Iterable[ModelName | str],
+) -> TaskStatus:
+    '''根据已完成模型计算同步任务的终态'''
+    completed_models = {ModelName(model) for model in models}
+    return (
+        TaskStatus.SUCCEEDED
+        if ALL_MODELS <= completed_models
+        else TaskStatus.PARTIAL
+    )
 
 
 class InputStorageMode(StrEnum):
