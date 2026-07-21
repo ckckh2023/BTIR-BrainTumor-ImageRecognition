@@ -12,6 +12,8 @@ from core.task_definitions import (
     TaskDirectory,
     TaskStatus,
     model_result_filename,
+    task_status_for_completed_models,
+    task_status_from_job_status,
 )
 
 
@@ -23,6 +25,24 @@ class TaskDefinitionTests(unittest.TestCase):
         self.assertEqual(TaskStatus.SUCCEEDED.value, "succeeded")
         self.assertEqual(JobStatus.QUEUED.value, "queued")
         self.assertEqual(JobStatus.FAILED.value, "failed")
+
+    def test_status_helpers_centralize_sync_and_async_transitions(self) -> None:
+        self.assertEqual(
+            task_status_for_completed_models([ModelName.CLASSIFICATION]),
+            TaskStatus.PARTIAL,
+        )
+        self.assertEqual(
+            task_status_for_completed_models(list(ModelName)),
+            TaskStatus.SUCCEEDED,
+        )
+        self.assertEqual(
+            task_status_from_job_status(JobStatus.QUEUED),
+            TaskStatus.QUEUED,
+        )
+        self.assertEqual(
+            task_status_from_job_status("succeeded"),
+            TaskStatus.SUCCEEDED,
+        )
 
     def test_model_and_artifact_values_are_stable(self) -> None:
         self.assertEqual(model_result_filename(ModelName.CLASSIFICATION), "classification.json")

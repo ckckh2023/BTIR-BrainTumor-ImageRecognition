@@ -9,17 +9,20 @@ import os
 import shutil
 import tempfile
 import uuid
+import warnings
 from pathlib import Path
 from typing import Any, BinaryIO
 
 from PIL import Image, UnidentifiedImageError
 
+from core.settings import SETTINGS
 from core.task_records import StoredTaskInput, TaskRecord
 from repositories.task_repository import task_repository
 from core.task_definitions import InputStorageMode, TaskDirectory, TaskStatus
 
 
 ALLOWED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png"}
+UPLOAD_COPY_CHUNK_BYTES = 1024 * 1024
 
 
 def validate_image_path(path: Path) -> Path:
@@ -169,13 +172,17 @@ def initialize_uploaded_task(
     task_image = input_dir / f"image{suffix}"
     try:
         with task_image.open("wb") as destination:
-            shutil.copyfileobj(upload, destination)
+            _copy_upload_with_limit(
+                upload,
+                destination,
+                SETTINGS.max_upload_bytes,
+            )
 
-        if task_image.stat().st_size == 0:
-            raise ValueError("上传文件为空")
-        with Image.open(task_image) as image:
-            image.verify()
-    except (OSError, UnidentifiedImageError) as exc:
+        _verify_uploaded_image(task_image, SETTINGS.max_image_pixels)
+    except ValueError:
+        task_image.unlink(missing_ok=True)
+        raise
+    except (OSError, UnidentifiedImageError, Image.DecompressionBombError) as exc:
         task_image.unlink(missing_ok=True)
         raise ValueError("上传文件不是可读取的图片") from exc
 
@@ -192,6 +199,38 @@ def initialize_uploaded_task(
         ),
     )
     return task_image
+
+
+def _copy_upload_with_limit(
+    upload: BinaryIO,
+    destination: BinaryIO,
+    max_upload_bytes: int,
+) -> None:
+    '''分块写入上传内容，避免单个请求无限占用磁盘'''
+    written_bytes = 0
+    while chunk := upload.read(UPLOAD_COPY_CHUNK_BYTES):
+        written_bytes += len(chunk)
+        if written_bytes > max_upload_bytes:
+            raise ValueError(
+                f"上传文件超过大小限制（最大 {max_upload_bytes} 字节）"
+            )
+        destination.write(chunk)
+
+    if written_bytes == 0:
+        raise ValueError("上传文件为空")
+
+
+def _verify_uploaded_image(image_path: Path, max_image_pixels: int) -> None:
+    '''验证上传文件可解码，且解码后的像素数量不超过限制'''
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", Image.DecompressionBombWarning)
+        with Image.open(image_path) as image:
+            width, height = image.size
+            if width * height > max_image_pixels:
+                raise ValueError(
+                    f"图像像素超过限制（最大 {max_image_pixels} 像素）"
+                )
+            image.verify()
 
 
 def load_task_image(task_dir: Path) -> Path:
