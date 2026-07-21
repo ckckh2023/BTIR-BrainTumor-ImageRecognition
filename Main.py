@@ -12,6 +12,7 @@ from core.settings import SETTINGS
 from core.task_definitions import TaskStatus
 from repositories.task_repository import task_repository
 from services.archive_service import archive_expired_tasks, purge_expired_archives
+from services.benchmark_service import benchmark_models
 from services.cleanup_service import clear_generated_files
 from services.presentation import print_result
 from services.task_files import (
@@ -72,6 +73,15 @@ def main(argv: list[str] | None = None) -> int:
                 limit=args.limit,
             )
             _print_archive_report(report)
+            return 0
+
+        if args.command == "benchmark":
+            result = benchmark_models(
+                args.image_path,
+                threshold=args.threshold,
+                warm_runs=args.warm_runs,
+            )
+            print_result(result, args.json)
             return 0
 
         output_root = args.output_dir.resolve()
@@ -190,6 +200,25 @@ def _build_parser() -> argparse.ArgumentParser:
             help="本次最多处理的任务数，默认 100",
         )
 
+    benchmark = commands.add_parser(
+        "benchmark",
+        help="测量分类与分割模型在当前进程中的首次和连续推理耗时",
+    )
+    benchmark.add_argument("image_path", type=Path, help="用于基准测试的输入图像")
+    benchmark.add_argument(
+        "--warm-runs",
+        type=int,
+        default=3,
+        help="首次调用后连续测量次数，默认 3",
+    )
+    benchmark.add_argument(
+        "--threshold",
+        type=float,
+        default=SETTINGS.default_segment_threshold,
+        help=f"分割阈值，默认 {SETTINGS.default_segment_threshold}",
+    )
+    benchmark.add_argument("--json", action="store_true", help="输出完整 JSON 结果")
+
     # 添加create子命令
     create = commands.add_parser("create", help="创建任务并保存一次输入图片")
     create.add_argument("image_path", type=Path, help="输入 MRI 图像路径") # image_path 参数
@@ -255,7 +284,8 @@ def _print_help(parser: argparse.ArgumentParser) -> None:
         "  python Main.py create dataset/yes/Y101.jpg --input-mode copy\n"
         "  python Main.py clear --dry-run\n"
         "  python Main.py archive-tasks\n"
-        "  python Main.py purge-archive"
+        "  python Main.py purge-archive\n"
+        "  python Main.py benchmark dataset/no/1.jpg --warm-runs 3"
     )
 
 

@@ -262,6 +262,18 @@ python Main.py purge-archive --apply
 python -m unittest discover -s tests -v
 ```
 
+Redis 可用时，测试会额外运行真实 RQ `SimpleWorker` 的入队、执行和一次失败重试集成测试；Redis 不可用时该组测试会自动跳过
+
+### 推理性能基准
+
+以下命令只使用临时输出目录，不创建任务、不写 SQLite，也不修改 `output/`：
+
+```cmd
+python Main.py benchmark "dataset/no/1 no.jpeg" --warm-runs 3 --json
+```
+
+输出分别包含分类和分割模型在当前 Python 进程的首次调用耗时，以及连续调用的均值、最小值和 P95 耗时
+
 ## API 使用流程
 
 ### 服务健康检查
