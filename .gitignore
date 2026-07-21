@@ -24,6 +24,7 @@ env/
 
 # 运行时生成的文件和本地数据集
 output/
+archive/
 data/*.db*
 dataset/
 models/**/output/

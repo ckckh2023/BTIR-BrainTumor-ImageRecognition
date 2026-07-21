@@ -42,6 +42,9 @@ def update_task_execution_status(
     job_id: str,
     queue_name: str | None = None,
     error: str | None = None,
+    error_code: str = "task_failed",
+    error_detail: str | None = None,
+    attempt: int | None = None,
 ) -> TaskRecord:
     '''更新 RQ 作业状态，并同步写入任务元数据'''
     job_status = JobStatus(status)
@@ -58,6 +61,8 @@ def update_task_execution_status(
             id=job_id,
             queue=queue_name or (job.queue if job else ""),
             status=job_status,
+            attempt=attempt if attempt is not None else (job.attempt if job else 0),
+            max_retries=job.max_retries if job else 0,
             queued_at=(now if job_status is JobStatus.QUEUED else (job.queued_at if job else None)),
             started_at=(now if job_status is JobStatus.RUNNING else (job.started_at if job else None)),
             finished_at=(now if job_status in {JobStatus.SUCCEEDED, JobStatus.FAILED} else (job.finished_at if job else None)),
@@ -66,7 +71,12 @@ def update_task_execution_status(
         record.job = job
         record.updated_at = now
         if error:
-            record.error = TaskErrorRecord(message=error, updated_at=now)
+            record.error = TaskErrorRecord(
+                code=error_code,
+                message=error,
+                detail=error_detail,
+                updated_at=now,
+            )
         elif job_status is not JobStatus.FAILED:
             record.error = None
         task_repository.save(task_dir, record)

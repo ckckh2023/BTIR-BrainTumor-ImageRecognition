@@ -66,6 +66,24 @@ def _get_positive_int(name: str, default: int) -> int:
     return value
 
 
+def _get_nonnegative_int(name: str, default: int) -> int:
+    '''获取 int 类型非负数'''
+    value = int(os.getenv(name, str(default)))
+    if value < 0:
+        raise ValueError(f"{name} 不能小于 0")
+    return value
+
+
+def _get_bool(name: str, default: bool) -> bool:
+    '''获取布尔环境变量。'''
+    value = os.getenv(name, str(default)).strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} 必须是 true 或 false")
+
+
 def _get_nonnegative_float(name: str, default: float) -> float:
     '''获取float类型非负数'''
     value = float(os.getenv(name, str(default)))
@@ -87,6 +105,7 @@ class Settings:
     segmenter_script: Path
     segmenter_model: Path
     task_database_path: Path
+    task_archive_dir: Path
     device: str
     default_segment_threshold: float
     max_upload_bytes: int
@@ -98,6 +117,12 @@ class Settings:
     task_queue_name: str
     task_job_timeout_seconds: int
     task_job_result_ttl_seconds: int
+    task_job_max_retries: int
+    task_stale_after_seconds: int
+    task_cleanup_enabled: bool
+    succeeded_task_retention_days: int
+    failed_task_retention_days: int
+    task_archive_grace_days: int
 
 
 def _build_settings() -> Settings:
@@ -159,10 +184,32 @@ def _build_settings() -> Settings:
             "BTIR_TASK_JOB_RESULT_TTL_SECONDS",
             86400,
         ),
+        task_job_max_retries=_get_nonnegative_int(
+            "BTIR_TASK_JOB_MAX_RETRIES",
+            1,
+        ),
+        task_stale_after_seconds=_get_positive_int(
+            "BTIR_TASK_STALE_AFTER_SECONDS",
+            3660,
+        ),
+        task_cleanup_enabled=_get_bool("BTIR_TASK_CLEANUP_ENABLED", False),
+        succeeded_task_retention_days=_get_nonnegative_int(
+            "BTIR_SUCCEEDED_TASK_RETENTION_DAYS",
+            30,
+        ),
+        failed_task_retention_days=_get_nonnegative_int(
+            "BTIR_FAILED_TASK_RETENTION_DAYS",
+            7,
+        ),
+        task_archive_grace_days=_get_nonnegative_int(
+            "BTIR_TASK_ARCHIVE_GRACE_DAYS",
+            7,
+        ),
         task_database_path=_get_path(
             "BTIR_TASK_DATABASE_PATH",
             "data/btir.db",
         ),
+        task_archive_dir=_get_path("BTIR_TASK_ARCHIVE_DIR", "archive"),
     )
 
 

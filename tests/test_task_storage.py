@@ -65,6 +65,27 @@ class TaskStorageTests(unittest.TestCase):
         with self.assertRaises(TaskNotFoundError):
             self.repository.load(self.output_dir / "missing-task")
 
+    def test_list_tasks_supports_status_filter_and_pagination(self) -> None:
+        task_ids = ["task-001", "task-002", "task-003"]
+        statuses = [TaskStatus.CREATED, TaskStatus.FAILED, TaskStatus.FAILED]
+        for index, (task_id, status) in enumerate(zip(task_ids, statuses, strict=True)):
+            task_dir = self.output_dir / task_id
+            task_dir.mkdir(parents=True)
+            record = self._record(task_id, status)
+            record.created_at = datetime.fromisoformat(
+                f"2026-01-0{index + 1}T00:00:00+00:00"
+            )
+            self.repository.save(task_dir, record)
+
+        failed_records, failed_total = self.repository.list_tasks(
+            limit=1,
+            offset=0,
+            status=TaskStatus.FAILED,
+        )
+
+        self.assertEqual(failed_total, 2)
+        self.assertEqual([record.task_id for record in failed_records], ["task-003"])
+
     def test_unavailable_database_raises_storage_error(self) -> None:
         blocked_parent = self.project_root / "not-a-directory"
         blocked_parent.write_text("blocked", encoding="utf-8")

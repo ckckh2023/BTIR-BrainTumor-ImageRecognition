@@ -1,0 +1,174 @@
+'''任务归档与永久删除安全边界的回归测试'''
+
+from __future__ import annotations
+
+from contextlib import nullcontext
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+import tempfile
+import unittest
+from unittest.mock import patch
+
+from core.settings import SETTINGS
+from core.task_definitions import TaskStatus
+from core.task_records import StoredTaskInput, TaskRecord
+from repositories.task_repository import SqliteTaskRepository, TaskNotFoundError
+from services.archive_service import archive_expired_tasks, purge_expired_archives
+
+
+class TaskArchiveTests(unittest.TestCase):
+    '''验证归档只移动符合策略的任务，永久删除仅作用于归档区。'''
+
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary_directory.name)
+        self.output_dir = self.root / "output"
+        self.archive_dir = self.root / "archive"
+        self.repository = SqliteTaskRepository(self.root / "tasks.db")
+        self.now = datetime(2026, 7, 21, tzinfo=timezone.utc)
+        self.settings = replace(
+            SETTINGS,
+            task_cleanup_enabled=True,
+            succeeded_task_retention_days=30,
+            failed_task_retention_days=7,
+            task_archive_grace_days=7,
+        )
+
+    def tearDown(self) -> None:
+        self.temporary_directory.cleanup()
+
+    @staticmethod
+    def _no_lock(_: str):
+        return nullcontext()
+
+    def _create_task(self, task_id: str, status: TaskStatus, updated_at: datetime) -> Path:
+        task_dir = self.output_dir / task_id
+        task_dir.mkdir(parents=True)
+        (task_dir / "result.json").write_text("{}", encoding="utf-8")
+        self.repository.save(
+            task_dir,
+            TaskRecord(
+                task_id=task_id,
+                name=task_id,
+                status=status,
+                created_at=updated_at,
+                updated_at=updated_at,
+                input=StoredTaskInput(
+                    path="input/image.png",
+                    storage_mode="uploaded",
+                    size_bytes=1,
+                    sha256="a" * 64,
+                ),
+            ),
+        )
+        return task_dir
+
+    def test_archive_dry_run_never_moves_task_data(self) -> None:
+        task_dir = self._create_task(
+            "task-archive-preview",
+            TaskStatus.SUCCEEDED,
+            self.now - timedelta(days=31),
+        )
+
+        with patch("services.archive_service.SETTINGS", self.settings):
+            report = archive_expired_tasks(
+                dry_run=True,
+                now=self.now,
+                repository=self.repository,
+                output_dir=self.output_dir,
+                archive_dir=self.archive_dir,
+            )
+
+        self.assertEqual(report.processed_task_ids, [task_dir.name])
+        self.assertTrue(task_dir.is_dir())
+        self.assertFalse((self.archive_dir / "tasks" / task_dir.name).exists())
+
+    def test_archive_moves_eligible_task_and_preserves_metadata(self) -> None:
+        task_dir = self._create_task(
+            "task-archive-apply",
+            TaskStatus.FAILED,
+            self.now - timedelta(days=8),
+        )
+
+        with (
+            patch("services.archive_service.SETTINGS", self.settings),
+            patch("services.archive_service.task_write_lock", self._no_lock),
+        ):
+            report = archive_expired_tasks(
+                dry_run=False,
+                now=self.now,
+                repository=self.repository,
+                output_dir=self.output_dir,
+                archive_dir=self.archive_dir,
+                cleanup_enabled=True,
+            )
+
+        archived_dir = self.archive_dir / "tasks" / task_dir.name
+        self.assertEqual(report.processed_task_ids, [task_dir.name])
+        self.assertFalse(task_dir.exists())
+        self.assertTrue((archived_dir / "result.json").is_file())
+        self.assertEqual(self.repository.load(archived_dir).archived_at, self.now)
+        self.assertTrue((self.archive_dir / "audit.jsonl").is_file())
+
+    def test_purge_removes_only_expired_archived_task(self) -> None:
+        task_id = "task-purge-apply"
+        archived_dir = self.archive_dir / "tasks" / task_id
+        archived_dir.mkdir(parents=True)
+        (archived_dir / "result.json").write_text("{}", encoding="utf-8")
+        archived_at = self.now - timedelta(days=8)
+        self.repository.save(
+            archived_dir,
+            TaskRecord(
+                task_id=task_id,
+                name=task_id,
+                status=TaskStatus.SUCCEEDED,
+                created_at=self.now - timedelta(days=40),
+                updated_at=self.now - timedelta(days=40),
+                archived_at=archived_at,
+                input=StoredTaskInput(
+                    path="input/image.png",
+                    storage_mode="uploaded",
+                    size_bytes=1,
+                    sha256="a" * 64,
+                ),
+            ),
+        )
+
+        with (
+            patch("services.archive_service.SETTINGS", self.settings),
+            patch("services.archive_service.task_write_lock", self._no_lock),
+        ):
+            report = purge_expired_archives(
+                dry_run=False,
+                now=self.now,
+                repository=self.repository,
+                archive_dir=self.archive_dir,
+                cleanup_enabled=True,
+            )
+
+        self.assertEqual(report.processed_task_ids, [task_id])
+        self.assertFalse(archived_dir.exists())
+        with self.assertRaises(TaskNotFoundError):
+            self.repository.load(archived_dir)
+
+    def test_apply_requires_explicit_cleanup_enablement(self) -> None:
+        self._create_task(
+            "task-disabled",
+            TaskStatus.SUCCEEDED,
+            self.now - timedelta(days=31),
+        )
+
+        with self.assertRaisesRegex(ValueError, "自动清理未启用"):
+            archive_expired_tasks(
+                dry_run=False,
+                now=self.now,
+                repository=self.repository,
+                output_dir=self.output_dir,
+                archive_dir=self.archive_dir,
+                cleanup_enabled=False,
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -4,16 +4,24 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 from copy import deepcopy
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, call, patch
 
 from redis.exceptions import RedisError
+from rq.job import JobStatus as RqJobStatus
 
-from core.task_definitions import TaskStatus
-from core.task_records import StoredTaskInput, TaskRecord
-from services.task_queue import TaskQueueUnavailableError, enqueue_task_run
+from core.settings import SETTINGS
+from core.task_definitions import JobStatus, ModelName, TaskStatus
+from core.task_records import StoredTaskInput, TaskJobRecord, TaskRecord
+from services.task_queue import (
+    TaskQueueUnavailableError,
+    enqueue_task_run,
+    reconcile_task_job,
+)
 from services.task_runner import (
     run_classification,
     run_segmentation,
@@ -84,6 +92,10 @@ class AsyncQueueTests(unittest.TestCase):
             patch("services.task_queue.task_repository", repository),
             patch("services.task_queue.task_write_lock", self._no_lock),
             patch("services.task_queue.get_task_queue", return_value=queue),
+            patch(
+                "services.task_queue.SETTINGS",
+                replace(SETTINGS, task_job_max_retries=1),
+            ),
         ):
             first_job, first_reused = enqueue_task_run(self.task_dir, 0.5)
             second_job, second_reused = enqueue_task_run(self.task_dir, 0.5)
@@ -93,6 +105,7 @@ class AsyncQueueTests(unittest.TestCase):
         self.assertEqual(first_job["id"], "job-001")
         self.assertEqual(second_job["id"], "job-001")
         self.assertEqual(queue.enqueue.call_count, 1)
+        self.assertEqual(queue.enqueue.call_args.kwargs["retry"].max, 1)
         self.assertEqual(repository.record.status, TaskStatus.QUEUED)
 
     def test_queue_error_is_converted_to_service_error(self) -> None:
@@ -109,6 +122,39 @@ class AsyncQueueTests(unittest.TestCase):
             enqueue_task_run(self.task_dir, 0.5)
 
         self.assertEqual(repository.record.status, TaskStatus.CREATED)
+
+    def test_manual_retry_rejects_nonfailed_task(self) -> None:
+        record = deepcopy(self.record)
+        record.status = TaskStatus.SUCCEEDED
+        repository = FakeTaskRepository(record)
+
+        with (
+            patch("services.task_queue.task_repository", repository),
+            patch("services.task_queue.task_write_lock", self._no_lock),
+            self.assertRaisesRegex(ValueError, "仅失败任务"),
+        ):
+            enqueue_task_run(self.task_dir, 0.5, retry_failed_only=True)
+
+    def test_manual_retry_enqueues_failed_task(self) -> None:
+        record = deepcopy(self.record)
+        record.status = TaskStatus.FAILED
+        repository = FakeTaskRepository(record)
+        queue = FakeQueue()
+
+        with (
+            patch("services.task_queue.task_repository", repository),
+            patch("services.task_queue.task_write_lock", self._no_lock),
+            patch("services.task_queue.get_task_queue", return_value=queue),
+        ):
+            job, reused = enqueue_task_run(
+                self.task_dir,
+                0.5,
+                retry_failed_only=True,
+            )
+
+        self.assertFalse(reused)
+        self.assertEqual(job["status"], "queued")
+        self.assertEqual(repository.record.status, TaskStatus.QUEUED)
 
 
 class TaskRunnerTests(unittest.TestCase):
@@ -280,10 +326,111 @@ class InferenceWorkerTests(unittest.TestCase):
         self.assertEqual(update_status.call_args_list[0].args[1], "running")
         self.assertEqual(update_status.call_args_list[1].args[1], "failed")
         self.assertEqual(update_status.call_args_list[1].kwargs["job_id"], self.job.id)
+        self.assertEqual(
+            update_status.call_args_list[1].kwargs["error"],
+            "模型推理失败，请稍后重试或联系管理员",
+        )
+        self.assertEqual(
+            update_status.call_args_list[1].kwargs["error_code"],
+            "inference_failed",
+        )
         self.assertIn(
             "RuntimeError: simulated inference failure",
-            update_status.call_args_list[1].kwargs["error"],
+            update_status.call_args_list[1].kwargs["error_detail"],
         )
+
+    def test_worker_requeues_first_failure_when_rq_retry_is_available(self) -> None:
+        retrying_job = SimpleNamespace(
+            id=self.job.id,
+            should_retry=Mock(return_value=True),
+        )
+        update_status = Mock()
+
+        with (
+            patch("workers.inference_jobs.get_current_job", return_value=retrying_job),
+            patch("workers.inference_jobs.get_task_dir", return_value=self.task_dir),
+            patch("workers.inference_jobs.update_task_execution_status", update_status),
+            patch(
+                "workers.inference_jobs.run_task_models",
+                side_effect=RuntimeError("transient inference failure"),
+            ),
+            self.assertRaisesRegex(RuntimeError, "transient inference failure"),
+        ):
+            run_task_job(self.task_id, 0.5)
+
+        self.assertEqual(update_status.call_args_list[0].args[1], "running")
+        self.assertEqual(update_status.call_args_list[1].args[1], "queued")
+        self.assertIsNone(update_status.call_args_list[1].kwargs["error"])
+
+
+class TaskReconciliationTests(unittest.TestCase):
+    '''验证任务状态会跟随 RQ 的实际状态收敛。'''
+
+    def setUp(self) -> None:
+        self.task_dir = Path("output") / "task-reconcile-001"
+        now = datetime.now(timezone.utc)
+        self.record = TaskRecord(
+            task_id=self.task_dir.name,
+            name="对账测试任务",
+            status=TaskStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+            completed_models=[ModelName.CLASSIFICATION, ModelName.SEGMENTATION],
+            input=StoredTaskInput(
+                path="input/image.png",
+                storage_mode="uploaded",
+                size_bytes=1,
+                sha256="a" * 64,
+            ),
+            job=TaskJobRecord(
+                id="job-reconcile-001",
+                queue="inference",
+                status=JobStatus.RUNNING,
+                queued_at=now - timedelta(seconds=5),
+                started_at=now,
+            ),
+        )
+
+    def test_finished_rq_job_recovers_missing_success_writeback(self) -> None:
+        repository = FakeTaskRepository(self.record)
+        rq_job = SimpleNamespace(get_status=Mock(return_value=RqJobStatus.FINISHED))
+        update_status = Mock(return_value=self.record)
+
+        with (
+            patch("services.task_queue.task_repository", repository),
+            patch("services.task_queue.get_redis_client", return_value=Mock()),
+            patch("services.task_queue.Job.fetch", return_value=rq_job),
+            patch("services.task_queue.update_task_execution_status", update_status),
+        ):
+            reconcile_task_job(self.task_dir)
+
+        update_status.assert_called_once_with(
+            self.task_dir,
+            JobStatus.SUCCEEDED,
+            job_id="job-reconcile-001",
+            queue_name="inference",
+        )
+
+    def test_stale_running_job_is_marked_failed(self) -> None:
+        self.record.job.started_at = datetime.now(timezone.utc) - timedelta(seconds=10)
+        repository = FakeTaskRepository(self.record)
+        rq_job = SimpleNamespace(get_status=Mock(return_value=RqJobStatus.STARTED))
+        update_status = Mock(return_value=self.record)
+
+        with (
+            patch("services.task_queue.task_repository", repository),
+            patch("services.task_queue.get_redis_client", return_value=Mock()),
+            patch("services.task_queue.Job.fetch", return_value=rq_job),
+            patch("services.task_queue.update_task_execution_status", update_status),
+            patch(
+                "services.task_queue.SETTINGS",
+                replace(SETTINGS, task_stale_after_seconds=1),
+            ),
+        ):
+            reconcile_task_job(self.task_dir)
+
+        self.assertEqual(update_status.call_args.args[1], JobStatus.FAILED)
+        self.assertIn("超过允许执行时长", update_status.call_args.kwargs["error"])
 
 
 if __name__ == "__main__":

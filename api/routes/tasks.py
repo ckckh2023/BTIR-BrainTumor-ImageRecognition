@@ -6,7 +6,7 @@ import json
 import shutil
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse, JSONResponse
 
 from contracts.task import (
@@ -20,11 +20,14 @@ from contracts.task import (
     SegmentationData,
     TaskCreatedResponse,
     TaskEnqueuedResponse,
+    TaskErrorData,
     TaskInputData,
+    TaskListResponse,
     TaskStatusResponse,
+    TaskSummaryResponse,
 )
 from core.settings import SETTINGS
-from core.task_definitions import TaskArtifact
+from core.task_definitions import TaskArtifact, TaskStatus
 from repositories.task_repository import task_repository
 from services.task_files import (
     create_task_dir,
@@ -39,7 +42,7 @@ from services.task_runner import (
     run_segmentation,
     run_task_models,
 )
-from services.task_queue import enqueue_task_run
+from services.task_queue import enqueue_task_run, reconcile_task_job
 
 router = APIRouter(prefix="/tasks", tags=["任务"])
 
@@ -93,6 +96,40 @@ def bad_request_http_error(exc: ValueError) -> HTTPException:
     return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 
+def task_input_data(task_data) -> TaskInputData:
+    input_data = task_data.input
+    return TaskInputData(
+        filename=Path(input_data.path).name,
+        storage_mode=input_data.storage_mode,
+        size_bytes=input_data.size_bytes,
+        sha256=input_data.sha256,
+    )
+
+
+def task_error_data(task_data) -> TaskErrorData | None:
+    if task_data.error is None:
+        return None
+    return TaskErrorData(
+        code=task_data.error.code,
+        message=task_data.error.message,
+        updated_at=task_data.error.updated_at,
+    )
+
+
+def task_summary_data(task_data) -> TaskSummaryResponse:
+    return TaskSummaryResponse(
+        task_id=task_data.task_id,
+        name=task_data.name,
+        status=task_data.status,
+        created_at=task_data.created_at,
+        updated_at=task_data.updated_at,
+        completed_models=[model.value for model in task_data.completed_models],
+        input=task_input_data(task_data),
+        job=(task_data.job.model_dump(mode="json") if task_data.job else None),
+        error=task_error_data(task_data),
+    )
+
+
 @router.post(
     "",
     response_model=TaskCreatedResponse,
@@ -121,6 +158,26 @@ def create_task_from_upload(
         ) from exc
 
     return TaskCreatedResponse(task_id=task_dir.name, input_file=task_image.name)
+
+
+@router.get("", response_model=TaskListResponse)
+def list_tasks(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    status_filter: TaskStatus | None = Query(default=None, alias="status"),
+) -> TaskListResponse:
+    '''分页查询任务，可按整体状态筛选'''
+    task_records, total = task_repository.list_tasks(
+        limit=limit,
+        offset=offset,
+        status=status_filter,
+    )
+    return TaskListResponse(
+        items=[task_summary_data(record) for record in task_records],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.post(
@@ -177,9 +234,8 @@ def classify_task(task_id: str) -> ClassifyTaskResponse:
 def get_task(task_id: str) -> TaskStatusResponse:
     '''获取指定任务状态和当前结果'''
     task_dir = require_task_dir(task_id)
-    task_data = task_repository.load(task_dir)
+    task_data = reconcile_task_job(task_dir)
 
-    input_data = task_data.input
     frontend_path = task_dir / TaskArtifact.FRONTEND_RESULT
     frontend_result = (
         json.loads(frontend_path.read_text(encoding="utf-8"))
@@ -197,13 +253,9 @@ def get_task(task_id: str) -> TaskStatusResponse:
         created_at=task_data.created_at,
         updated_at=task_data.updated_at,
         completed_models=[model.value for model in task_data.completed_models],
-        input=TaskInputData(
-            filename=Path(input_data.path).name,
-            storage_mode=input_data.storage_mode,
-            size_bytes=input_data.size_bytes,
-            sha256=input_data.sha256,
-        ),
+        input=task_input_data(task_data),
         job=(task_data.job.model_dump(mode="json") if task_data.job else None),
+        error=task_error_data(task_data),
         frontend_result=frontend_result,
     )
 
@@ -321,6 +373,35 @@ def enqueue_task(
     threshold = resolve_run_threshold(request)
     try:
         job, reused = enqueue_task_run(task_dir, threshold)
+    except ValueError as exc:
+        raise bad_request_http_error(exc) from exc
+
+    return TaskEnqueuedResponse(
+        task_id=task_id,
+        status=job["status"],
+        job=job,
+        reused_existing_job=reused,
+    )
+
+
+@router.post(
+    "/{task_id}/retry",
+    response_model=TaskEnqueuedResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def retry_failed_task(
+    task_id: str,
+    request: RunTaskRequest | None = None,
+) -> TaskEnqueuedResponse:
+    '''手动重新提交一项最终失败的推理任务'''
+    task_dir = require_task_dir(task_id)
+    threshold = resolve_run_threshold(request)
+    try:
+        job, reused = enqueue_task_run(
+            task_dir,
+            threshold,
+            retry_failed_only=True,
+        )
     except ValueError as exc:
         raise bad_request_http_error(exc) from exc
 

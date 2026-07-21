@@ -5,46 +5,77 @@ from __future__ import annotations
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
+from datetime import datetime
 from typing import Iterator, Protocol
 
 from pydantic import ValidationError
 
 from core.settings import SETTINGS
+from core.task_definitions import TaskStatus
 from core.task_records import TaskRecord
 
 
 class TaskNotFoundError(LookupError):
-    '''任务元数据不存在。'''
+    '''任务元数据不存在'''
 
 
 class TaskRepositoryUnavailableError(RuntimeError):
-    '''任务元数据存储不可用。'''
+    '''任务元数据存储不可用'''
 
 
 class TaskRepository(Protocol):
-    '''任务元数据存储的最小接口。'''
+    '''任务元数据存储的最小接口'''
 
     def exists(self, task_dir: Path) -> bool:
-        '''返回任务元数据是否存在。'''
+        '''返回任务元数据是否存在'''
 
     def load(self, task_dir: Path) -> TaskRecord:
-        '''读取一条任务元数据。'''
+        '''读取一条任务元数据'''
 
     def save(self, task_dir: Path, record: TaskRecord) -> Path:
-        '''保存一条任务元数据。'''
+        '''保存一条任务元数据'''
 
     def count(self) -> int:
-        '''返回当前存储中的任务数量。'''
+        '''返回当前存储中的任务数量'''
+
+    def list_tasks(
+        self,
+        *,
+        limit: int,
+        offset: int,
+        status: TaskStatus | None = None,
+    ) -> tuple[list[TaskRecord], int]:
+        '''按创建时间倒序返回任务页和筛选后的总数'''
+
+    def list_archive_candidates(
+        self,
+        *,
+        succeeded_before: datetime,
+        failed_before: datetime,
+        limit: int,
+    ) -> list[TaskRecord]:
+        '''返回尚未归档且满足保留期的终态任务'''
+
+    def list_purge_candidates(
+        self,
+        *,
+        archived_before: datetime,
+        limit: int,
+    ) -> list[TaskRecord]:
+        '''返回已超过归档宽限期的任务'''
+
+    def delete(self, task_id: str) -> None:
+        '''删除一条任务元数据'''
 
     def delete_all(self) -> int:
-        '''删除全部任务元数据，并返回删除数量。'''
+        '''删除全部任务元数据，并返回删除数量'''
 
     def health_check(self) -> None:
-        '''检查任务元数据存储是否可用。'''
+        '''检查任务元数据存储是否可用'''
 
 
 class SqliteTaskRepository:
-    '''以 SQLite 保存任务元数据。'''
+    '''以 SQLite 保存任务元数据'''
 
     def __init__(self, database_path: Path) -> None:
         self.database_path = database_path
@@ -87,10 +118,17 @@ class SqliteTaskRepository:
                     status TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
+                    archived_at TEXT,
                     record_json TEXT NOT NULL
                 )
                 """
             )
+            columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(tasks)").fetchall()
+            }
+            if "archived_at" not in columns:
+                connection.execute("ALTER TABLE tasks ADD COLUMN archived_at TEXT")
 
     def exists(self, task_dir: Path) -> bool:
         with self._connect() as connection:
@@ -124,13 +162,14 @@ class SqliteTaskRepository:
             connection.execute(
                 """
                 INSERT INTO tasks (
-                    task_id, name, status, created_at, updated_at, record_json
+                    task_id, name, status, created_at, updated_at, archived_at, record_json
                 )
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(task_id) DO UPDATE SET
                     name = excluded.name,
                     status = excluded.status,
                     updated_at = excluded.updated_at,
+                    archived_at = excluded.archived_at,
                     record_json = excluded.record_json
                 """,
                 (
@@ -139,6 +178,7 @@ class SqliteTaskRepository:
                     record.status.value,
                     record.created_at.isoformat(),
                     record.updated_at.isoformat(),
+                    record.archived_at.isoformat() if record.archived_at else None,
                     record_json,
                 ),
             )
@@ -149,10 +189,102 @@ class SqliteTaskRepository:
             row = connection.execute("SELECT COUNT(*) AS total FROM tasks").fetchone()
         return int(row["total"])
 
+    def list_tasks(
+        self,
+        *,
+        limit: int,
+        offset: int,
+        status: TaskStatus | None = None,
+    ) -> tuple[list[TaskRecord], int]:
+        where_clause = ""
+        parameters: tuple[object, ...] = ()
+        if status is not None:
+            where_clause = "WHERE status = ?"
+            parameters = (status.value,)
+
+        with self._connect() as connection:
+            total_row = connection.execute(
+                f"SELECT COUNT(*) AS total FROM tasks {where_clause}",
+                parameters,
+            ).fetchone()
+            rows = connection.execute(
+                f"""
+                SELECT record_json FROM tasks
+                {where_clause}
+                ORDER BY created_at DESC, task_id DESC
+                LIMIT ? OFFSET ?
+                """,
+                (*parameters, limit, offset),
+            ).fetchall()
+
+        try:
+            records = [TaskRecord.model_validate_json(row["record_json"]) for row in rows]
+        except (ValidationError, ValueError) as exc:
+            raise ValueError("任务元数据格式无效") from exc
+        return records, int(total_row["total"])
+
+    def list_archive_candidates(
+        self,
+        *,
+        succeeded_before: datetime,
+        failed_before: datetime,
+        limit: int,
+    ) -> list[TaskRecord]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT record_json FROM tasks
+                WHERE archived_at IS NULL AND (
+                    (status IN (?, ?) AND updated_at < ?) OR
+                    (status = ? AND updated_at < ?)
+                )
+                ORDER BY updated_at ASC, task_id ASC
+                LIMIT ?
+                """,
+                (
+                    TaskStatus.SUCCEEDED.value,
+                    TaskStatus.COMPLETED.value,
+                    succeeded_before.isoformat(),
+                    TaskStatus.FAILED.value,
+                    failed_before.isoformat(),
+                    limit,
+                ),
+            ).fetchall()
+        return self._records_from_rows(rows)
+
+    def list_purge_candidates(
+        self,
+        *,
+        archived_before: datetime,
+        limit: int,
+    ) -> list[TaskRecord]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT record_json FROM tasks
+                WHERE archived_at IS NOT NULL AND archived_at < ?
+                ORDER BY archived_at ASC, task_id ASC
+                LIMIT ?
+                """,
+                (archived_before.isoformat(), limit),
+            ).fetchall()
+        return self._records_from_rows(rows)
+
+    @staticmethod
+    def _records_from_rows(rows: list[sqlite3.Row]) -> list[TaskRecord]:
+        try:
+            return [TaskRecord.model_validate_json(row["record_json"]) for row in rows]
+        except (ValidationError, ValueError) as exc:
+            raise ValueError("任务元数据格式无效") from exc
+
     def delete_all(self) -> int:
         with self._connect() as connection:
             cursor = connection.execute("DELETE FROM tasks")
         return cursor.rowcount
+
+    def delete(self, task_id: str) -> None:
+        with self._connect() as connection:
+            connection.execute("DELETE FROM tasks WHERE task_id = ?", (task_id,))
 
     def health_check(self) -> None:
         with self._connect() as connection:

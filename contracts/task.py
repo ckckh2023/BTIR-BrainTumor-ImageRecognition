@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any,Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -56,9 +56,17 @@ class TaskJobData(BaseModel):
     id: str
     queue: str
     status: JobStatus
+    attempt: int = 0
+    max_retries: int = 0
     queued_at: datetime | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
+
+
+class TaskErrorData(BaseModel):
+    code: str
+    message: str
+    updated_at: datetime
 
 
 # 任务状态响应模型
@@ -72,7 +80,28 @@ class TaskStatusResponse(BaseModel):
     completed_models: list[str]
     input: TaskInputData
     job: TaskJobData | None = None
+    error: TaskErrorData | None = None
     frontend_result: dict[str, Any] | None = None
+
+
+class TaskSummaryResponse(BaseModel):
+    task_id: str
+    name: str
+    status: TaskStatus
+    created_at: datetime
+    updated_at: datetime
+    completed_models: list[str]
+    input: TaskInputData
+    job: TaskJobData | None = None
+    error: TaskErrorData | None = None
+
+
+class TaskListResponse(BaseModel):
+    schema_version: Literal["0.1"] = "0.1"
+    items: list[TaskSummaryResponse]
+    total: int
+    limit: int
+    offset: int
 
 
 class RuntimeStatusResponse(BaseModel):
