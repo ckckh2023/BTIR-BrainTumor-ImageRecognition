@@ -12,11 +12,11 @@ from rq.job import Job, JobStatus as RqJobStatus
 
 from core.settings import SETTINGS
 from core.task_definitions import ALL_MODELS, JobStatus, TaskStatus
-from core.task_records import TaskJobRecord, TaskRecord
+from core.task_records import TaskRecord
 from repositories.task_repository import TaskNotFoundError, task_repository
 from services.redis_client import get_redis_client
 from services.task_lock import task_write_lock
-from services.task_state import update_task_execution_status
+from services.task_state import mark_task_queued, update_task_execution_status
 
 
 class TaskQueueUnavailableError(RuntimeError):
@@ -80,20 +80,15 @@ def enqueue_task_run(
         except RedisError as exc:
             raise TaskQueueUnavailableError("Redis 队列不可用，任务无法提交") from exc
 
-        now = datetime.now().astimezone()
-        job_record = TaskJobRecord(
-            id=job.id,
-            queue=SETTINGS.task_queue_name,
-            status=JobStatus.QUEUED,
+        updated_record = mark_task_queued(
+            task_dir,
+            job_id=job.id,
+            queue_name=SETTINGS.task_queue_name,
             max_retries=SETTINGS.task_job_max_retries,
-            queued_at=now,
+            record=record,
+            repository=task_repository,
         )
-        record.status = TaskStatus.QUEUED
-        record.job = job_record
-        record.updated_at = now
-        record.error = None
-        task_repository.save(task_dir, record)
-        return job_record.model_dump(mode="json"), False
+        return updated_record.job.model_dump(mode="json"), False
 
 
 def reconcile_task_job(task_dir: Path) -> TaskRecord:
