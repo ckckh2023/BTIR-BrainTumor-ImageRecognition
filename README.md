@@ -254,7 +254,9 @@ python Main.py archive-tasks --apply
 python Main.py purge-archive --apply
 ```
 
-归档只处理超过保留期的 `succeeded`、旧版 `completed` 与 `failed` 任务，且会在执行前再次确认任务不是活动状态。任务会先整体移动至 `archive/tasks/`，保留 `BTIR_TASK_ARCHIVE_GRACE_DAYS` 后才可能由 `purge-archive --apply` 永久删除。每项实际操作记录在 `archive/audit.jsonl`；模型、Python 缓存和活动任务不会被该流程触碰。
+归档只处理超过保留期的 `succeeded`、旧版 `completed` 与 `failed` 任务，且会在执行前再次确认任务不是活动状态  
+任务会先整体移动至 `archive/tasks/`，保留 `BTIR_TASK_ARCHIVE_GRACE_DAYS` 后才可能由 `purge-archive --apply` 永久删除  
+每项实际操作记录在 `archive/audit.jsonl`；模型、Python 缓存和活动任务不会被该流程触碰。
 
 ### 自动化测试
 
@@ -283,6 +285,30 @@ python Main.py benchmark "dataset/no/1 no.jpeg" --warm-runs 3 --json
 - `GET /healthz`：仅确认 API 进程存活，不访问外部依赖。
 - `GET /readyz`：同时检查 SQLite、Redis、推理 worker 注册状态和模型文件；任一不可用时返回 HTTP `503`。
 - `GET /ops/queue`：读取推理队列的 worker 数、排队数、运行数、失败数和最早排队等待时间；Redis 不可用时返回 HTTP `503`。
+
+### Windows 进程守护
+
+`scripts/run-supervisor.ps1` 会同时启动 API 与推理 worker；任一进程意外退出时自动重启  
+它定期检查 `/healthz`、`/readyz` 和 `/ops/queue`：API 连续健康检查失败时重启 API；仅在 Redis 正常、worker 未注册且没有正在运行的作业时才重启 worker。Redis 短暂断连由 RQ worker 自身的退避重连处理
+
+启动前先停止手动运行的 API 与 worker，避免端口或 Redis worker 重复注册：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/run-supervisor.ps1 -PythonExe E:\btir311\Scripts\python.exe
+```
+
+日志写入 `logs/supervisor.log`、`logs/api.stdout.log`、`logs/api.stderr.log`、`logs/worker.stdout.log` 和 `logs/worker.stderr.log`  
+需要开机自动运行时，可将这条命令配置为 Windows 任务计划程序的启动操作，并设置“失败后重启任务”
+
+### Linux 进程守护
+
+Linux 使用同职责的 Bash 脚本；传入虚拟环境中的 Python 路径：
+
+```bash
+bash scripts/run-supervisor.sh /opt/btir/.venv/bin/python
+```
+
+脚本需要 `curl` 才能执行 HTTP 健康检查；没有 `curl` 时仍会在 API 或 worker 进程退出后自动重启。生产环境可将该命令作为 systemd 服务的启动命令，由 systemd 在守护脚本本身退出时重新拉起。
 
 ### 1. 上传图片并创建任务
 
