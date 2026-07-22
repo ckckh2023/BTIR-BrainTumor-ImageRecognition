@@ -10,7 +10,9 @@ param(
     [ValidateRange(5, 300)]
     [int]$HealthCheckSeconds = 15,
     [ValidateRange(1, 300)]
-    [int]$WorkerStartupGraceSeconds = 30
+    [int]$WorkerStartupGraceSeconds = 30,
+    [ValidateRange(10, 3600)]
+    [int]$TaskReconcileSeconds = 60
 )
 
 Set-StrictMode -Version Latest
@@ -96,6 +98,14 @@ function Get-JsonResponse([string]$Uri) {
     }
 }
 
+function Invoke-TaskReconciliation {
+    $reconcileLog = Join-Path $logDirectory 'reconcile.log'
+    & $PythonExe 'Main.py' 'reconcile-tasks' 1>> $reconcileLog 2>> $reconcileLog
+    if ($LASTEXITCODE -ne 0) {
+        Write-SupervisorLog "task reconciliation failed (exit=$LASTEXITCODE)"
+    }
+}
+
 $apiArguments = @('-m', 'uvicorn', 'api.app:app', '--host', '127.0.0.1', '--port', $ApiPort)
 $workerArguments = @('-m', 'workers.run_worker')
 $api = $null
@@ -103,6 +113,7 @@ $worker = $null
 $workerStartedAt = [datetime]::MinValue
 $apiHealthFailures = 0
 $nextHealthCheck = [datetime]::MinValue
+$nextTaskReconcile = [datetime]::MinValue
 
 try {
     $api = Start-ManagedProcess 'api' $apiArguments
@@ -157,6 +168,11 @@ try {
                 $worker = Start-ManagedProcess 'worker' $workerArguments
                 $workerStartedAt = Get-Date
             }
+        }
+
+        if ((Get-Date) -ge $nextTaskReconcile) {
+            $nextTaskReconcile = (Get-Date).AddSeconds($TaskReconcileSeconds)
+            Invoke-TaskReconciliation
         }
 
         Start-Sleep -Seconds 1

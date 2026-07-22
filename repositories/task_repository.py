@@ -47,6 +47,9 @@ class TaskRepository(Protocol):
     ) -> tuple[list[TaskRecord], int]:
         '''按创建时间倒序返回任务页和筛选后的总数'''
 
+    def list_active_tasks(self, *, limit: int) -> list[TaskRecord]:
+        '''按更新时间顺序返回仍需与 RQ 对账的任务'''
+
     def list_archive_candidates(
         self,
         *,
@@ -242,6 +245,24 @@ class SqliteTaskRepository:
             ).fetchall()
 
         return self._records_from_rows(rows), int(total_row["total"])
+
+    def list_active_tasks(self, *, limit: int) -> list[TaskRecord]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT record_json FROM tasks
+                WHERE archived_at IS NULL AND status IN (?, ?, ?)
+                ORDER BY updated_at ASC, task_id ASC
+                LIMIT ?
+                """,
+                (
+                    TaskStatus.QUEUED.value,
+                    TaskStatus.RUNNING.value,
+                    TaskStatus.CANCEL_REQUESTED.value,
+                    limit,
+                ),
+            ).fetchall()
+        return self._records_from_rows(rows)
 
     def list_archive_candidates(
         self,

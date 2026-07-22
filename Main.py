@@ -15,6 +15,7 @@ from services.archive_service import archive_expired_tasks, purge_expired_archiv
 from services.benchmark_service import benchmark_models
 from services.cleanup_service import clear_generated_files
 from services.presentation import print_result
+from services.task_queue import reconcile_active_tasks
 from services.task_files import (
     create_task_dir,
     get_task_dir,
@@ -73,6 +74,11 @@ def main(argv: list[str] | None = None) -> int:
                 limit=args.limit,
             )
             _print_archive_report(report)
+            return 0
+
+        if args.command == "reconcile-tasks":
+            report = reconcile_active_tasks(limit=args.limit)
+            _print_task_reconciliation_report(report)
             return 0
 
         if args.command == "benchmark":
@@ -200,6 +206,19 @@ def _build_parser() -> argparse.ArgumentParser:
             help="本次最多处理的任务数，默认 100",
         )
 
+    reconcile = commands.add_parser(
+        "reconcile-tasks",
+        help="批量同步活动任务与 RQ 作业状态",
+    )
+    reconcile.add_argument(
+        "--limit",
+        type=int,
+        default=SETTINGS.task_reconcile_batch_size,
+        choices=range(1, 1001),
+        metavar="1-1000",
+        help="本次最多巡检的活动任务数，默认由 BTIR_TASK_RECONCILE_BATCH_SIZE 决定",
+    )
+
     benchmark = commands.add_parser(
         "benchmark",
         help="测量分类与分割模型在当前进程中的首次和连续推理耗时",
@@ -285,6 +304,7 @@ def _print_help(parser: argparse.ArgumentParser) -> None:
         "  python Main.py clear --dry-run\n"
         "  python Main.py archive-tasks\n"
         "  python Main.py purge-archive\n"
+        "  python Main.py reconcile-tasks\n"
         "  python Main.py benchmark dataset/no/1.jpg --warm-runs 3"
     )
 
@@ -299,6 +319,20 @@ def _print_archive_report(report) -> None:
         print(f"跳过任务：{len(report.skipped_task_ids)} 条")
         for task_id in report.skipped_task_ids:
             print(f"  {task_id}")
+
+
+def _print_task_reconciliation_report(report) -> None:
+    '''仅在存在活动任务时输出巡检摘要，供 supervisor 日志记录'''
+    if not report.scanned_task_ids:
+        return
+    print(
+        f"已巡检活动任务：{len(report.scanned_task_ids)} 条；"
+        f"状态已修复：{len(report.changed_task_ids)} 条"
+    )
+    for task_id in report.changed_task_ids:
+        print(f"  {task_id}")
+    if report.skipped_task_ids:
+        print(f"正在写入而跳过：{len(report.skipped_task_ids)} 条")
 
 
 if __name__ == "__main__":
