@@ -11,7 +11,7 @@ from typing import Iterator, Protocol
 from pydantic import ValidationError
 
 from core.settings import SETTINGS
-from core.task_definitions import TaskStatus
+from core.task_definitions import ACTIVE_ASYNC_TASK_STATUSES, TaskStatus
 from core.task_records import TaskRecord
 
 
@@ -256,9 +256,7 @@ class SqliteTaskRepository:
                 LIMIT ?
                 """,
                 (
-                    TaskStatus.QUEUED.value,
-                    TaskStatus.RUNNING.value,
-                    TaskStatus.CANCEL_REQUESTED.value,
+                    *(task_status.value for task_status in ACTIVE_ASYNC_TASK_STATUSES),
                     limit,
                 ),
             ).fetchall()

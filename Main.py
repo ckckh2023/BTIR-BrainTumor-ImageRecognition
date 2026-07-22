@@ -323,10 +323,10 @@ def _print_archive_report(report) -> None:
 
 def _print_task_reconciliation_report(report) -> None:
     '''仅在存在活动任务时输出巡检摘要，供 supervisor 日志记录'''
-    if not report.scanned_task_ids:
+    if report.scanned_task_count == 0 and not report.skipped_task_ids:
         return
     print(
-        f"已巡检活动任务：{len(report.scanned_task_ids)} 条；"
+        f"已巡检活动任务：{report.scanned_task_count} 条；"
         f"状态已修复：{len(report.changed_task_ids)} 条"
     )
     for task_id in report.changed_task_ids:

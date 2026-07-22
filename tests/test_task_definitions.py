@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 
 from core.task_definitions import (
+    ACTIVE_ASYNC_TASK_STATUSES,
     InputStorageMode,
     JobStatus,
     ModelName,
@@ -28,6 +29,14 @@ class TaskDefinitionTests(unittest.TestCase):
         self.assertEqual(JobStatus.QUEUED.value, "queued")
         self.assertEqual(JobStatus.FAILED.value, "failed")
         self.assertEqual(JobStatus.CANCELED.value, "canceled")
+        self.assertEqual(
+            ACTIVE_ASYNC_TASK_STATUSES,
+            {
+                TaskStatus.QUEUED,
+                TaskStatus.RUNNING,
+                TaskStatus.CANCEL_REQUESTED,
+            },
+        )
 
     def test_status_helpers_centralize_sync_and_async_transitions(self) -> None:
         self.assertEqual(

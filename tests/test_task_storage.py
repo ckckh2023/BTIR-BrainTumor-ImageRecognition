@@ -116,7 +116,7 @@ class TaskStorageTests(unittest.TestCase):
 
     def test_reconcile_command_runs_the_active_task_sweep(self) -> None:
         report = TaskReconciliationReport(
-            scanned_task_ids=["task-queued"],
+            scanned_task_count=1,
             changed_task_ids=["task-queued"],
             skipped_task_ids=[],
         )

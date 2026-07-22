@@ -12,7 +12,12 @@ from rq.exceptions import InvalidJobOperation, NoSuchJobError
 from rq.job import Job, JobStatus as RqJobStatus
 
 from core.settings import SETTINGS
-from core.task_definitions import ALL_MODELS, JobStatus, TaskStatus
+from core.task_definitions import (
+    ACTIVE_ASYNC_TASK_STATUSES,
+    ALL_MODELS,
+    JobStatus,
+    TaskStatus,
+)
 from core.task_records import TaskRecord
 from repositories.task_repository import TaskNotFoundError, task_repository
 from services.redis_client import get_redis_client
@@ -28,14 +33,11 @@ class TaskQueueUnavailableError(RuntimeError):
 class TaskReconciliationReport:
     '''一次活动任务巡检的摘要'''
 
-    scanned_task_ids: list[str]
+    scanned_task_count: int
     changed_task_ids: list[str]
     skipped_task_ids: list[str]
 
 
-ACTIVE_TASK_STATUSES = frozenset(
-    {TaskStatus.QUEUED, TaskStatus.RUNNING, TaskStatus.CANCEL_REQUESTED}
-)
 PENDING_RQ_STATUSES = frozenset(
     {
         RqJobStatus.QUEUED,
@@ -112,7 +114,7 @@ def enqueue_task_run(
         record = task_repository.load(task_dir)
         current_status = record.status
         existing_job = record.job
-        if current_status in ACTIVE_TASK_STATUSES and existing_job:
+        if current_status in ACTIVE_ASYNC_TASK_STATUSES and existing_job:
             return existing_job.model_dump(mode="json"), True
         if current_status is TaskStatus.CANCELED:
             raise ValueError("已取消任务不能再次提交")
@@ -193,7 +195,7 @@ def reconcile_active_tasks(
 ) -> TaskReconciliationReport:
     '''批量对账活动任务，使 worker 异常后的状态无需等待用户查询即可收敛'''
     records = task_repository.list_active_tasks(limit=limit)
-    scanned_task_ids: list[str] = []
+    scanned_task_count = 0
     changed_task_ids: list[str] = []
     skipped_task_ids: list[str] = []
 
@@ -205,12 +207,12 @@ def reconcile_active_tasks(
         except TaskLockBusyError:
             skipped_task_ids.append(record.task_id)
             continue
-        scanned_task_ids.append(record.task_id)
+        scanned_task_count += 1
         if (reconciled.status, reconciled.job) != before:
             changed_task_ids.append(record.task_id)
 
     return TaskReconciliationReport(
-        scanned_task_ids=scanned_task_ids,
+        scanned_task_count=scanned_task_count,
         changed_task_ids=changed_task_ids,
         skipped_task_ids=skipped_task_ids,
     )
@@ -219,7 +221,7 @@ def reconcile_active_tasks(
 def reconcile_task_job(task_dir: Path) -> TaskRecord:
     '''将本地活动任务与 RQ 作业状态对账，修复异常中断后的悬挂状态'''
     record = task_repository.load(task_dir)
-    if record.status not in ACTIVE_TASK_STATUSES or record.job is None:
+    if record.status not in ACTIVE_ASYNC_TASK_STATUSES or record.job is None:
         return record
 
     try:
