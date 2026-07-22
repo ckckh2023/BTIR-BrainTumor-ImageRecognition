@@ -6,7 +6,7 @@ from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from redis.exceptions import RedisError
-from rq import Queue, Retry
+from rq import Queue, Retry, Worker
 from rq.exceptions import NoSuchJobError
 from rq.job import Job, JobStatus as RqJobStatus
 
@@ -41,6 +41,49 @@ def get_task_queue() -> Queue:
         connection=get_redis_client(),
         default_timeout=SETTINGS.task_job_timeout_seconds,
     )
+
+
+def get_active_inference_workers() -> list[Worker]:
+    '''获取当前推理队列中仍被 RQ 注册为存活的 worker'''
+    return [
+        worker
+        for worker in Worker.all(connection=get_redis_client())
+        if SETTINGS.task_queue_name in worker.queue_names()
+    ]
+
+
+def has_active_inference_worker() -> bool:
+    '''检查当前推理队列是否有仍被 RQ 注册为存活的 worker'''
+    return bool(get_active_inference_workers())
+
+
+def get_inference_queue_status() -> dict[str, int | float | None]:
+    '''汇总推理队列的只读运维状态'''
+    queue = get_task_queue()
+    oldest_wait_seconds = _get_oldest_queue_wait_seconds(queue)
+    return {
+        "active_workers": len(get_active_inference_workers()),
+        "queued_jobs": queue.count,
+        "running_jobs": queue.started_job_registry.count,
+        "failed_jobs": queue.failed_job_registry.count,
+        "oldest_wait_seconds": oldest_wait_seconds,
+    }
+
+
+def _get_oldest_queue_wait_seconds(queue: Queue) -> float | None:
+    job_ids = queue.get_job_ids(offset=0, length=1)
+    if not job_ids:
+        return None
+    try:
+        queued_at = Job.fetch(job_ids[0], connection=get_redis_client()).enqueued_at
+    except NoSuchJobError:
+        return None
+    if queued_at is None:
+        return None
+    now = datetime.now().astimezone()
+    if queued_at.tzinfo is None:
+        queued_at = queued_at.replace(tzinfo=now.tzinfo)
+    return round(max(0.0, (now - queued_at).total_seconds()), 3)
 
 
 def enqueue_task_run(

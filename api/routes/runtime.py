@@ -5,12 +5,16 @@ from redis.exceptions import RedisError
 
 from accelerator import get_runtime_status
 from core.settings import SETTINGS
-from contracts.task import RuntimeStatusResponse
+from contracts.task import InferenceQueueStatusResponse, RuntimeStatusResponse
 from repositories.task_repository import (
     TaskRepositoryUnavailableError,
     task_repository,
 )
 from services.redis_client import get_redis_client
+from services.task_queue import (
+    get_inference_queue_status,
+    has_active_inference_worker,
+)
 
 
 router = APIRouter(tags=["运行环境"])
@@ -37,6 +41,16 @@ def get_readiness() -> dict[str, object]:
         components["redis"] = "ok"
     except RedisError:
         components["redis"] = "unavailable"
+
+    if components["redis"] == "ok":
+        try:
+            components["inference_worker"] = (
+                "ok" if has_active_inference_worker() else "unavailable"
+            )
+        except RedisError:
+            components["inference_worker"] = "unavailable"
+    else:
+        components["inference_worker"] = "unavailable"
 
     model_files = (
         SETTINGS.classifier_script,
@@ -70,3 +84,15 @@ def get_runtime() -> RuntimeStatusResponse:
         task_database_backend="sqlite",
         task_database_available=task_database_available,
     )
+
+
+@router.get("/ops/queue", response_model=InferenceQueueStatusResponse)
+def get_queue_status() -> InferenceQueueStatusResponse:
+    '''获取推理队列的只读运维状态'''
+    try:
+        return InferenceQueueStatusResponse(**get_inference_queue_status())
+    except RedisError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Redis 队列不可用，无法读取队列状态",
+        ) from exc

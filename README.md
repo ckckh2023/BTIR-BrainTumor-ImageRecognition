@@ -281,7 +281,8 @@ python Main.py benchmark "dataset/no/1 no.jpeg" --warm-runs 3 --json
 ### 服务健康检查
 
 - `GET /healthz`：仅确认 API 进程存活，不访问外部依赖。
-- `GET /readyz`：同时检查 SQLite、Redis 和模型文件；任一不可用时返回 HTTP `503`。
+- `GET /readyz`：同时检查 SQLite、Redis、推理 worker 注册状态和模型文件；任一不可用时返回 HTTP `503`。
+- `GET /ops/queue`：读取推理队列的 worker 数、排队数、运行数、失败数和最早排队等待时间；Redis 不可用时返回 HTTP `503`。
 
 ### 1. 上传图片并创建任务
 

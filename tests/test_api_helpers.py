@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -20,13 +20,14 @@ from api.routes.tasks import (
     resolve_run_threshold,
     task_summary_data,
 )
-from api.routes.runtime import get_liveness, get_readiness
+from api.routes.runtime import get_liveness, get_queue_status, get_readiness
 from contracts.task import RunTaskRequest
 from core.task_definitions import JobStatus, TaskStatus
 from core.task_records import StoredTaskInput, TaskErrorRecord, TaskJobRecord, TaskRecord
 from core.settings import SETTINGS
 from services.task_lock import TaskLockBusyError, TaskLockUnavailableError
 from services.task_queue import TaskQueueUnavailableError
+from services.task_queue import get_inference_queue_status
 from unittest.mock import Mock, patch
 
 
@@ -121,14 +122,34 @@ class TaskRouteHelperTests(unittest.TestCase):
         with (
             patch("api.routes.runtime.task_repository.health_check"),
             patch("api.routes.runtime.get_redis_client", return_value=redis_client),
+            patch("api.routes.runtime.has_active_inference_worker", return_value=True),
         ):
             readiness = get_readiness()
 
         self.assertEqual(readiness["status"], "ready")
         self.assertEqual(
             readiness["components"],
-            {"task_database": "ok", "redis": "ok", "models": "ok"},
+            {
+                "task_database": "ok",
+                "redis": "ok",
+                "inference_worker": "ok",
+                "models": "ok",
+            },
         )
+
+    def test_readiness_returns_503_when_no_inference_worker_is_active(self) -> None:
+        redis_client = Mock()
+        redis_client.ping.return_value = True
+        with (
+            patch("api.routes.runtime.task_repository.health_check"),
+            patch("api.routes.runtime.get_redis_client", return_value=redis_client),
+            patch("api.routes.runtime.has_active_inference_worker", return_value=False),
+            self.assertRaises(HTTPException) as caught,
+        ):
+            get_readiness()
+
+        self.assertEqual(caught.exception.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+        self.assertEqual(caught.exception.detail["components"]["inference_worker"], "unavailable")
 
     def test_readiness_returns_503_when_redis_is_unavailable(self) -> None:
         with (
@@ -143,6 +164,39 @@ class TaskRouteHelperTests(unittest.TestCase):
 
         self.assertEqual(caught.exception.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
         self.assertEqual(caught.exception.detail["components"]["redis"], "unavailable")
+
+    def test_queue_status_summarizes_the_inference_queue(self) -> None:
+        queue = Mock()
+        queue.count = 2
+        queue.started_job_registry.count = 1
+        queue.failed_job_registry.count = 3
+        queue.get_job_ids.return_value = ["job-oldest"]
+        oldest_job = Mock(enqueued_at=datetime.now().astimezone() - timedelta(seconds=4))
+
+        with (
+            patch("services.task_queue.get_task_queue", return_value=queue),
+            patch("services.task_queue.get_active_inference_workers", return_value=[Mock(), Mock()]),
+            patch("services.task_queue.Job.fetch", return_value=oldest_job),
+        ):
+            queue_status = get_inference_queue_status()
+
+        self.assertEqual(queue_status["active_workers"], 2)
+        self.assertEqual(queue_status["queued_jobs"], 2)
+        self.assertEqual(queue_status["running_jobs"], 1)
+        self.assertEqual(queue_status["failed_jobs"], 3)
+        self.assertGreaterEqual(queue_status["oldest_wait_seconds"], 4)
+
+    def test_queue_status_returns_503_when_redis_is_unavailable(self) -> None:
+        with (
+            patch(
+                "api.routes.runtime.get_inference_queue_status",
+                side_effect=RedisError("redis unavailable"),
+            ),
+            self.assertRaises(HTTPException) as caught,
+        ):
+            get_queue_status()
+
+        self.assertEqual(caught.exception.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
 
 
 class TaskHttpEndpointTests(unittest.TestCase):
