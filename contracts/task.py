@@ -123,6 +123,17 @@ class RuntimeStatusResponse(BaseModel):
     task_database_available: bool
 
 
+class InferenceQueueStatusResponse(BaseModel):
+    '''推理队列的只读运行状态'''
+
+    schema_version: Literal["0.1"] = "0.1"
+    active_workers: int
+    queued_jobs: int
+    running_jobs: int
+    failed_jobs: int
+    oldest_wait_seconds: float | None = None
+
+
 # 任务分割请求模型
 class SegmentTaskRequest(BaseModel):
     threshold: float = Field(
