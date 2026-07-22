@@ -7,7 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 from redis.exceptions import RedisError
 from rq import Queue, Retry, Worker
-from rq.exceptions import NoSuchJobError
+from rq.exceptions import InvalidJobOperation, NoSuchJobError
 from rq.job import Job, JobStatus as RqJobStatus
 
 from core.settings import SETTINGS
@@ -23,7 +23,9 @@ class TaskQueueUnavailableError(RuntimeError):
     '''Redis 或 RQ 队列不可用'''
 
 
-ACTIVE_TASK_STATUSES = frozenset({TaskStatus.QUEUED, TaskStatus.RUNNING})
+ACTIVE_TASK_STATUSES = frozenset(
+    {TaskStatus.QUEUED, TaskStatus.RUNNING, TaskStatus.CANCEL_REQUESTED}
+)
 PENDING_RQ_STATUSES = frozenset(
     {
         RqJobStatus.QUEUED,
@@ -102,6 +104,8 @@ def enqueue_task_run(
         existing_job = record.job
         if current_status in ACTIVE_TASK_STATUSES and existing_job:
             return existing_job.model_dump(mode="json"), True
+        if current_status is TaskStatus.CANCELED:
+            raise ValueError("已取消任务不能再次提交")
         if retry_failed_only and current_status is not TaskStatus.FAILED:
             raise ValueError("仅失败任务可以手动重试")
 
@@ -134,6 +138,45 @@ def enqueue_task_run(
         return updated_record.job.model_dump(mode="json"), False
 
 
+def cancel_task_run(task_dir: Path) -> TaskRecord:
+    '''取消未执行任务，或请求运行中的任务在安全阶段停止'''
+    with task_write_lock(task_dir.name):
+        record = task_repository.load(task_dir)
+        if record.status is TaskStatus.CANCELED:
+            return record
+        if record.status is TaskStatus.CREATED:
+            return _mark_task_canceled(task_dir, record)
+        if record.job is None:
+            raise ValueError("当前任务没有可取消的异步作业")
+
+        try:
+            job = Job.fetch(record.job.id, connection=get_redis_client())
+            rq_status = job.get_status()
+        except NoSuchJobError:
+            return _mark_task_canceled(task_dir, record)
+        except RedisError as exc:
+            raise TaskQueueUnavailableError("Redis 队列不可用，无法取消任务") from exc
+
+        if rq_status in PENDING_RQ_STATUSES:
+            try:
+                job.cancel()
+            except InvalidJobOperation:
+                # 并发取消时，RQ 已将作业转为 canceled；接口保持幂等。
+                pass
+            return _mark_task_canceled(task_dir, record)
+        if rq_status is RqJobStatus.STARTED:
+            job.meta["cancel_requested"] = True
+            job.save_meta()
+            record.status = TaskStatus.CANCEL_REQUESTED
+            record.updated_at = datetime.now().astimezone()
+            record.error = None
+            task_repository.save(task_dir, record)
+            return record
+        if rq_status is RqJobStatus.CANCELED:
+            return _mark_task_canceled(task_dir, record)
+        raise ValueError("仅排队或运行中的任务可以取消")
+
+
 def reconcile_task_job(task_dir: Path) -> TaskRecord:
     '''将本地活动任务与 RQ 作业状态对账，修复异常中断后的悬挂状态'''
     record = task_repository.load(task_dir)
@@ -164,6 +207,9 @@ def reconcile_task_job(task_dir: Path) -> TaskRecord:
             )
         return _update_reconciled_status(task_dir, record, JobStatus.RUNNING)
 
+    if rq_status is RqJobStatus.CANCELED:
+        return _update_reconciled_status(task_dir, record, JobStatus.CANCELED)
+
     if rq_status is RqJobStatus.FINISHED:
         if ALL_MODELS <= set(record.completed_models):
             return _update_reconciled_status(task_dir, record, JobStatus.SUCCEEDED)
@@ -179,7 +225,6 @@ def reconcile_task_job(task_dir: Path) -> TaskRecord:
     if rq_status in {
         RqJobStatus.FAILED,
         RqJobStatus.STOPPED,
-        RqJobStatus.CANCELED,
     }:
         return _mark_reconciled_task_failed(
             task_dir,
@@ -192,7 +237,7 @@ def reconcile_task_job(task_dir: Path) -> TaskRecord:
 
 def _is_stale_running_task(record: TaskRecord) -> bool:
     '''仅对已实际开始、超出允许时长的作业判定为悬挂'''
-    if record.status is not TaskStatus.RUNNING or record.job is None:
+    if record.status not in {TaskStatus.RUNNING, TaskStatus.CANCEL_REQUESTED} or record.job is None:
         return False
     if record.job.started_at is None:
         return False
@@ -228,3 +273,15 @@ def _mark_reconciled_task_failed(
         error=error,
         error_code="task_reconciliation_failed",
     )
+
+
+def _mark_task_canceled(task_dir: Path, record: TaskRecord) -> TaskRecord:
+    now = datetime.now().astimezone()
+    record.status = TaskStatus.CANCELED
+    if record.job is not None:
+        record.job.status = JobStatus.CANCELED
+        record.job.finished_at = now
+    record.updated_at = now
+    record.error = None
+    task_repository.save(task_dir, record)
+    return record

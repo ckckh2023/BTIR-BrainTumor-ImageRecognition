@@ -111,6 +111,29 @@ class TaskArchiveTests(unittest.TestCase):
         self.assertEqual(self.repository.load(archived_dir).archived_at, self.now)
         self.assertTrue((self.archive_dir / "audit.jsonl").is_file())
 
+    def test_archive_moves_expired_canceled_task(self) -> None:
+        task_dir = self._create_task(
+            "task-canceled-archive",
+            TaskStatus.CANCELED,
+            self.now - timedelta(days=8),
+        )
+
+        with (
+            patch("services.archive_service.SETTINGS", self.settings),
+            patch("services.archive_service.task_write_lock", self._no_lock),
+        ):
+            report = archive_expired_tasks(
+                dry_run=False,
+                now=self.now,
+                repository=self.repository,
+                output_dir=self.output_dir,
+                archive_dir=self.archive_dir,
+                cleanup_enabled=True,
+            )
+
+        self.assertEqual(report.processed_task_ids, [task_dir.name])
+        self.assertTrue((self.archive_dir / "tasks" / task_dir.name).is_dir())
+
     def test_purge_removes_only_expired_archived_task(self) -> None:
         task_id = "task-purge-apply"
         archived_dir = self.archive_dir / "tasks" / task_id

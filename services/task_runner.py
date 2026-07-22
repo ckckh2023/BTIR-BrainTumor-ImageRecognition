@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
+from collections.abc import Callable
 from typing import Any
 
 from core.task_definitions import ModelName
@@ -34,6 +35,10 @@ class ModelRunResult:
 
     image_path: Path
     result: dict[str, Any]
+
+
+class TaskCancellationRequested(RuntimeError):
+    '''任务在两个模型之间收到取消请求'''
 
 
 def _run_classification(task_dir: Path, image_path: Path) -> dict[str, Any]:
@@ -90,11 +95,18 @@ def run_segmentation(task_dir: Path, threshold: float) -> ModelRunResult:
     )
 
 
-def run_task_models(task_dir: Path, threshold: float) -> TaskRunResult:
+def run_task_models(
+    task_dir: Path,
+    threshold: float,
+    *,
+    should_cancel: Callable[[], bool] | None = None,
+) -> TaskRunResult:
     '''顺序执行分类、分割，并将两项结果写入同一任务目录'''
     started_at = perf_counter()
     image_path = load_task_image(task_dir)
     classification_result = _run_classification(task_dir, image_path)
+    if should_cancel is not None and should_cancel():
+        raise TaskCancellationRequested("任务已在分类完成后取消")
     segmentation_result = _run_segmentation(task_dir, image_path, threshold)
     return TaskRunResult(
         image_path=image_path,

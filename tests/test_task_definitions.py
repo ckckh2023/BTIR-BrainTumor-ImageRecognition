@@ -23,8 +23,11 @@ class TaskDefinitionTests(unittest.TestCase):
     def test_status_values_are_stable(self) -> None:
         self.assertEqual(TaskStatus.CREATED.value, "created")
         self.assertEqual(TaskStatus.SUCCEEDED.value, "succeeded")
+        self.assertEqual(TaskStatus.CANCEL_REQUESTED.value, "cancel_requested")
+        self.assertEqual(TaskStatus.CANCELED.value, "canceled")
         self.assertEqual(JobStatus.QUEUED.value, "queued")
         self.assertEqual(JobStatus.FAILED.value, "failed")
+        self.assertEqual(JobStatus.CANCELED.value, "canceled")
 
     def test_status_helpers_centralize_sync_and_async_transitions(self) -> None:
         self.assertEqual(

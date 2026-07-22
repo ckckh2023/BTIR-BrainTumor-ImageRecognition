@@ -296,6 +296,43 @@ class TaskHttpEndpointTests(unittest.TestCase):
         self.assertEqual(result_file.status_code, status.HTTP_200_OK)
         self.assertNotIn("image_path", result_file.json())
 
+    def test_cancel_endpoint_returns_the_cancellation_state(self) -> None:
+        task_dir = Path("output") / "task-http-cancel-001"
+        canceled_record = Mock(status=TaskStatus.CANCELED)
+
+        with (
+            patch("api.routes.tasks.require_task_dir", return_value=task_dir),
+            patch("api.routes.tasks.cancel_task_run", return_value=canceled_record),
+            TestClient(app) as client,
+        ):
+            response = client.post(f"/tasks/{task_dir.name}/cancel")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.json(),
+            {
+                "schema_version": "0.1",
+                "task_id": task_dir.name,
+                "status": "canceled",
+            },
+        )
+
+    def test_cancel_endpoint_rejects_non_active_tasks(self) -> None:
+        task_dir = Path("output") / "task-http-cancel-conflict"
+
+        with (
+            patch("api.routes.tasks.require_task_dir", return_value=task_dir),
+            patch(
+                "api.routes.tasks.cancel_task_run",
+                side_effect=ValueError("仅排队或运行中的任务可以取消"),
+            ),
+            TestClient(app) as client,
+        ):
+            response = client.post(f"/tasks/{task_dir.name}/cancel")
+
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(response.json()["detail"], "仅排队或运行中的任务可以取消")
+
 
 if __name__ == "__main__":
     unittest.main()

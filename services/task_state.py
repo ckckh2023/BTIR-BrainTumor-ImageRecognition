@@ -55,6 +55,7 @@ def mark_models_completed(task_dir: Path, *models: ModelName | str) -> None:
     if record.status not in {
         TaskStatus.QUEUED,
         TaskStatus.RUNNING,
+        TaskStatus.CANCEL_REQUESTED,
     }:
         record.status = task_status_for_completed_models(completed)
     record.updated_at = datetime.now().astimezone()
@@ -97,7 +98,15 @@ def update_task_execution_status(
             max_retries=job.max_retries if job else 0,
             queued_at=queued_at,
             started_at=started_at,
-            finished_at=(now if job_status in {JobStatus.SUCCEEDED, JobStatus.FAILED} else (job.finished_at if job else None)),
+            finished_at=(
+                now
+                if job_status in {
+                    JobStatus.SUCCEEDED,
+                    JobStatus.FAILED,
+                    JobStatus.CANCELED,
+                }
+                else (job.finished_at if job else None)
+            ),
             queue_wait_ms=queue_wait_ms,
             execution_ms=(
                 None
@@ -105,7 +114,12 @@ def update_task_execution_status(
                 else (execution_ms if execution_ms is not None else (job.execution_ms if job else None))
             ),
         )
-        record.status = task_status_from_job_status(job_status)
+        record.status = (
+            TaskStatus.CANCEL_REQUESTED
+            if job_status is JobStatus.RUNNING
+            and record.status is TaskStatus.CANCEL_REQUESTED
+            else task_status_from_job_status(job_status)
+        )
         record.job = job
         record.updated_at = now
         if error:

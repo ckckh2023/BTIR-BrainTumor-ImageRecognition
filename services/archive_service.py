@@ -157,7 +157,7 @@ def _is_archive_eligible(record: TaskRecord, now: datetime) -> bool:
         return False
     if record.status in {TaskStatus.SUCCEEDED, TaskStatus.COMPLETED}:
         retention_days = SETTINGS.succeeded_task_retention_days
-    elif record.status is TaskStatus.FAILED:
+    elif record.status in {TaskStatus.FAILED, TaskStatus.CANCELED}:
         retention_days = SETTINGS.failed_task_retention_days
     else:
         return False
