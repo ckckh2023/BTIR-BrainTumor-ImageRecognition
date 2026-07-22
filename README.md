@@ -132,6 +132,7 @@ BTIR_TASK_JOB_TIMEOUT_SECONDS=3600
 BTIR_TASK_JOB_RESULT_TTL_SECONDS=86400
 BTIR_TASK_JOB_MAX_RETRIES=1
 BTIR_TASK_STALE_AFTER_SECONDS=3660
+BTIR_TASK_RECONCILE_BATCH_SIZE=100
 BTIR_WORKER_PRELOAD_MODELS=true
 BTIR_TASK_DATABASE_PATH=data/btir.db
 BTIR_MAX_UPLOAD_BYTES=20971520
@@ -144,7 +145,8 @@ BTIR_MAX_IMAGE_PIXELS=40000000
 任务目录存在但数据库没有对应元数据时，接口返回 HTTP `404`；SQLite 不可用时返回 HTTP `503`
 
 RQ 队列负责运行后台推理任务；同一任务已有 `queued` 或 `running` 作业时，重复提交会复用原作业，不会重复入队。默认首次失败后会立即自动重试一次；第二次失败才标记为 `failed`  
-查询任务时会与 RQ 作业状态对账，`running` 超过 `BTIR_TASK_STALE_AFTER_SECONDS` 仍未结束时也会标记为 `failed`
+查询任务时会与 RQ 作业状态对账，`running` 超过 `BTIR_TASK_STALE_AFTER_SECONDS` 仍未结束时也会标记为 `failed`  
+`reconcile-tasks` 会批量执行同一套对账逻辑，使异常重启后的状态不必等待用户查询即可收敛
 
 启动 API 后，另开一个已启用相同虚拟环境的终端启动 worker：
 
@@ -245,6 +247,7 @@ BTIR_TASK_ARCHIVE_DIR=archive
 ```cmd
 python Main.py archive-tasks
 python Main.py purge-archive
+python Main.py reconcile-tasks
 ```
 
 实际执行需要同时设置 `BTIR_TASK_CLEANUP_ENABLED=true` 和显式传入 `--apply`：
@@ -289,7 +292,7 @@ python Main.py benchmark "dataset/no/1 no.jpeg" --warm-runs 3 --json
 ### Windows 进程守护
 
 `scripts/run-supervisor.ps1` 会同时启动 API 与推理 worker；任一进程意外退出时自动重启  
-它定期检查 `/healthz`、`/readyz` 和 `/ops/queue`：API 连续健康检查失败时重启 API；仅在 Redis 正常、worker 未注册且没有正在运行的作业时才重启 worker。Redis 短暂断连由 RQ worker 自身的退避重连处理
+它定期检查 `/healthz`、`/readyz` 和 `/ops/queue`：API 连续健康检查失败时重启 API；仅在 Redis 正常、worker 未注册且没有正在运行的作业时才重启 worker。每 60 秒还会运行一次 `reconcile-tasks`，自动修复活动任务状态；可通过 `-TaskReconcileSeconds` 调整  Redis 短暂断连由 RQ worker 自身的退避重连处理
 
 启动前先停止手动运行的 API 与 worker，避免端口或 Redis worker 重复注册：
 
@@ -297,7 +300,7 @@ python Main.py benchmark "dataset/no/1 no.jpeg" --warm-runs 3 --json
 powershell -ExecutionPolicy Bypass -File scripts/run-supervisor.ps1 -PythonExe E:\btir311\Scripts\python.exe
 ```
 
-日志写入 `logs/supervisor.log`、`logs/api.stdout.log`、`logs/api.stderr.log`、`logs/worker.stdout.log` 和 `logs/worker.stderr.log`  
+日志写入 `logs/supervisor.log`、`logs/api.stdout.log`、`logs/api.stderr.log`、`logs/worker.stdout.log`、`logs/worker.stderr.log` 和 `logs/reconcile.log`
 需要开机自动运行时，可将这条命令配置为 Windows 任务计划程序的启动操作，并设置“失败后重启任务”
 
 ### Linux 进程守护
@@ -308,7 +311,9 @@ Linux 使用同职责的 Bash 脚本；传入虚拟环境中的 Python 路径：
 bash scripts/run-supervisor.sh /opt/btir/.venv/bin/python
 ```
 
-脚本需要 `curl` 才能执行 HTTP 健康检查；没有 `curl` 时仍会在 API 或 worker 进程退出后自动重启。生产环境可将该命令作为 systemd 服务的启动命令，由 systemd 在守护脚本本身退出时重新拉起。
+脚本需要 `curl` 才能执行 HTTP 健康检查；没有 `curl` 时仍会在 API 或 worker 进程退出后自动重启  
+它默认每 60 秒运行一次任务巡检，可通过环境变量 `BTIR_SUPERVISOR_TASK_RECONCILE_SECONDS` 调整  
+生产环境可将该命令作为 systemd 服务的启动命令，由 systemd 在守护脚本本身退出时重新拉起
 
 ### 1. 上传图片并创建任务
 

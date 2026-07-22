@@ -119,6 +119,7 @@ class Settings:
     task_job_result_ttl_seconds: int
     task_job_max_retries: int
     task_stale_after_seconds: int
+    task_reconcile_batch_size: int
     worker_preload_models: bool
     task_cleanup_enabled: bool
     succeeded_task_retention_days: int
@@ -192,6 +193,10 @@ def _build_settings() -> Settings:
         task_stale_after_seconds=_get_positive_int(
             "BTIR_TASK_STALE_AFTER_SECONDS",
             3660,
+        ),
+        task_reconcile_batch_size=_get_positive_int(
+            "BTIR_TASK_RECONCILE_BATCH_SIZE",
+            100,
         ),
         worker_preload_models=_get_bool("BTIR_WORKER_PRELOAD_MODELS", True),
         task_cleanup_enabled=_get_bool("BTIR_TASK_CLEANUP_ENABLED", False),

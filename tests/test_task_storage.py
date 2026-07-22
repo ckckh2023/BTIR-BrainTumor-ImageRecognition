@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from contextlib import redirect_stdout
+from io import StringIO
 import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
 import sqlite3
+from unittest.mock import patch
 
+from Main import main
 from core.task_definitions import TaskStatus
 from core.task_records import StoredTaskInput, TaskRecord
 from repositories.task_repository import (
@@ -16,6 +20,7 @@ from repositories.task_repository import (
     TaskRepositoryUnavailableError,
 )
 from services.cleanup_service import clear_generated_files
+from services.task_queue import TaskReconciliationReport
 
 
 class TaskStorageTests(unittest.TestCase):
@@ -86,6 +91,46 @@ class TaskStorageTests(unittest.TestCase):
 
         self.assertEqual(failed_total, 2)
         self.assertEqual([record.task_id for record in failed_records], ["task-003"])
+
+    def test_list_active_tasks_excludes_terminal_records(self) -> None:
+        task_statuses = {
+            "task-created": TaskStatus.CREATED,
+            "task-queued": TaskStatus.QUEUED,
+            "task-running": TaskStatus.RUNNING,
+            "task-cancel-requested": TaskStatus.CANCEL_REQUESTED,
+            "task-succeeded": TaskStatus.SUCCEEDED,
+            "task-failed": TaskStatus.FAILED,
+            "task-canceled": TaskStatus.CANCELED,
+        }
+        for task_id, task_status in task_statuses.items():
+            task_dir = self.output_dir / task_id
+            task_dir.mkdir(parents=True)
+            self.repository.save(task_dir, self._record(task_id, task_status))
+
+        active_records = self.repository.list_active_tasks(limit=100)
+
+        self.assertEqual(
+            {record.task_id for record in active_records},
+            {"task-queued", "task-running", "task-cancel-requested"},
+        )
+
+    def test_reconcile_command_runs_the_active_task_sweep(self) -> None:
+        report = TaskReconciliationReport(
+            scanned_task_ids=["task-queued"],
+            changed_task_ids=["task-queued"],
+            skipped_task_ids=[],
+        )
+        stdout = StringIO()
+
+        with (
+            patch("Main.reconcile_active_tasks", return_value=report) as reconcile,
+            redirect_stdout(stdout),
+        ):
+            exit_code = main(["reconcile-tasks", "--limit", "2"])
+
+        self.assertEqual(exit_code, 0)
+        reconcile.assert_called_once_with(limit=2)
+        self.assertIn("状态已修复：1 条", stdout.getvalue())
 
     def test_unavailable_database_raises_storage_error(self) -> None:
         blocked_parent = self.project_root / "not-a-directory"

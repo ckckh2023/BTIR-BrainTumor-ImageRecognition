@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
@@ -15,12 +16,21 @@ from core.task_definitions import ALL_MODELS, JobStatus, TaskStatus
 from core.task_records import TaskRecord
 from repositories.task_repository import TaskNotFoundError, task_repository
 from services.redis_client import get_redis_client
-from services.task_lock import task_write_lock
+from services.task_lock import TaskLockBusyError, task_write_lock
 from services.task_state import mark_task_queued, update_task_execution_status
 
 
 class TaskQueueUnavailableError(RuntimeError):
     '''Redis 或 RQ 队列不可用'''
+
+
+@dataclass(frozen=True)
+class TaskReconciliationReport:
+    '''一次活动任务巡检的摘要'''
+
+    scanned_task_ids: list[str]
+    changed_task_ids: list[str]
+    skipped_task_ids: list[str]
 
 
 ACTIVE_TASK_STATUSES = frozenset(
@@ -175,6 +185,35 @@ def cancel_task_run(task_dir: Path) -> TaskRecord:
         if rq_status is RqJobStatus.CANCELED:
             return _mark_task_canceled(task_dir, record)
         raise ValueError("仅排队或运行中的任务可以取消")
+
+
+def reconcile_active_tasks(
+    *,
+    limit: int = SETTINGS.task_reconcile_batch_size,
+) -> TaskReconciliationReport:
+    '''批量对账活动任务，使 worker 异常后的状态无需等待用户查询即可收敛'''
+    records = task_repository.list_active_tasks(limit=limit)
+    scanned_task_ids: list[str] = []
+    changed_task_ids: list[str] = []
+    skipped_task_ids: list[str] = []
+
+    for record in records:
+        task_dir = SETTINGS.output_dir / record.task_id
+        before = (record.status, record.job)
+        try:
+            reconciled = reconcile_task_job(task_dir)
+        except TaskLockBusyError:
+            skipped_task_ids.append(record.task_id)
+            continue
+        scanned_task_ids.append(record.task_id)
+        if (reconciled.status, reconciled.job) != before:
+            changed_task_ids.append(record.task_id)
+
+    return TaskReconciliationReport(
+        scanned_task_ids=scanned_task_ids,
+        changed_task_ids=changed_task_ids,
+        skipped_task_ids=skipped_task_ids,
+    )
 
 
 def reconcile_task_job(task_dir: Path) -> TaskRecord:

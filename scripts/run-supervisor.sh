@@ -12,6 +12,7 @@ API_PORT="${BTIR_API_PORT:-8000}"
 RESTART_DELAY_SECONDS="${BTIR_SUPERVISOR_RESTART_DELAY_SECONDS:-10}"
 HEALTH_CHECK_SECONDS="${BTIR_SUPERVISOR_HEALTH_CHECK_SECONDS:-15}"
 WORKER_STARTUP_GRACE_SECONDS="${BTIR_SUPERVISOR_WORKER_STARTUP_GRACE_SECONDS:-30}"
+TASK_RECONCILE_SECONDS="${BTIR_SUPERVISOR_TASK_RECONCILE_SECONDS:-60}"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOG_DIRECTORY="$PROJECT_ROOT/logs"
 
@@ -87,6 +88,12 @@ http_body() {
     curl -sS --max-time 3 "$1" || true
 }
 
+run_task_reconciliation() {
+    if ! "$PYTHON_EXE" "$PROJECT_ROOT/Main.py" reconcile-tasks >>"$LOG_DIRECTORY/reconcile.log" 2>&1; then
+        log 'task reconciliation failed'
+    fi
+}
+
 health_checks_enabled=true
 if ! command -v curl >/dev/null 2>&1; then
     health_checks_enabled=false
@@ -98,6 +105,7 @@ worker_pid=0
 worker_started_at=0
 api_health_failures=0
 next_health_check=0
+next_task_reconcile=0
 
 cleanup() {
     trap - EXIT INT TERM
@@ -148,6 +156,11 @@ while true; do
             log 'worker is not registered and no job is running; restarting worker'
             restart_worker
         fi
+    fi
+
+    if [[ "$now" -ge "$next_task_reconcile" ]]; then
+        next_task_reconcile=$((now + TASK_RECONCILE_SECONDS))
+        run_task_reconciliation
     fi
 
     sleep 1

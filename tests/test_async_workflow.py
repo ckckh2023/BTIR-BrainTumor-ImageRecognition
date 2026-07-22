@@ -23,6 +23,7 @@ from services.task_queue import (
     TaskQueueUnavailableError,
     cancel_task_run,
     enqueue_task_run,
+    reconcile_active_tasks,
     reconcile_task_job,
 )
 from services.task_runner import (
@@ -32,6 +33,7 @@ from services.task_runner import (
     run_task_models,
 )
 from services.task_results import build_frontend_result
+from services.task_lock import TaskLockBusyError
 from services.task_state import mark_task_queued, update_task_execution_status
 from workers.inference_jobs import run_task_job
 from workers import run_worker
@@ -553,6 +555,51 @@ class TaskReconciliationTests(unittest.TestCase):
 
         self.assertEqual(update_status.call_args.args[1], JobStatus.FAILED)
         self.assertIn("超过允许执行时长", update_status.call_args.kwargs["error"])
+
+    def test_active_task_sweep_reconciles_every_active_record(self) -> None:
+        queued_record = deepcopy(self.record)
+        queued_record.task_id = "task-reconcile-queued"
+        queued_record.status = TaskStatus.QUEUED
+        queued_record.job.id = "job-reconcile-queued"
+        reconciled_record = deepcopy(self.record)
+        reconciled_record.status = TaskStatus.SUCCEEDED
+        reconciled_record.job.status = JobStatus.SUCCEEDED
+        repository = Mock()
+        repository.list_active_tasks.return_value = [self.record, queued_record]
+
+        with (
+            patch("services.task_queue.task_repository", repository),
+            patch(
+                "services.task_queue.reconcile_task_job",
+                side_effect=[reconciled_record, queued_record],
+            ) as reconcile_job,
+        ):
+            report = reconcile_active_tasks(limit=20)
+
+        self.assertEqual(
+            report.scanned_task_ids,
+            ["task-reconcile-001", "task-reconcile-queued"],
+        )
+        self.assertEqual(report.changed_task_ids, ["task-reconcile-001"])
+        self.assertEqual(reconcile_job.call_count, 2)
+        self.assertEqual(report.skipped_task_ids, [])
+
+    def test_active_task_sweep_skips_a_task_currently_being_written(self) -> None:
+        repository = Mock()
+        repository.list_active_tasks.return_value = [self.record]
+
+        with (
+            patch("services.task_queue.task_repository", repository),
+            patch(
+                "services.task_queue.reconcile_task_job",
+                side_effect=TaskLockBusyError("busy"),
+            ),
+        ):
+            report = reconcile_active_tasks(limit=20)
+
+        self.assertEqual(report.scanned_task_ids, [])
+        self.assertEqual(report.changed_task_ids, [])
+        self.assertEqual(report.skipped_task_ids, ["task-reconcile-001"])
 
 
 class TaskPerformanceRecordTests(unittest.TestCase):
