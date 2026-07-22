@@ -10,7 +10,7 @@ from rq import get_current_job
 
 from core.settings import SETTINGS
 from core.task_definitions import JobStatus
-from services.task_runner import run_task_models
+from services.task_runner import TaskCancellationRequested, run_task_models
 from services.task_files import get_task_dir
 from services.task_state import update_task_execution_status
 
@@ -31,6 +31,8 @@ def run_task_job(task_id: str, threshold: float) -> dict[str, Any]:
     attempt = _get_job_attempt(job)
     if attempt is not None:
         status_kwargs["attempt"] = attempt
+    if _is_cancellation_requested(job):
+        return _finish_canceled_task(task_dir, job, attempt, execution_ms=0.0)
     update_task_execution_status(
         task_dir,
         JobStatus.RUNNING,
@@ -39,7 +41,14 @@ def run_task_job(task_id: str, threshold: float) -> dict[str, Any]:
     started_at = perf_counter()
 
     try:
-        run_result = run_task_models(task_dir, threshold)
+        run_result = run_task_models(
+            task_dir,
+            threshold,
+            should_cancel=lambda: _is_cancellation_requested(job),
+        )
+    except TaskCancellationRequested:
+        execution_ms = round((perf_counter() - started_at) * 1000, 3)
+        return _finish_canceled_task(task_dir, job, attempt, execution_ms=execution_ms)
     except Exception as exc:
         execution_ms = round((perf_counter() - started_at) * 1000, 3)
         retry_pending = bool(getattr(job, "should_retry", lambda: False)())
@@ -92,3 +101,39 @@ def _get_job_attempt(job: Any) -> int | None:
     if not isinstance(retries_left, int):
         return None
     return SETTINGS.task_job_max_retries - retries_left + 1
+
+
+def _is_cancellation_requested(job: Any) -> bool:
+    refresh = getattr(job, "refresh", None)
+    if callable(refresh):
+        refresh()
+    return bool(getattr(job, "meta", {}).get("cancel_requested"))
+
+
+def _finish_canceled_task(
+    task_dir,
+    job: Any,
+    attempt: int | None,
+    *,
+    execution_ms: float,
+) -> dict[str, Any]:
+    task_record = update_task_execution_status(
+        task_dir,
+        JobStatus.CANCELED,
+        job_id=job.id,
+        queue_name=SETTINGS.task_queue_name,
+        attempt=attempt,
+        execution_ms=execution_ms,
+    )
+    logger.info(
+        "task inference canceled task_id=%s job_id=%s attempt=%s execution_ms=%s",
+        task_dir.name,
+        job.id,
+        attempt,
+        execution_ms,
+    )
+    return {
+        "task_id": task_dir.name,
+        "status": task_record.status.value,
+        "completed_models": [model.value for model in task_record.completed_models],
+    }

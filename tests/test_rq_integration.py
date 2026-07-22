@@ -93,7 +93,12 @@ class RqIntegrationTests(unittest.TestCase):
             image_stream = BytesIO()
             Image.new("RGB", (2, 2), color="white").save(image_stream, format="PNG")
 
-            def fake_run_models(task_dir: Path, _: float) -> SimpleNamespace:
+            def fake_run_models(
+                task_dir: Path,
+                _: float,
+                *,
+                should_cancel=None,
+            ) -> SimpleNamespace:
                 (task_dir / "frontend_result.json").write_text(
                     json.dumps(
                         {

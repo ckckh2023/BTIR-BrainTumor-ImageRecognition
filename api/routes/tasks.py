@@ -19,6 +19,7 @@ from contracts.task import (
     SegmentTaskResponse,
     SegmentationData,
     TaskCreatedResponse,
+    TaskCancellationResponse,
     TaskEnqueuedResponse,
     TaskErrorData,
     TaskInputData,
@@ -42,7 +43,7 @@ from services.task_runner import (
     run_segmentation,
     run_task_models,
 )
-from services.task_queue import enqueue_task_run, reconcile_task_job
+from services.task_queue import cancel_task_run, enqueue_task_run, reconcile_task_job
 
 router = APIRouter(prefix="/tasks", tags=["任务"])
 
@@ -381,6 +382,24 @@ def enqueue_task(
         status=job["status"],
         job=job,
         reused_existing_job=reused,
+    )
+
+
+@router.post("/{task_id}/cancel", response_model=TaskCancellationResponse)
+def cancel_task(task_id: str) -> TaskCancellationResponse:
+    '''取消排队任务，或请求运行中的任务在安全阶段停止'''
+    task_dir = require_task_dir(task_id)
+    try:
+        task_record = cancel_task_run(task_dir)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+    return TaskCancellationResponse(
+        task_id=task_id,
+        status=task_record.status,
     )
 
 

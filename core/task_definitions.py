@@ -12,11 +12,13 @@ class TaskStatus(StrEnum):
     CREATED = "created"
     QUEUED = "queued"
     RUNNING = "running"
+    CANCEL_REQUESTED = "cancel_requested"
     PARTIAL = "partial"
     # 保留旧任务记录的兼容性；新任务完成统一使用 SUCCEEDED
     COMPLETED = "completed"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
+    CANCELED = "canceled"
 
 
 class JobStatus(StrEnum):
@@ -26,6 +28,7 @@ class JobStatus(StrEnum):
     RUNNING = "running"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
+    CANCELED = "canceled"
 
 
 class ModelName(StrEnum):

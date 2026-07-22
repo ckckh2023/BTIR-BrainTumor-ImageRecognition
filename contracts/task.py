@@ -188,3 +188,9 @@ class TaskEnqueuedResponse(BaseModel):
     status: JobStatus
     job: TaskJobData
     reused_existing_job: bool
+
+
+class TaskCancellationResponse(BaseModel):
+    schema_version: Literal["0.1"] = "0.1"
+    task_id: str
+    status: TaskStatus

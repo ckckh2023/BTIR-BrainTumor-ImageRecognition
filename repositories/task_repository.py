@@ -256,7 +256,7 @@ class SqliteTaskRepository:
                 SELECT record_json FROM tasks
                 WHERE archived_at IS NULL AND (
                     (status IN (?, ?) AND updated_at < ?) OR
-                    (status = ? AND updated_at < ?)
+                    (status IN (?, ?) AND updated_at < ?)
                 )
                 ORDER BY updated_at ASC, task_id ASC
                 LIMIT ?
@@ -266,6 +266,7 @@ class SqliteTaskRepository:
                     TaskStatus.COMPLETED.value,
                     succeeded_before.isoformat(),
                     TaskStatus.FAILED.value,
+                    TaskStatus.CANCELED.value,
                     failed_before.isoformat(),
                     limit,
                 ),

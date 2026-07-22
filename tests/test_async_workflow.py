@@ -9,9 +9,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
-from unittest.mock import Mock, call, patch
+from unittest.mock import ANY, Mock, call, patch
 
 from redis.exceptions import RedisError
+from rq.exceptions import InvalidJobOperation
 from rq.job import JobStatus as RqJobStatus
 
 from core.settings import SETTINGS
@@ -20,12 +21,14 @@ from core.task_records import StoredTaskInput, TaskErrorRecord, TaskJobRecord, T
 from services.inference_service import preload_inference_models
 from services.task_queue import (
     TaskQueueUnavailableError,
+    cancel_task_run,
     enqueue_task_run,
     reconcile_task_job,
 )
 from services.task_runner import (
     run_classification,
     run_segmentation,
+    TaskCancellationRequested,
     run_task_models,
 )
 from services.task_results import build_frontend_result
@@ -160,6 +163,77 @@ class AsyncQueueTests(unittest.TestCase):
         self.assertEqual(job["status"], "queued")
         self.assertEqual(repository.record.status, TaskStatus.QUEUED)
 
+    def test_queued_task_is_canceled_immediately(self) -> None:
+        record = deepcopy(self.record)
+        record.status = TaskStatus.QUEUED
+        record.job = TaskJobRecord(
+            id="job-cancel-001",
+            queue="inference",
+            status=JobStatus.QUEUED,
+        )
+        repository = FakeTaskRepository(record)
+        rq_job = Mock()
+        rq_job.get_status.return_value = RqJobStatus.QUEUED
+
+        with (
+            patch("services.task_queue.task_repository", repository),
+            patch("services.task_queue.task_write_lock", self._no_lock),
+            patch("services.task_queue.get_redis_client", return_value=Mock()),
+            patch("services.task_queue.Job.fetch", return_value=rq_job),
+        ):
+            canceled = cancel_task_run(self.task_dir)
+
+        rq_job.cancel.assert_called_once_with()
+        self.assertEqual(canceled.status, TaskStatus.CANCELED)
+        self.assertEqual(canceled.job.status, JobStatus.CANCELED)
+
+    def test_already_canceled_rq_job_keeps_cancellation_idempotent(self) -> None:
+        record = deepcopy(self.record)
+        record.status = TaskStatus.QUEUED
+        record.job = TaskJobRecord(
+            id="job-cancel-idempotent",
+            queue="inference",
+            status=JobStatus.QUEUED,
+        )
+        repository = FakeTaskRepository(record)
+        rq_job = Mock()
+        rq_job.get_status.return_value = RqJobStatus.QUEUED
+        rq_job.cancel.side_effect = InvalidJobOperation("already canceled")
+
+        with (
+            patch("services.task_queue.task_repository", repository),
+            patch("services.task_queue.task_write_lock", self._no_lock),
+            patch("services.task_queue.get_redis_client", return_value=Mock()),
+            patch("services.task_queue.Job.fetch", return_value=rq_job),
+        ):
+            canceled = cancel_task_run(self.task_dir)
+
+        self.assertEqual(canceled.status, TaskStatus.CANCELED)
+
+    def test_running_task_records_a_cooperative_cancellation_request(self) -> None:
+        record = deepcopy(self.record)
+        record.status = TaskStatus.RUNNING
+        record.job = TaskJobRecord(
+            id="job-cancel-002",
+            queue="inference",
+            status=JobStatus.RUNNING,
+        )
+        repository = FakeTaskRepository(record)
+        rq_job = Mock(meta={})
+        rq_job.get_status.return_value = RqJobStatus.STARTED
+
+        with (
+            patch("services.task_queue.task_repository", repository),
+            patch("services.task_queue.task_write_lock", self._no_lock),
+            patch("services.task_queue.get_redis_client", return_value=Mock()),
+            patch("services.task_queue.Job.fetch", return_value=rq_job),
+        ):
+            cancellation_requested = cancel_task_run(self.task_dir)
+
+        self.assertEqual(cancellation_requested.status, TaskStatus.CANCEL_REQUESTED)
+        self.assertTrue(rq_job.meta["cancel_requested"])
+        rq_job.save_meta.assert_called_once_with()
+
 
 class TaskRunnerTests(unittest.TestCase):
     '''验证完整推理统一入口的调用顺序与返回结果'''
@@ -249,6 +323,19 @@ class TaskRunnerTests(unittest.TestCase):
         self.assertEqual(persist_result.call_args_list[1].kwargs["run_dir"], run_dir)
         self.assertGreaterEqual(result.total_inference_ms, 0)
 
+    def test_runner_stops_between_models_when_cancellation_is_requested(self) -> None:
+        task_dir = Path("output") / "task-runner-cancel-001"
+        image_path = task_dir / "input" / "image.png"
+        with (
+            patch("services.task_runner.load_task_image", return_value=image_path),
+            patch("services.task_runner._run_classification", return_value={}),
+            patch("services.task_runner._run_segmentation") as run_segmentation_model,
+            self.assertRaises(TaskCancellationRequested),
+        ):
+            run_task_models(task_dir, 0.5, should_cancel=lambda: True)
+
+        run_segmentation_model.assert_not_called()
+
 
 class InferenceWorkerTests(unittest.TestCase):
     '''验证 Worker 的成功和失败状态转换'''
@@ -301,7 +388,7 @@ class InferenceWorkerTests(unittest.TestCase):
         self.assertEqual(result["completed_models"], ["classification", "segmentation"])
         self.assertEqual(result["classification_result_file"], "classification.json")
         self.assertEqual(result["segmentation_result_file"], "segmentation.json")
-        run_models.assert_called_once_with(self.task_dir, 0.5)
+        run_models.assert_called_once_with(self.task_dir, 0.5, should_cancel=ANY)
         self.assertEqual(
             update_status.call_args_list,
             [
@@ -350,6 +437,29 @@ class InferenceWorkerTests(unittest.TestCase):
             "RuntimeError: simulated inference failure",
             update_status.call_args_list[1].kwargs["error_detail"],
         )
+
+    def test_worker_marks_task_canceled_between_models(self) -> None:
+        canceled_record = SimpleNamespace(
+            status=TaskStatus.CANCELED,
+            completed_models=[ModelName.CLASSIFICATION],
+        )
+        update_status = Mock(return_value=canceled_record)
+
+        with (
+            patch("workers.inference_jobs.get_current_job", return_value=self.job),
+            patch("workers.inference_jobs.get_task_dir", return_value=self.task_dir),
+            patch("workers.inference_jobs.update_task_execution_status", update_status),
+            patch(
+                "workers.inference_jobs.run_task_models",
+                side_effect=TaskCancellationRequested("canceled"),
+            ),
+        ):
+            result = run_task_job(self.task_id, 0.5)
+
+        self.assertEqual(result["status"], "canceled")
+        self.assertEqual(result["completed_models"], ["classification"])
+        self.assertEqual(update_status.call_args_list[0].args[1], JobStatus.RUNNING)
+        self.assertEqual(update_status.call_args_list[1].args[1], JobStatus.CANCELED)
 
     def test_worker_requeues_first_failure_when_rq_retry_is_available(self) -> None:
         retrying_job = SimpleNamespace(
