@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
+import sqlite3
 
 from core.task_definitions import TaskStatus
 from core.task_records import StoredTaskInput, TaskRecord
@@ -92,6 +93,25 @@ class TaskStorageTests(unittest.TestCase):
 
         with self.assertRaises(TaskRepositoryUnavailableError):
             SqliteTaskRepository(blocked_parent / "tasks.db")
+
+    def test_query_indexes_are_created_for_task_listing_and_archiving(self) -> None:
+        connection = sqlite3.connect(self.repository.database_path)
+        try:
+            index_names = {
+                row[1]
+                for row in connection.execute("PRAGMA index_list(tasks)").fetchall()
+            }
+        finally:
+            connection.close()
+
+        self.assertTrue(
+            {
+                "idx_tasks_created_at_task_id",
+                "idx_tasks_status_created_at_task_id",
+                "idx_tasks_status_updated_at_task_id",
+                "idx_tasks_archived_at_task_id",
+            }.issubset(index_names)
+        )
 
     def test_dry_run_keeps_output_and_database_records(self) -> None:
         task_dir = self.output_dir / "task-002"

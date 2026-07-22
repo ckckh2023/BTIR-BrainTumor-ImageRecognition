@@ -129,6 +129,30 @@ class SqliteTaskRepository:
             }
             if "archived_at" not in columns:
                 connection.execute("ALTER TABLE tasks ADD COLUMN archived_at TEXT")
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_tasks_created_at_task_id
+                ON tasks (created_at DESC, task_id DESC)
+                """
+            )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_tasks_status_created_at_task_id
+                ON tasks (status, created_at DESC, task_id DESC)
+                """
+            )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_tasks_status_updated_at_task_id
+                ON tasks (status, updated_at ASC, task_id ASC)
+                """
+            )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_tasks_archived_at_task_id
+                ON tasks (archived_at ASC, task_id ASC)
+                """
+            )
 
     def exists(self, task_dir: Path) -> bool:
         with self._connect() as connection:
