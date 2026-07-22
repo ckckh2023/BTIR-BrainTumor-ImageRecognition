@@ -292,7 +292,9 @@ python Main.py benchmark "dataset/no/1 no.jpeg" --warm-runs 3 --json
 ### Windows 进程守护
 
 `scripts/run-supervisor.ps1` 会同时启动 API 与推理 worker；任一进程意外退出时自动重启  
-它定期检查 `/healthz`、`/readyz` 和 `/ops/queue`：API 连续健康检查失败时重启 API；仅在 Redis 正常、worker 未注册且没有正在运行的作业时才重启 worker。每 60 秒还会运行一次 `reconcile-tasks`，自动修复活动任务状态；可通过 `-TaskReconcileSeconds` 调整  Redis 短暂断连由 RQ worker 自身的退避重连处理
+它定期检查 `/healthz`、`/readyz` 和 `/ops/queue`：API 连续健康检查失败时重启 API；仅在 Redis 正常、worker 未注册且没有正在运行的作业时才重启 worker  
+每 60 秒还会运行一次 `reconcile-tasks`，自动修复活动任务状态；可通过 `-TaskReconcileSeconds` 调整  
+Redis 短暂断连由 RQ worker 自身的退避重连处理
 
 启动前先停止手动运行的 API 与 worker，避免端口或 Redis worker 重复注册：
 

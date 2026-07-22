@@ -576,10 +576,7 @@ class TaskReconciliationTests(unittest.TestCase):
         ):
             report = reconcile_active_tasks(limit=20)
 
-        self.assertEqual(
-            report.scanned_task_ids,
-            ["task-reconcile-001", "task-reconcile-queued"],
-        )
+        self.assertEqual(report.scanned_task_count, 2)
         self.assertEqual(report.changed_task_ids, ["task-reconcile-001"])
         self.assertEqual(reconcile_job.call_count, 2)
         self.assertEqual(report.skipped_task_ids, [])
@@ -597,7 +594,7 @@ class TaskReconciliationTests(unittest.TestCase):
         ):
             report = reconcile_active_tasks(limit=20)
 
-        self.assertEqual(report.scanned_task_ids, [])
+        self.assertEqual(report.scanned_task_count, 0)
         self.assertEqual(report.changed_task_ids, [])
         self.assertEqual(report.skipped_task_ids, ["task-reconcile-001"])
 

@@ -39,6 +39,13 @@ class ModelName(StrEnum):
 
 
 ALL_MODELS = frozenset(ModelName)
+ACTIVE_ASYNC_TASK_STATUSES = frozenset(
+    {
+        TaskStatus.QUEUED,
+        TaskStatus.RUNNING,
+        TaskStatus.CANCEL_REQUESTED,
+    }
+)
 
 
 def task_status_from_job_status(status: JobStatus | str) -> TaskStatus:
