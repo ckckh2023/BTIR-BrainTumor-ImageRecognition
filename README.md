@@ -456,7 +456,18 @@ python Main.py clear --dry-run
 python Main.py clear --output-dir D:\btir-output --dry-run
 python Main.py archive-tasks
 python Main.py purge-archive
+python Main.py game
 ```
+
+### 彩蛋（扫瘤）
+
+在项目根目录、交互式终端中执行：
+
+```powershell
+python Main.py game
+```
+
+> 内容是什么你猜猜~
 
 ## 协定
 
