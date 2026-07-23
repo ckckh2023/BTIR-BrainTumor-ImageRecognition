@@ -420,7 +420,8 @@ api/app.py                    # FastAPI 应用组装、CORS、静态前端
 api/routes/tasks.py           # 任务创建、推理、结果文件接口
 api/routes/runtime.py         # 运行环境状态接口
 contracts/task.py             # API 请求/响应数据模型
-repositories/task_repository.py # 任务元数据仓储（当前 SQLite 实现）
+repositories/task_repository.py # 任务仓储契约与默认实例
+repositories/sqlite_task_repository.py # SQLite 任务仓储实现
 core/task_records.py          # SQLite 持久化任务记录的 Pydantic 模型
 services/task_files.py        # 任务目录、输入图像和原子 JSON 写入
 services/task_results.py      # 模型结果、历史结果和前端结果的持久化
