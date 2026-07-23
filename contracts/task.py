@@ -20,22 +20,6 @@ class TaskCreatedResponse(BaseModel):
     status: TaskStatus = TaskStatus.CREATED
     input_file: str
 
-# 任务分类结果模型
-class ClassificationData(BaseModel):
-    label: Literal["yes", "no"]
-    confidence: float
-    probabilities: dict[str, float]
-
-# 任务分类响应模型
-class ClassifyTaskResponse(BaseModel):
-    schema_version: Literal["0.1"] = "0.1"
-    task_id: str
-    status: TaskStatus
-    completed_models: list[str]
-    classification: ClassificationData
-    frontend_result_file: str
-
-
 # 任务输入数据模型
 class TaskInputData(BaseModel):
     filename: str
@@ -124,34 +108,6 @@ class InferenceQueueStatusResponse(BaseModel):
     running_jobs: int
     failed_jobs: int
     oldest_wait_seconds: float | None = None
-
-
-# 任务分割请求模型
-class SegmentTaskRequest(BaseModel):
-    threshold: float = Field(
-        default=SETTINGS.default_segment_threshold,
-        ge=0.0,
-        le=1.0,
-    )
-
-
-# 任务分割结果模型
-class SegmentationData(BaseModel):
-    threshold: float
-    tumor_pixels: int
-    image_pixels: int
-    tumor_area_ratio: float
-    mask_file: str
-
-
-# 任务分割响应模型
-class SegmentTaskResponse(BaseModel):
-    schema_version: Literal["0.1"] = "0.1"
-    task_id: str
-    status: TaskStatus
-    completed_models: list[str]
-    segmentation: SegmentationData
-    frontend_result_file: str
 
 
 # 任务运行请求模型
