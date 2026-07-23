@@ -344,23 +344,6 @@ POST /tasks/{task_id}/run-async
 }
 ```
 
-单模型接口保留给调试、重复运行单个模型或前端按需分析：
-
-```text
-POST /tasks/{task_id}/classify
-POST /tasks/{task_id}/segment
-```
-
-分割接口请求体可指定阈值：
-
-```json
-{
-  "threshold": 0.5
-}
-```
-
-> 当前接口为同步调用：请求会等待模型完成后再返回，因此模型耗时较长时
-
 ### 3. 查询任务结果
 
 ```text

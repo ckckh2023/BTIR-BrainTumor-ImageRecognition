@@ -5,17 +5,13 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse, JSONResponse
 
 from contracts.task import (
-    ClassificationData,
-    ClassifyTaskResponse,
     RunTaskRequest,
-    SegmentTaskRequest,
-    SegmentTaskResponse,
-    SegmentationData,
     TaskCreatedResponse,
     TaskCancellationResponse,
     TaskEnqueuedResponse,
@@ -32,11 +28,6 @@ from services.task_files import (
     create_task_dir,
     get_task_dir,
     initialize_uploaded_task,
-    task_relative_path,
-)
-from services.task_runner import (
-    run_classification,
-    run_segmentation,
 )
 from services.task_queue import cancel_task_run, enqueue_task_run, reconcile_task_job
 
@@ -112,18 +103,23 @@ def task_error_data(task_data) -> TaskErrorData | None:
     )
 
 
+def task_common_data(task_data) -> dict[str, Any]:
+    '''组装任务列表与详情接口共享的公开字段'''
+    return {
+        "task_id": task_data.task_id,
+        "name": task_data.name,
+        "status": task_data.status,
+        "created_at": task_data.created_at,
+        "updated_at": task_data.updated_at,
+        "completed_models": [model.value for model in task_data.completed_models],
+        "input": task_input_data(task_data),
+        "job": task_data.job.model_dump(mode="json") if task_data.job else None,
+        "error": task_error_data(task_data),
+    }
+
+
 def task_summary_data(task_data) -> TaskSummaryResponse:
-    return TaskSummaryResponse(
-        task_id=task_data.task_id,
-        name=task_data.name,
-        status=task_data.status,
-        created_at=task_data.created_at,
-        updated_at=task_data.updated_at,
-        completed_models=[model.value for model in task_data.completed_models],
-        input=task_input_data(task_data),
-        job=(task_data.job.model_dump(mode="json") if task_data.job else None),
-        error=task_error_data(task_data),
-    )
+    return TaskSummaryResponse(**task_common_data(task_data))
 
 
 @router.post(
@@ -176,31 +172,6 @@ def list_tasks(
     )
 
 
-@router.post("/{task_id}/classify", response_model=ClassifyTaskResponse)
-def classify_task(task_id: str) -> ClassifyTaskResponse:
-    '''对指定任务运行分类推理'''
-    try:
-        task_dir = require_task_dir(task_id)
-        model_run = run_classification(task_dir)
-        result = model_run.result
-        task_record = task_repository.load(task_dir)
-    except ValueError as exc:
-        raise bad_request_http_error(exc) from exc
-
-    prediction = result["classification"]
-    return ClassifyTaskResponse(
-        task_id=task_id,
-        status=task_record.status,
-        completed_models=[model.value for model in task_record.completed_models],
-        classification=ClassificationData(
-            label=prediction["class"],
-            confidence=prediction["confidence"],
-            probabilities=prediction["probabilities"],
-        ),
-        frontend_result_file=result["frontend_result_path"],
-    )
-
-
 @router.get("/{task_id}", response_model=TaskStatusResponse)
 def get_task(task_id: str) -> TaskStatusResponse:
     '''获取指定任务状态和当前结果'''
@@ -218,15 +189,7 @@ def get_task(task_id: str) -> TaskStatusResponse:
         frontend_result.setdefault("image_file", Path(task_data.input.path).name)
 
     return TaskStatusResponse(
-        task_id=task_data.task_id,
-        name=task_data.name,
-        status=task_data.status,
-        created_at=task_data.created_at,
-        updated_at=task_data.updated_at,
-        completed_models=[model.value for model in task_data.completed_models],
-        input=task_input_data(task_data),
-        job=(task_data.job.model_dump(mode="json") if task_data.job else None),
-        error=task_error_data(task_data),
+        **task_common_data(task_data),
         frontend_result=frontend_result,
     )
 
@@ -261,36 +224,6 @@ def get_task_file(task_id: str, file_path: str) -> FileResponse:
         return JSONResponse(sanitize_public_payload(data))
 
     return FileResponse(file, filename=file.name)
-
-
-@router.post("/{task_id}/segment", response_model=SegmentTaskResponse)
-def segment_task(
-    task_id: str,
-    request: SegmentTaskRequest,
-) -> SegmentTaskResponse:
-    '''对指定任务运行分割推理'''
-    task_dir = require_task_dir(task_id)
-    try:
-        model_run = run_segmentation(task_dir, request.threshold)
-        result = model_run.result
-        task_record = task_repository.load(task_dir)
-        mask_file = task_relative_path(task_dir, Path(result["mask_path"]))
-    except ValueError as exc:
-        raise bad_request_http_error(exc) from exc
-
-    return SegmentTaskResponse(
-        task_id=task_id,
-        status=task_record.status,
-        completed_models=[model.value for model in task_record.completed_models],
-        segmentation=SegmentationData(
-            threshold=result["threshold"],
-            tumor_pixels=result["tumor_pixels"],
-            image_pixels=result["image_pixels"],
-            tumor_area_ratio=result["tumor_area_ratio"],
-            mask_file=mask_file,
-        ),
-        frontend_result_file=result["frontend_result_path"],
-    )
 
 
 @router.post(
