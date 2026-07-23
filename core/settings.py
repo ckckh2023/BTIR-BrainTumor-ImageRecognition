@@ -53,7 +53,7 @@ def _get_origins() -> list[str]:
     '''获取允许跨域请求的前端地址列表'''
     raw_value = os.getenv(
         "BTIR_CORS_ORIGINS",
-        "http://127.0.0.1:8000,http://localhost:8000",
+        "http://127.0.0.1:8000,http://localhost:8000,null",
     )
     return [origin.strip() for origin in raw_value.split(",") if origin.strip()]
 

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>脑肿瘤MRI图像识别</title>
+    <link rel="preconnect" href="https://unpkg.com">
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <style>
         * {
@@ -19,31 +20,48 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            align-items: flex-start;
             padding: 20px;
         }
 
-        .container {
+        .app-container {
+            display: flex;
+            gap: 24px;
             background: white;
             border-radius: 12px;
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
             padding: 40px;
-            margin: 40px auto;
-            width: 850px;
-            height: 600px;
-            max-width: 90vw;
-            max-height: 90vw;
+            width: 95vw;
+            max-width: 1400px;
+            height: calc(100vh - 40px);
+            max-height: 1000px;
+        }
+
+        .left-panel {
+            flex: 3;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        .right-panel {
+            flex: 2;
+            border-left: 2px solid #e8f0f8;
+            padding-left: 24px;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
         }
 
         h1 {
-            text-align: center;
             color: #1e3c72;
-            margin-bottom: 30px;
-            font-size: 28px;
+            margin-bottom: 28px;
+            font-size: 26px;
+            flex-shrink: 0;
         }
 
         .input-group {
-            margin-bottom: 20px;
+            margin-bottom: 16px;
+            flex-shrink: 0;
         }
 
         label {
@@ -137,6 +155,7 @@
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s;
+            flex-shrink: 0;
         }
 
         button.recognize-btn:hover:not(:disabled) {
@@ -156,9 +175,13 @@
         }
 
         .result-section {
-            margin-top: 30px;
-            padding-top: 30px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
             border-top: 2px solid #e8f0f8;
+            margin-top: 20px;
+            padding-top: 20px;
+            min-height: 0;
         }
 
         .result-title {
@@ -166,13 +189,16 @@
             margin-bottom: 15px;
             font-size: 18px;
             font-weight: 600;
+            flex-shrink: 0;
         }
 
         .result-box {
             background: #f7fafc;
             border-radius: 8px;
             padding: 16px;
-            min-height: 100px;
+            flex: 1;
+            overflow-y: auto;
+            min-height: 0;
         }
 
         .result-item {
@@ -192,6 +218,16 @@
             font-family: 'Consolas', 'Monaco', monospace;
         }
 
+        .result-highlight {
+            color: #38a169;
+            font-weight: 600;
+            font-size: 16px;
+        }
+
+        .result-highlight.detected {
+            color: #e53e3e;
+        }
+
         .status-loading {
             color: #2a5298;
             font-style: italic;
@@ -205,18 +241,112 @@
             color: #38a169;
         }
 
-        .json-display {
-            background: #407eb8;
-            color: #e8f0f8;
+        .right-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+            margin-bottom: 12px;
+        }
+
+        .right-title {
+            color: #1e3c72;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .copy-btn {
+            flex-shrink: 0;
+            padding: 6px 14px;
+            background: #334155;
+            color: #e2e8f0;
+            border: 1px solid #475569;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .copy-btn:hover {
+            background: #475569;
+        }
+
+        .file-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            flex-shrink: 0;
+            margin-bottom: 12px;
+        }
+
+        .file-tab {
+            padding: 5px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            background: #f1f5f9;
+            color: #475569;
+            border: 1px solid #e2e8f0;
+            transition: all 0.2s;
+            white-space: nowrap;
+            max-width: 180px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .file-tab:hover {
+            background: #e2e8f0;
+        }
+
+        .file-tab.active {
+            background: #1e3c72;
+            color: white;
+            border-color: #1e3c72;
+        }
+
+        .file-tab.loading {
+            opacity: 0.6;
+            cursor: wait;
+        }
+
+        .json-viewer {
+            flex: 1;
+            background: #1e293b;
+            color: #e2e8f0;
             border-radius: 8px;
             padding: 16px;
-            margin-top: 15px;
-            overflow-x: auto;
             font-family: 'Consolas', 'Monaco', monospace;
             font-size: 13px;
             line-height: 1.6;
-            max-height: 400px;
             overflow-y: auto;
+            min-height: 0;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .json-viewer .key {
+            color: #60a5fa;
+        }
+        .json-viewer .string {
+            color: #a5d6a7;
+        }
+        .json-viewer .number {
+            color: #ffcc80;
+        }
+        .json-viewer .boolean {
+            color: #ce93d8;
+        }
+        .json-viewer .null {
+            color: #ef9a9a;
+            font-style: italic;
+        }
+
+        .json-placeholder {
+            color: #94a3b8;
+            font-style: italic;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .loading-spinner {
@@ -235,74 +365,123 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+
+        .copy-toast {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 10px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 100;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+        .copy-toast.show {
+            opacity: 1;
+        }
+
+        .file-fetch-error {
+            color: #ef9a9a;
+        }
     </style>
 </head>
 <body>
     <div id="app">
-        <div class="container">
-            <h1>脑肿瘤MRI图像识别</h1>
+        <div class="app-container">
+            <div class="left-panel">
+                <h1>脑肿瘤MRI图像识别</h1>
 
-            <div class="input-group">
-                <label for="selectedFileName">已选择图片：</label>
+                <div class="input-group">
+                    <label for="selectedFileName">已选择图片：</label>
+                    <div class="input-row">
+                        <div class="input-wrapper"
+                             @dragenter.prevent="onDragEnter"
+                             @dragover.prevent="onDragOver"
+                             @dragleave.prevent="onDragLeave"
+                             @drop.prevent="onDrop">
+                            <input
+                                type="text"
+                                id="selectedFileName"
+                                :value="selectedFile ? selectedFile.name : ''"
+                                placeholder="请选择或拖拽图片文件"
+                                readonly
+                                @click="triggerFilePicker"
+                            />
+                            <div class="drop-hint" v-if="isDragOver">
+                                <span>释放上传</span>
+                            </div>
+                        </div>
+                        <button class="browse-btn" @click="triggerFilePicker" :disabled="loading">
+                            浏览...
+                        </button>
+                    </div>
+                    <input
+                        type="file"
+                        ref="fileInput"
+                        accept=".jpg,.jpeg,.png,.bmp,.tif,.tiff,.webp,.gif,.dcm,.dicom"
+                        style="display: none"
+                        @change="onFileSelected"
+                    />
+                </div>
 
-                <div class="input-row">
-                    <div class="input-wrapper"
-                         @dragenter.prevent="onDragEnter"
-                         @dragover.prevent="onDragOver"
-                         @dragleave.prevent="onDragLeave"
-                         @drop.prevent="onDrop">
-                        <input
-                            type="text"
-                            id="selectedFileName"
-                            :value="selectedFile ? selectedFile.name : ''"
-                            placeholder="请选择或拖拽图片文件"
-                            readonly
-                            @click="triggerFilePicker"
-                        />
-                        <div class="drop-hint" v-if="isDragOver">
-                            <span>释放上传</span>
+                <button class="recognize-btn" @click="recognizeFromUpload" :disabled="loading || !selectedFile">
+                    {{ loading ? '识别中...' : '识别' }}
+                </button>
+
+                <div class="result-section">
+                    <div class="result-title">识别结果</div>
+                    <div class="result-box">
+                        <div class="result-item">
+                            <div class="result-label">状态：</div>
+                            <div class="result-value" v-html="statusText"></div>
+                        </div>
+                        <div class="result-item" v-if="taskId">
+                            <div class="result-label">任务ID：</div>
+                            <div class="result-value">{{ taskId }}</div>
+                        </div>
+                        <div class="result-item" v-if="classificationLabel">
+                            <div class="result-label">分类结果：</div>
+                            <div class="result-value">
+                                <span :class="['result-highlight', classificationLabel === '肿瘤 detected' ? 'detected' : '']">
+                                    {{ classificationLabel }}
+                                </span>
+                                <span v-if="confidence">（置信度：{{ (confidence * 100).toFixed(1) }}%）</span>
+                            </div>
+                        </div>
+                        <div class="result-item" v-if="tumorArea !== null">
+                            <div class="result-label">肿瘤占比：</div>
+                            <div class="result-value">{{ (tumorArea * 100).toFixed(2) }}%</div>
                         </div>
                     </div>
-
-                    <button class="browse-btn" @click="triggerFilePicker" :disabled="loading">
-                        浏览...
-                    </button>
                 </div>
-
-                <input
-                    type="file"
-                    ref="fileInput"
-                    accept=".jpg,.jpeg,.png,.bmp,.tif,.tiff,.webp,.gif,.dcm,.dicom"
-                    style="display: none"
-                    @change="onFileSelected"
-                />
             </div>
 
-            <button class="recognize-btn" @click="recognizeFromUpload" :disabled="loading || !selectedFile">
-                {{ loading ? '识别中...' : '识别' }}
-            </button>
-
-            <div class="result-section">
-                <div class="result-title">识别结果</div>
-                <div class="result-box">
-                    <div class="result-item">
-                        <div class="result-label">状态：</div>
-                        <div class="result-value" v-html="statusText"></div>
-                    </div>
-                    <div class="result-item" v-if="taskId">
-                        <div class="result-label">任务ID：</div>
-                        <div class="result-value">{{ taskId }}</div>
-                    </div>
-                    <div class="result-item" v-if="jsonPath">
-                        <div class="result-label">JSON路径：</div>
-                        <div class="result-value">{{ jsonPath }}</div>
-                    </div>
+            <div class="right-panel">
+                <div class="right-header">
+                    <div class="right-title">JSON 解析</div>
+                    <button class="copy-btn" v-if="selectedFileContent" @click="copyJson">复制</button>
                 </div>
-                <div class="json-display" v-if="jsonData">
-                    <pre>{{ jsonData }}</pre>
+                <div class="file-tabs" v-if="fileList.length">
+                    <div
+                        v-for="f in fileList"
+                        :key="f.path"
+                        :class="['file-tab', { active: selectedFilePath === f.path, loading: fileLoading && selectedFilePath === f.path }]"
+                        @click="selectFile(f)"
+                    >{{ f.label }}</div>
+                </div>
+                <div class="json-viewer" v-if="selectedFileContent" v-html="syntaxHighlight(selectedFileContent)"></div>
+                <div class="json-viewer json-placeholder" v-else>
+                    {{ statusText.includes('等待') ? '等待识别...' : (fileList.length ? '选择文件查看' : '暂无数据') }}
                 </div>
             </div>
         </div>
+
+        <div class="copy-toast" :class="{ show: showToast }">已复制到剪贴板</div>
     </div>
 
     <script>
@@ -319,15 +498,98 @@
                     jsonData: '',
                     selectedFile: null,
                     isDragOver: false,
+                    showToast: false,
+                    classificationLabel: '',
+                    confidence: 0,
+                    tumorArea: null,
+                    fileList: [],
+                    selectedFilePath: '',
+                    selectedFileContent: '',
+                    fileLoading: false,
                 }
             },
             methods: {
+                syntaxHighlight(json) {
+                    if (!json) return ''
+                    const escaped = json
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                    return escaped.replace(
+                        /("(?:[^"\\]|\\.)*")\s*:/g,
+                        '<span class="key">$1</span>:'
+                    ).replace(
+                        /("(?:[^"\\]|\\.)*")/g,
+                        '<span class="string">$1</span>'
+                    ).replace(
+                        /\b(-?\d+\.?\d*(?:[eE][+-]?\d+)?)\b/g,
+                        '<span class="number">$1</span>'
+                    ).replace(
+                        /\b(true|false)\b/g,
+                        '<span class="boolean">$1</span>'
+                    ).replace(
+                        /\bnull\b/g,
+                        '<span class="null">null</span>'
+                    )
+                },
                 resetState() {
                     this.loading = true
                     this.statusText = '<span class="loading-spinner"></span>创建任务中...'
                     this.taskId = ''
                     this.jsonPath = ''
                     this.jsonData = ''
+                    this.fileList = []
+                    this.selectedFilePath = ''
+                    this.selectedFileContent = ''
+                    this.classificationLabel = ''
+                    this.confidence = 0
+                    this.tumorArea = null
+                },
+                buildFileList(resultData) {
+                    const files = []
+                    if (resultData.result_files) {
+                        const rf = resultData.result_files
+                        if (rf.frontend) files.push({ label: 'frontend_result.json', path: rf.frontend })
+                        if (rf.classification) files.push({ label: 'classification.json', path: rf.classification })
+                        if (rf.segmentation) files.push({ label: 'segmentation.json', path: rf.segmentation })
+                    }
+                    if (resultData.latest_runs) {
+                        const lr = resultData.latest_runs
+                        if (lr.classification) {
+                            const short = lr.classification.replace(/^runs\//, '')
+                            files.push({ label: short, path: lr.classification })
+                        }
+                        if (lr.segmentation) {
+                            const short = lr.segmentation.replace(/^runs\//, '')
+                            files.push({ label: short, path: lr.segmentation })
+                        }
+                    }
+                    return files
+                },
+                async fetchFileContent(filePath) {
+                    this.fileLoading = true
+                    this.selectedFilePath = filePath
+                    this.selectedFileContent = ''
+                    try {
+                        const url = `${this.API_BASE}/tasks/${this.taskId}/files/${filePath}`
+                        const res = await fetch(url)
+                        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+                        const text = await res.text()
+                        try {
+                            const parsed = JSON.parse(text)
+                            this.selectedFileContent = JSON.stringify(parsed, null, 2)
+                        } catch {
+                            this.selectedFileContent = text
+                        }
+                    } catch (err) {
+                        this.selectedFileContent = `// 读取失败: ${err.message}`
+                    } finally {
+                        this.fileLoading = false
+                    }
+                },
+                selectFile(f) {
+                    if (this.selectedFilePath === f.path) return
+                    this.fetchFileContent(f.path)
                 },
                 async runAndGetResult(taskId) {
                     this.statusText = '<span class="loading-spinner"></span>运行模型中...'
@@ -353,7 +615,24 @@
                         if (resultData.status === 'succeeded' || resultData.status === 'completed') {
                             this.statusText = '<span class="status-success">✓ 识别完成</span>'
                             this.jsonPath = `output/${taskId}/frontend_result.json`
-                            this.jsonData = JSON.stringify(resultData, null, 2)
+
+                            const fr = resultData.frontend_result || resultData
+
+                            this.jsonData = JSON.stringify(fr, null, 2)
+
+                            if (fr.classification) {
+                                const c = fr.classification
+                                this.classificationLabel = c.class === 'yes' ? '肿瘤 detected' : '正常'
+                                this.confidence = c.confidence
+                            }
+                            if (fr.segmentation) {
+                                this.tumorArea = fr.segmentation.tumor_area_ratio
+                            }
+
+                            this.fileList = this.buildFileList(fr)
+                            if (this.fileList.length) {
+                                this.fetchFileContent(this.fileList[0].path)
+                            }
                             return
                         }
                         if (resultData.status === 'failed') {
@@ -378,7 +657,6 @@
                 },
                 async recognizeFromUpload() {
                     if (!this.selectedFile) return
-
                     this.resetState()
 
                     try {
@@ -407,7 +685,6 @@
                     }
                 },
                 onDragEnter(e) {
-                    // 类似于 QML 的 onEntered，检查是否有文件
                     if (e.dataTransfer.types.includes('Files')) {
                         this.isDragOver = true
                     }
@@ -416,7 +693,6 @@
                     e.dataTransfer.dropEffect = 'copy'
                 },
                 onDragLeave(e) {
-                    // 确保鼠标完全离开输入框区域时才关闭提示
                     if (!e.currentTarget.contains(e.relatedTarget)) {
                         this.isDragOver = false
                     }
@@ -443,6 +719,22 @@
                     }
 
                     this.selectedFile = file
+                },
+                copyJson() {
+                    const text = this.selectedFileContent
+                    navigator.clipboard.writeText(text).then(() => {
+                        this.showToast = true
+                        setTimeout(() => { this.showToast = false }, 2000)
+                    }).catch(() => {
+                        const ta = document.createElement('textarea')
+                        ta.value = text
+                        document.body.appendChild(ta)
+                        ta.select()
+                        document.execCommand('copy')
+                        document.body.removeChild(ta)
+                        this.showToast = true
+                        setTimeout(() => { this.showToast = false }, 2000)
+                    })
                 },
             },
         }).mount('#app')

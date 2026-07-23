@@ -2,7 +2,7 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from api.routes.runtime import router as runtime_router
@@ -54,6 +54,11 @@ app.add_middleware(
 )
 
 # 由 API 在同一来源托管随附前端
+@app.get("/")
+async def root():
+    return RedirectResponse(url="/web/")
+
+
 app.mount(
     "/web",
     StaticFiles(directory=SETTINGS.frontend_dir, html=True),
