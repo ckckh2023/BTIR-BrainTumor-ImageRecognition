@@ -100,14 +100,21 @@ def run_task_models(
     threshold: float,
     *,
     should_cancel: Callable[[], bool] | None = None,
+    progress_callback: Callable[[str, int], None] | None = None,
 ) -> TaskRunResult:
     '''顺序执行分类、分割，并将两项结果写入同一任务目录'''
     started_at = perf_counter()
     image_path = load_task_image(task_dir)
+    if progress_callback is not None:
+        progress_callback("分类推理中", 0)
     classification_result = _run_classification(task_dir, image_path)
+    if progress_callback is not None:
+        progress_callback("分类完成，开始分割", 50)
     if should_cancel is not None and should_cancel():
         raise TaskCancellationRequested("任务已在分类完成后取消")
     segmentation_result = _run_segmentation(task_dir, image_path, threshold)
+    if progress_callback is not None:
+        progress_callback("推理完成", 100)
     return TaskRunResult(
         image_path=image_path,
         classification_result=classification_result,

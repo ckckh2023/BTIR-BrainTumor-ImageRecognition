@@ -98,6 +98,7 @@ class RqIntegrationTests(unittest.TestCase):
                 _: float,
                 *,
                 should_cancel=None,
+                progress_callback=None,
             ) -> SimpleNamespace:
                 (task_dir / "frontend_result.json").write_text(
                     json.dumps(

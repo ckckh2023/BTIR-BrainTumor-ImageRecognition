@@ -14,6 +14,7 @@ from repositories.task_repository import task_repository
 from services.archive_service import archive_expired_tasks, purge_expired_archives
 from services.benchmark_service import benchmark_models
 from services.cleanup_service import clear_generated_files
+from services.console import ConsoleProgress, print_event
 from services.presentation import print_result
 from services.task_queue import reconcile_active_tasks
 from services.task_files import (
@@ -47,6 +48,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "help":
             _print_help(parser)
             return 0
+
+        print_event(f"开始执行 {args.command}")
 
         if args.command == "clear":
             output_dir = args.output_dir.resolve()
@@ -119,16 +122,27 @@ def main(argv: list[str] | None = None) -> int:
             initialize_task(task_dir, source_image, args.input_mode)
 
         if args.command == "classify":
+            progress = ConsoleProgress()
+            progress.update("分类推理中", 0)
             model_run = run_classification(task_dir)
+            progress.update("分类完成", 100)
             print_result(model_run.result, args.json)
             return 0
 
         if args.command == "segment":
+            progress = ConsoleProgress()
+            progress.update("分割推理中", 0)
             model_run = run_segmentation(task_dir, args.threshold)
+            progress.update("分割完成", 100)
             print_result(model_run.result, args.json)
             return 0
 
-        run_result = run_task_models(task_dir, args.threshold)
+        progress = ConsoleProgress()
+        run_result = run_task_models(
+            task_dir,
+            args.threshold,
+            progress_callback=progress.update,
+        )
         image_path = run_result.image_path
         classification = run_result.classification_result
         segmentation = run_result.segmentation_result

@@ -10,6 +10,7 @@ from rq import SimpleWorker, Worker
 
 from core.settings import SETTINGS
 from services.inference_service import preload_inference_models
+from services.console import print_event
 from services.redis_client import get_redis_client
 from services.task_queue import get_task_queue
 
@@ -35,6 +36,7 @@ def main() -> None:
         connection=get_redis_client(),
         name=worker_name,
     )
+    print_event(f"worker 已启动，监听队列 {SETTINGS.task_queue_name}", level="success")
     worker.work()
 
 

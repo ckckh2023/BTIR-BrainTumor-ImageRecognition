@@ -390,7 +390,12 @@ class InferenceWorkerTests(unittest.TestCase):
         self.assertEqual(result["completed_models"], ["classification", "segmentation"])
         self.assertEqual(result["classification_result_file"], "classification.json")
         self.assertEqual(result["segmentation_result_file"], "segmentation.json")
-        run_models.assert_called_once_with(self.task_dir, 0.5, should_cancel=ANY)
+        run_models.assert_called_once_with(
+            self.task_dir,
+            0.5,
+            should_cancel=ANY,
+            progress_callback=ANY,
+        )
         self.assertEqual(
             update_status.call_args_list,
             [
