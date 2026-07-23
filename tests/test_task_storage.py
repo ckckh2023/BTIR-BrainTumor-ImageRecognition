@@ -132,6 +132,13 @@ class TaskStorageTests(unittest.TestCase):
         reconcile.assert_called_once_with(limit=2)
         self.assertIn("状态已修复：1 条", stdout.getvalue())
 
+    def test_game_command_bypasses_the_regular_command_parser(self) -> None:
+        with patch("Main.run_game", return_value=0) as game:
+            exit_code = main(["game"])
+
+        self.assertEqual(exit_code, 0)
+        game.assert_called_once_with()
+
     def test_unavailable_database_raises_storage_error(self) -> None:
         blocked_parent = self.project_root / "not-a-directory"
         blocked_parent.write_text("blocked", encoding="utf-8")

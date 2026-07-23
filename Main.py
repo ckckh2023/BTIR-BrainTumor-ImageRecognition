@@ -16,6 +16,7 @@ from services.benchmark_service import benchmark_models
 from services.cleanup_service import clear_generated_files
 from services.console import ConsoleProgress, print_event
 from services.presentation import print_result
+from services.terminal_game import run_game
 from services.task_queue import reconcile_active_tasks
 from services.task_files import (
     create_task_dir,
@@ -39,8 +40,11 @@ SEGMENTER_DIR = SETTINGS.segmenter_script.parent
 
 def main(argv: list[str] | None = None) -> int:
     '''主函数，解析命令行参数并执行相应操作'''
+    command_args = list(sys.argv[1:] if argv is None else argv)
+    if command_args == ["game"]:
+        return run_game()
     parser = _build_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(command_args)
     task_dir: Path | None = None
 
     # 按照对应命令执行指定行为
@@ -186,6 +190,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # 添加help子命令
     commands.add_parser("help", help="显示命令说明和使用示例")
+    commands.add_parser("game", help="启动终端扫瘤小游戏")
 
     # 添加clear子命令
     clear = commands.add_parser("clear", help="清理 Python 缓存和默认生成结果")
@@ -319,7 +324,8 @@ def _print_help(parser: argparse.ArgumentParser) -> None:
         "  python Main.py archive-tasks\n"
         "  python Main.py purge-archive\n"
         "  python Main.py reconcile-tasks\n"
-        "  python Main.py benchmark dataset/no/1.jpg --warm-runs 3"
+        "  python Main.py benchmark dataset/no/1.jpg --warm-runs 3\n"
+        "  python Main.py game\n"
     )
 
 
