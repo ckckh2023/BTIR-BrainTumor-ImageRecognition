@@ -260,7 +260,9 @@ def reconcile_task_job(task_dir: Path) -> TaskRecord:
             "RQ 作业已结束，但模型结果未完整写入",
         )
 
-    if rq_status is RqJobStatus.FAILED and rq_job.should_retry():
+    should_retry = getattr(rq_job, "should_retry", False)
+    retry_pending = should_retry() if callable(should_retry) else bool(should_retry)
+    if rq_status is RqJobStatus.FAILED and retry_pending:
         return _update_reconciled_status(task_dir, record, JobStatus.QUEUED)
 
     if rq_status in {

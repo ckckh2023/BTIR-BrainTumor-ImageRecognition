@@ -45,6 +45,12 @@ def run_task_job(task_id: str, threshold: float) -> dict[str, Any]:
             task_dir,
             threshold,
             should_cancel=lambda: _is_cancellation_requested(job),
+            progress_callback=lambda stage, percentage: _record_job_progress(
+                job,
+                task_id,
+                stage,
+                percentage,
+            ),
         )
     except TaskCancellationRequested:
         execution_ms = round((perf_counter() - started_at) * 1000, 3)
@@ -108,6 +114,29 @@ def _is_cancellation_requested(job: Any) -> bool:
     if callable(refresh):
         refresh()
     return bool(getattr(job, "meta", {}).get("cancel_requested"))
+
+
+def _record_job_progress(
+    job: Any,
+    task_id: str,
+    stage: str,
+    percentage: int,
+) -> None:
+    '''将真实阶段写入 worker 日志；RQ 可用时同步保存到作业元数据'''
+    metadata = getattr(job, "meta", None)
+    if isinstance(metadata, dict):
+        metadata["progress"] = percentage
+        metadata["progress_stage"] = stage
+        save_meta = getattr(job, "save_meta", None)
+        if callable(save_meta):
+            save_meta()
+    logger.info(
+        "task inference progress task_id=%s job_id=%s progress=%s stage=%s",
+        task_id,
+        job.id,
+        percentage,
+        stage,
+    )
 
 
 def _finish_canceled_task(
