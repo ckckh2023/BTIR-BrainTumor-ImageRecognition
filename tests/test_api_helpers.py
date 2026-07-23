@@ -202,6 +202,13 @@ class TaskRouteHelperTests(unittest.TestCase):
 class TaskHttpEndpointTests(unittest.TestCase):
     '''通过 FastAPI TestClient 验证浏览器实际会经历的任务 HTTP 流程'''
 
+    def test_legacy_path_and_synchronous_run_endpoints_are_not_registered(self) -> None:
+        paths = app.openapi()["paths"]
+
+        self.assertNotIn("/tasks/from-path", paths)
+        self.assertNotIn("/tasks/{task_id}/run", paths)
+        self.assertIn("/tasks/{task_id}/run-async", paths)
+
     def test_upload_enqueue_query_and_fetch_result(self) -> None:
         now = datetime.fromisoformat("2026-01-01T00:00:00+00:00")
         with TemporaryDirectory() as directory:

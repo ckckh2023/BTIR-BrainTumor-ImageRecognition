@@ -12,9 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from contracts.task import (
     ClassificationData,
     ClassifyTaskResponse,
-    CreateTaskRequest,
     RunTaskRequest,
-    RunTaskResponse,
     SegmentTaskRequest,
     SegmentTaskResponse,
     SegmentationData,
@@ -33,15 +31,12 @@ from repositories.task_repository import task_repository
 from services.task_files import (
     create_task_dir,
     get_task_dir,
-    initialize_task,
     initialize_uploaded_task,
     task_relative_path,
-    validate_image_path,
 )
 from services.task_runner import (
     run_classification,
     run_segmentation,
-    run_task_models,
 )
 from services.task_queue import cancel_task_run, enqueue_task_run, reconcile_task_job
 
@@ -181,31 +176,6 @@ def list_tasks(
     )
 
 
-@router.post(
-    "/from-path",
-    response_model=TaskCreatedResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-def create_task_from_path(request: CreateTaskRequest) -> TaskCreatedResponse:
-    '''从后端本机路径创建任务，仅用于开发调试'''
-    try:
-        source_image = validate_image_path(request.image_path)
-        task_dir = create_task_dir(SETTINGS.output_dir)
-        task_image = initialize_task(
-            task_dir=task_dir,
-            source_image=source_image,
-            input_mode=request.input_mode,
-            name=request.name,
-        )
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
-        ) from exc
-
-    return TaskCreatedResponse(task_id=task_dir.name, input_file=task_image.name)
-
-
 @router.post("/{task_id}/classify", response_model=ClassifyTaskResponse)
 def classify_task(task_id: str) -> ClassifyTaskResponse:
     '''对指定任务运行分类推理'''
@@ -320,43 +290,6 @@ def segment_task(
             mask_file=mask_file,
         ),
         frontend_result_file=result["frontend_result_path"],
-    )
-
-
-@router.post("/{task_id}/run", response_model=RunTaskResponse)
-def run_task(
-    task_id: str,
-    request: RunTaskRequest | None = None,
-) -> RunTaskResponse:
-    '''对同一任务依次执行分类与分割'''
-    task_dir = require_task_dir(task_id)
-    threshold = resolve_run_threshold(request)
-    try:
-        run_result = run_task_models(task_dir, threshold)
-        task_record = task_repository.load(task_dir)
-        prediction = run_result.classification_result["classification"]
-        segmentation_result = run_result.segmentation_result
-        mask_file = task_relative_path(task_dir, Path(segmentation_result["mask_path"]))
-    except ValueError as exc:
-        raise bad_request_http_error(exc) from exc
-
-    return RunTaskResponse(
-        task_id=task_id,
-        status=task_record.status,
-        completed_models=[model.value for model in task_record.completed_models],
-        classification=ClassificationData(
-            label=prediction["class"],
-            confidence=prediction["confidence"],
-            probabilities=prediction["probabilities"],
-        ),
-        segmentation=SegmentationData(
-            threshold=segmentation_result["threshold"],
-            tumor_pixels=segmentation_result["tumor_pixels"],
-            image_pixels=segmentation_result["image_pixels"],
-            tumor_area_ratio=segmentation_result["tumor_area_ratio"],
-            mask_file=mask_file,
-        ),
-        frontend_result_file=segmentation_result["frontend_result_path"],
     )
 
 
