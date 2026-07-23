@@ -243,7 +243,7 @@
             <h1>脑肿瘤MRI图像识别</h1>
 
             <div class="input-group">
-                <label for="imagePath">图片路径：</label>
+                <label for="selectedFileName">已选择图片：</label>
 
                 <div class="input-row">
                     <div class="input-wrapper"
@@ -253,10 +253,11 @@
                          @drop.prevent="onDrop">
                         <input
                             type="text"
-                            id="imagePath"
-                            v-model="imagePath"
-                            placeholder="例如：E:/dataset/example.jpg"
-                            @keypress.enter="recognize"
+                            id="selectedFileName"
+                            :value="selectedFile ? selectedFile.name : ''"
+                            placeholder="请选择或拖拽图片文件"
+                            readonly
+                            @click="triggerFilePicker"
                         />
                         <div class="drop-hint" v-if="isDragOver">
                             <span>释放上传</span>
@@ -277,7 +278,7 @@
                 />
             </div>
 
-            <button class="recognize-btn" @click="selectedFile ? recognizeFromUpload() : recognize()" :disabled="loading">
+            <button class="recognize-btn" @click="recognizeFromUpload" :disabled="loading || !selectedFile">
                 {{ loading ? '识别中...' : '识别' }}
             </button>
 
@@ -311,7 +312,6 @@
             data() {
                 return {
                     API_BASE: 'http://127.0.0.1:8000',
-                    imagePath: '',
                     loading: false,
                     statusText: '等待识别...',
                     taskId: '',
@@ -368,40 +368,6 @@
 
                     throw new Error('识别任务超时，请稍后重试')
                 },
-                async recognize() {
-                    if (!this.imagePath.trim()) {
-                        alert('请输入图片路径')
-                        return
-                    }
-
-                    this.resetState()
-
-                    try {
-                        const createResponse = await fetch(`${this.API_BASE}/tasks/from-path`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                image_path: this.imagePath.trim(),
-                                name: 'vue-recognize',
-                                input_mode: 'auto',
-                            }),
-                        })
-
-                        if (!createResponse.ok) {
-                            throw new Error(`创建任务失败: ${createResponse.status}`)
-                        }
-
-                        const createData = await createResponse.json()
-                        this.taskId = createData.task_id
-
-                        await this.runAndGetResult(this.taskId)
-                    } catch (error) {
-                        this.statusText = `<span class="status-error">✗ ${error.message}</span>`
-                        console.error('识别错误:', error)
-                    } finally {
-                        this.loading = false
-                    }
-                },
                 triggerFilePicker() {
                     this.$refs.fileInput.click()
                 },
@@ -409,7 +375,6 @@
                     const file = event.target.files[0]
                     if (!file) return
                     this.selectedFile = file
-                    this.imagePath = file.name
                 },
                 async recognizeFromUpload() {
                     if (!this.selectedFile) return
@@ -478,7 +443,6 @@
                     }
 
                     this.selectedFile = file
-                    this.imagePath = file.name
                 },
             },
         }).mount('#app')

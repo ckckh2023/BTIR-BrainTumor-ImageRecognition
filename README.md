@@ -87,8 +87,7 @@ BTIR_CORS_ORIGINS=https://你的前端域名
 python -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 ```
 
-建议通过 Nginx 等反向代理对外提供 HTTPS 服务  
-`POST /tasks/from-path` 仅适合服务器本地调试，正式前端应使用图片上传接口 `POST /tasks`
+建议通过 Nginx 等反向代理对外提供 HTTPS 服务
 
 ### Windows 临时虚拟环境
 
@@ -327,22 +326,6 @@ bash scripts/run-supervisor.sh /opt/btir/.venv/bin/python
 - `name`：可选，任务显示名称
 
 > 成功后返回 `task_id`。之后的模型接口都传入这个 ID，不需要重复上传图片
-
-同时也保留了本机路径传图片建任务接口：
-
-`POST /tasks/from-path`
-
-其 JSON 请求体示例：
-
-```json
-{
-  "image_path": "E:/dataset/example.jpg",
-  "name": "local-test",
-  "input_mode": "auto"
-}
-```
-
-> `from-path` 适合后端开发机调试，前端正式接入应使用上传接口
 
 ### 2. 调用模型
 

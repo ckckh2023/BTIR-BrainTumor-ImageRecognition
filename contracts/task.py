@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -11,14 +10,7 @@ from pydantic import BaseModel, Field
 from datetime import datetime
 
 from core.settings import SETTINGS
-from core.task_definitions import InputStorageMode, JobStatus, TaskStatus
-
-
-# 请求模型
-class CreateTaskRequest(BaseModel):
-    image_path: Path = Field(description="本地 MRI 图像的绝对路径")
-    name: str | None = Field(default=None, max_length=100)
-    input_mode: InputStorageMode = InputStorageMode.AUTO
+from core.task_definitions import JobStatus, TaskStatus
 
 
 # 响应模型
@@ -169,17 +161,6 @@ class RunTaskRequest(BaseModel):
         ge=0.0,
         le=1.0,
     )
-
-
-# 任务运行响应模型
-class RunTaskResponse(BaseModel):
-    schema_version: Literal["0.1"] = "0.1"
-    task_id: str
-    status: TaskStatus
-    completed_models: list[str]
-    classification: ClassificationData
-    segmentation: SegmentationData
-    frontend_result_file: str
 
 
 class TaskEnqueuedResponse(BaseModel):
