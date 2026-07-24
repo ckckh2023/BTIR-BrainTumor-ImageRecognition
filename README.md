@@ -156,6 +156,7 @@ python -m workers.run_worker
 ### SQLite 任务元数据
 
 任务 ID、状态、RQ 作业信息和运行记录保存在 `data/btir.db`。首次启动时会自动创建该文件，无需手动安装数据库服务
+数据库会自动执行顺序化的 SQLite schema migration，并在 `schema_migrations` 表记录已应用版本；升级程序时无需手动改表，也不要手动修改该版本记录
 
 Windows 本地开发会自动使用单进程 `SimpleWorker`，默认会在启动阶段预加载模型，因此首次任务不会再承担模型冷启动  
 Linux 服务器使用标准 RQ worker；为避免 fork 后 CUDA 初始化风险，默认不预加载，仍由任务进程按需加载

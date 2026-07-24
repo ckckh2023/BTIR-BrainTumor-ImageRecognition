@@ -6,7 +6,7 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Iterator
+from typing import Callable, Iterator
 
 from pydantic import ValidationError
 
@@ -17,6 +17,68 @@ from repositories.task_repository import (
     TaskRepository,
     TaskRepositoryUnavailableError,
 )
+
+
+Migration = Callable[[sqlite3.Connection], None]
+
+
+def _migration_001_create_tasks_table(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tasks (
+            task_id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            record_json TEXT NOT NULL
+        )
+        """
+    )
+
+
+def _migration_002_add_archived_at(connection: sqlite3.Connection) -> None:
+    columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(tasks)").fetchall()
+    }
+    if "archived_at" not in columns:
+        connection.execute("ALTER TABLE tasks ADD COLUMN archived_at TEXT")
+
+
+def _migration_003_create_task_indexes(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_tasks_created_at_task_id
+        ON tasks (created_at DESC, task_id DESC)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_tasks_status_created_at_task_id
+        ON tasks (status, created_at DESC, task_id DESC)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_tasks_status_updated_at_task_id
+        ON tasks (status, updated_at ASC, task_id ASC)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_tasks_archived_at_task_id
+        ON tasks (archived_at ASC, task_id ASC)
+        """
+    )
+
+
+SCHEMA_MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
+    (1, "create_tasks_table", _migration_001_create_tasks_table),
+    (2, "add_archived_at", _migration_002_add_archived_at),
+    (3, "create_task_indexes", _migration_003_create_task_indexes),
+)
+CURRENT_SCHEMA_VERSION = SCHEMA_MIGRATIONS[-1][0]
 
 
 class SqliteTaskRepository:
@@ -55,48 +117,33 @@ class SqliteTaskRepository:
 
         with self._connect() as connection:
             connection.execute("PRAGMA journal_mode = WAL")
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS tasks (
-                    task_id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    archived_at TEXT,
-                    record_json TEXT NOT NULL
-                )
-                """
+            self._apply_schema_migrations(connection)
+
+    @staticmethod
+    def _apply_schema_migrations(connection: sqlite3.Connection) -> None:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                version INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
-            columns = {
-                row["name"]
-                for row in connection.execute("PRAGMA table_info(tasks)").fetchall()
-            }
-            if "archived_at" not in columns:
-                connection.execute("ALTER TABLE tasks ADD COLUMN archived_at TEXT")
+            """
+        )
+        applied_versions = {
+            row["version"]
+            for row in connection.execute("SELECT version FROM schema_migrations")
+        }
+        if applied_versions and max(applied_versions) > CURRENT_SCHEMA_VERSION:
+            raise TaskRepositoryUnavailableError("SQLite 任务数据库版本高于当前程序")
+
+        for version, name, migration in SCHEMA_MIGRATIONS:
+            if version in applied_versions:
+                continue
+            migration(connection)
             connection.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_tasks_created_at_task_id
-                ON tasks (created_at DESC, task_id DESC)
-                """
-            )
-            connection.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_tasks_status_created_at_task_id
-                ON tasks (status, created_at DESC, task_id DESC)
-                """
-            )
-            connection.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_tasks_status_updated_at_task_id
-                ON tasks (status, updated_at ASC, task_id ASC)
-                """
-            )
-            connection.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_tasks_archived_at_task_id
-                ON tasks (archived_at ASC, task_id ASC)
-                """
+                "INSERT INTO schema_migrations (version, name) VALUES (?, ?)",
+                (version, name),
             )
 
     def exists(self, task_dir: Path) -> bool:
