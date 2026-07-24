@@ -84,6 +84,13 @@ def _get_bool(name: str, default: bool) -> bool:
     raise ValueError(f"{name} 必须是 true 或 false")
 
 
+def _get_linux_worker_mode() -> str:
+    value = os.getenv("BTIR_LINUX_WORKER_MODE", "standard").strip().lower()
+    if value not in {"standard", "simple"}:
+        raise ValueError("BTIR_LINUX_WORKER_MODE 必须是 standard 或 simple")
+    return value
+
+
 def _get_nonnegative_float(name: str, default: float) -> float:
     '''获取float类型非负数'''
     value = float(os.getenv(name, str(default)))
@@ -121,6 +128,7 @@ class Settings:
     task_stale_after_seconds: int
     task_reconcile_batch_size: int
     worker_preload_models: bool
+    linux_worker_mode: str
     task_cleanup_enabled: bool
     succeeded_task_retention_days: int
     failed_task_retention_days: int
@@ -199,6 +207,7 @@ def _build_settings() -> Settings:
             100,
         ),
         worker_preload_models=_get_bool("BTIR_WORKER_PRELOAD_MODELS", True),
+        linux_worker_mode=_get_linux_worker_mode(),
         task_cleanup_enabled=_get_bool("BTIR_TASK_CLEANUP_ENABLED", False),
         succeeded_task_retention_days=_get_nonnegative_int(
             "BTIR_SUCCEEDED_TASK_RETENTION_DAYS",

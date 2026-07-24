@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 
 def main() -> None:
     queue = get_task_queue()
-    worker_class = SimpleWorker if os.name == "nt" else Worker
-    if os.name == "nt" and SETTINGS.worker_preload_models:
+    worker_class = _get_worker_class()
+    if worker_class is SimpleWorker and SETTINGS.worker_preload_models:
         outcomes = preload_inference_models()
         if any(isinstance(value, str) and value.startswith("failed:") for value in outcomes.values()):
             logger.warning("worker model preload partially failed outcomes=%s", outcomes)
@@ -38,6 +38,12 @@ def main() -> None:
     )
     print_event(f"worker 已启动，监听队列 {SETTINGS.task_queue_name}", level="success")
     worker.work()
+
+
+def _get_worker_class():
+    if os.name == "nt" or SETTINGS.linux_worker_mode == "simple":
+        return SimpleWorker
+    return Worker
 
 
 if __name__ == "__main__":

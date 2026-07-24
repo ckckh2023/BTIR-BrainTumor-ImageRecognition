@@ -65,16 +65,9 @@ class MinefieldTests(unittest.TestCase):
         self.assertGreater(len(minefield.revealed), 1)
 
     def test_second_scan_reveals_another_covered_safe_cell(self) -> None:
-        difficulty = GameDifficulty("game", "游戏", 5, 5, 3)
-        minefield = Minefield.create(difficulty, rng=random.Random(1))
-        minefield.reveal((2, 2))
-        target = next(
-            (row, column)
-            for row in range(difficulty.rows)
-            for column in range(difficulty.columns)
-            if (row, column) not in minefield.mines
-            and (row, column) not in minefield.revealed
-        )
+        minefield = Minefield(self.difficulty, {(0, 0)}, set(), set())
+        minefield.reveal((1, 1))
+        target = (2, 2)
 
         minefield.reveal(target)
 

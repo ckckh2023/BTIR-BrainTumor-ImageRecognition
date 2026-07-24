@@ -133,6 +133,7 @@ BTIR_TASK_JOB_MAX_RETRIES=1
 BTIR_TASK_STALE_AFTER_SECONDS=3660
 BTIR_TASK_RECONCILE_BATCH_SIZE=100
 BTIR_WORKER_PRELOAD_MODELS=true
+BTIR_LINUX_WORKER_MODE=standard
 BTIR_TASK_DATABASE_PATH=data/btir.db
 BTIR_MAX_UPLOAD_BYTES=20971520
 BTIR_MAX_IMAGE_PIXELS=40000000
@@ -159,7 +160,9 @@ python -m workers.run_worker
 数据库会自动执行顺序化的 SQLite schema migration，并在 `schema_migrations` 表记录已应用版本；升级程序时无需手动改表，也不要手动修改该版本记录
 
 Windows 本地开发会自动使用单进程 `SimpleWorker`，默认会在启动阶段预加载模型，因此首次任务不会再承担模型冷启动  
-Linux 服务器使用标准 RQ worker；为避免 fork 后 CUDA 初始化风险，默认不预加载，仍由任务进程按需加载
+Linux 服务器默认使用标准 RQ worker；为避免 fork 后 CUDA 初始化风险，默认不预加载，仍由任务进程按需加载  
+若 Linux 使用 GPU 且希望把模型冷启动移至 worker 启动阶段，可在 `.env` 设置 `BTIR_LINUX_WORKER_MODE=simple`；它会改用不 fork 的 `SimpleWorker` 并遵从 `BTIR_WORKER_PRELOAD_MODELS`  
+该模式一次仅运行一个任务，进程级异常由 supervisor 或 systemd 拉起  
 两种模式均一次执行一个推理任务，适合单张 GPU，避免并发模型推理抢占显存
 
 Worker 名称会自动包含主机名和进程号  
