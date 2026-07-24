@@ -19,6 +19,7 @@ from repositories.task_repository import (
     TaskNotFoundError,
     TaskRepositoryUnavailableError,
 )
+from repositories.sqlite_task_repository import CURRENT_SCHEMA_VERSION
 from services.cleanup_service import clear_generated_files
 from services.task_queue import TaskReconciliationReport
 
@@ -164,6 +165,66 @@ class TaskStorageTests(unittest.TestCase):
                 "idx_tasks_archived_at_task_id",
             }.issubset(index_names)
         )
+
+    def test_schema_migrations_are_recorded_for_a_fresh_database(self) -> None:
+        connection = sqlite3.connect(self.repository.database_path)
+        try:
+            versions = [
+                row[0]
+                for row in connection.execute(
+                    "SELECT version FROM schema_migrations ORDER BY version"
+                ).fetchall()
+            ]
+        finally:
+            connection.close()
+
+        self.assertEqual(versions, list(range(1, CURRENT_SCHEMA_VERSION + 1)))
+
+    def test_legacy_database_is_upgraded_without_losing_task_rows(self) -> None:
+        legacy_database_path = self.project_root / "legacy-tasks.db"
+        connection = sqlite3.connect(legacy_database_path)
+        try:
+            connection.execute(
+                """
+                CREATE TABLE tasks (
+                    task_id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    record_json TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                INSERT INTO tasks (task_id, name, status, created_at, updated_at, record_json)
+                VALUES ('legacy-task', '旧任务', 'succeeded', '2026-01-01', '2026-01-01', '{}')
+                """
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        SqliteTaskRepository(legacy_database_path)
+
+        connection = sqlite3.connect(legacy_database_path)
+        try:
+            columns = {
+                row[1] for row in connection.execute("PRAGMA table_info(tasks)").fetchall()
+            }
+            task_id = connection.execute(
+                "SELECT task_id FROM tasks WHERE task_id = 'legacy-task'"
+            ).fetchone()[0]
+            migrated_version = connection.execute(
+                "SELECT MAX(version) FROM schema_migrations"
+            ).fetchone()[0]
+        finally:
+            connection.close()
+
+        self.assertIn("archived_at", columns)
+        self.assertEqual(task_id, "legacy-task")
+        self.assertEqual(migrated_version, CURRENT_SCHEMA_VERSION)
 
     def test_dry_run_keeps_output_and_database_records(self) -> None:
         task_dir = self.output_dir / "task-002"
