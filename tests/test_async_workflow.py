@@ -786,6 +786,56 @@ class ModelPreloadTests(unittest.TestCase):
         preload.assert_called_once_with()
         worker.work.assert_called_once_with()
 
+    def test_linux_simple_worker_preloads_without_forking(self) -> None:
+        worker = Mock()
+        with (
+            patch("workers.run_worker.os.name", "posix"),
+            patch("workers.run_worker.get_task_queue", return_value=Mock()),
+            patch("workers.run_worker.get_redis_client", return_value=Mock()),
+            patch("workers.run_worker.SimpleWorker", return_value=worker),
+            patch("workers.run_worker.Worker") as standard_worker,
+            patch(
+                "workers.run_worker.preload_inference_models", return_value={}
+            ) as preload,
+            patch(
+                "workers.run_worker.SETTINGS",
+                replace(
+                    SETTINGS,
+                    worker_preload_models=True,
+                    linux_worker_mode="simple",
+                ),
+            ),
+        ):
+            run_worker.main()
+
+        preload.assert_called_once_with()
+        standard_worker.assert_not_called()
+        worker.work.assert_called_once_with()
+
+    def test_linux_standard_worker_keeps_preload_disabled(self) -> None:
+        worker = Mock()
+        with (
+            patch("workers.run_worker.os.name", "posix"),
+            patch("workers.run_worker.get_task_queue", return_value=Mock()),
+            patch("workers.run_worker.get_redis_client", return_value=Mock()),
+            patch("workers.run_worker.Worker", return_value=worker),
+            patch("workers.run_worker.SimpleWorker") as simple_worker,
+            patch("workers.run_worker.preload_inference_models") as preload,
+            patch(
+                "workers.run_worker.SETTINGS",
+                replace(
+                    SETTINGS,
+                    worker_preload_models=True,
+                    linux_worker_mode="standard",
+                ),
+            ),
+        ):
+            run_worker.main()
+
+        preload.assert_not_called()
+        simple_worker.assert_not_called()
+        worker.work.assert_called_once_with()
+
 
 if __name__ == "__main__":
     unittest.main()
