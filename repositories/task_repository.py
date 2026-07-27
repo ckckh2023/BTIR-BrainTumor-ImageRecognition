@@ -1,4 +1,4 @@
-'''任务元数据仓储契约与默认实例'''
+'''任务元数据仓储契约'''
 
 from __future__ import annotations
 
@@ -73,7 +73,7 @@ class TaskRepository(Protocol):
         '''检查任务元数据存储是否可用'''
 
 
+# 创建一个 SQLite 任务仓储实例
 from repositories.sqlite_task_repository import SqliteTaskRepository as _SqliteTaskRepository
-
 
 task_repository: TaskRepository = _SqliteTaskRepository(SETTINGS.task_database_path)

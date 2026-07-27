@@ -16,7 +16,7 @@ from services.task_lock import TaskLockBusyError, TaskLockUnavailableError
 from services.task_queue import TaskQueueUnavailableError
 
 
-app = FastAPI(title="脑肿瘤图像分析 API", version="0.1.0")
+app = FastAPI(title="脑肿瘤图像分析 API", version="0.9.0")
 
 
 @app.exception_handler(TaskNotFoundError)
