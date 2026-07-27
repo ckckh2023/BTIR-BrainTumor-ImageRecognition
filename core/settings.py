@@ -229,4 +229,5 @@ def _build_settings() -> Settings:
     )
 
 
+# 创建一个SETTINGS实例
 SETTINGS = _build_settings()
