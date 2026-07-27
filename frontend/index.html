@@ -612,7 +612,7 @@
                         }
 
                         const resultData = await resultResponse.json()
-                        if (resultData.status === 'succeeded' || resultData.status === 'completed') {
+                        if (resultData.status === 'succeeded') {
                             this.statusText = '<span class="status-success">✓ 识别完成</span>'
                             this.jsonPath = `output/${taskId}/frontend_result.json`
 

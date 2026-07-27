@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
@@ -73,10 +74,32 @@ def _migration_003_create_task_indexes(connection: sqlite3.Connection) -> None:
     )
 
 
+def _migration_004_normalize_completed_status(connection: sqlite3.Connection) -> None:
+    rows = connection.execute(
+        "SELECT task_id, record_json FROM tasks WHERE status = ?",
+        ("completed",),
+    ).fetchall()
+    for row in rows:
+        try:
+            record_data = json.loads(row["record_json"])
+        except json.JSONDecodeError:
+            record_data = None
+        if isinstance(record_data, dict):
+            record_data["status"] = "succeeded"
+            record_json = json.dumps(record_data, ensure_ascii=False, separators=(",", ":"))
+        else:
+            record_json = row["record_json"]
+        connection.execute(
+            "UPDATE tasks SET status = ?, record_json = ? WHERE task_id = ?",
+            ("succeeded", record_json, row["task_id"]),
+        )
+
+
 SCHEMA_MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (1, "create_tasks_table", _migration_001_create_tasks_table),
     (2, "add_archived_at", _migration_002_add_archived_at),
     (3, "create_task_indexes", _migration_003_create_task_indexes),
+    (4, "normalize_completed_status", _migration_004_normalize_completed_status),
 )
 CURRENT_SCHEMA_VERSION = SCHEMA_MIGRATIONS[-1][0]
 
@@ -263,7 +286,7 @@ class SqliteTaskRepository:
                 """
                 SELECT record_json FROM tasks
                 WHERE archived_at IS NULL AND (
-                    (status IN (?, ?) AND updated_at < ?) OR
+                    (status = ? AND updated_at < ?) OR
                     (status IN (?, ?) AND updated_at < ?)
                 )
                 ORDER BY updated_at ASC, task_id ASC
@@ -271,7 +294,6 @@ class SqliteTaskRepository:
                 """,
                 (
                     TaskStatus.SUCCEEDED.value,
-                    TaskStatus.COMPLETED.value,
                     succeeded_before.isoformat(),
                     TaskStatus.FAILED.value,
                     TaskStatus.CANCELED.value,
