@@ -20,6 +20,7 @@ from repositories.task_repository import (
 )
 
 
+# 构建迁移函数类型
 Migration = Callable[[sqlite3.Connection], None]
 
 
@@ -95,6 +96,7 @@ def _migration_004_normalize_completed_status(connection: sqlite3.Connection) ->
         )
 
 
+# 创建迁移清单
 SCHEMA_MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (1, "create_tasks_table", _migration_001_create_tasks_table),
     (2, "add_archived_at", _migration_002_add_archived_at),
