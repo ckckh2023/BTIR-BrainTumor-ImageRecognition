@@ -260,7 +260,7 @@ python Main.py archive-tasks --apply
 python Main.py purge-archive --apply
 ```
 
-归档只处理超过保留期的 `succeeded`、旧版 `completed` 与 `failed` 任务，且会在执行前再次确认任务不是活动状态  
+归档只处理超过保留期的 `succeeded` 与 `failed` 任务，且会在执行前再次确认任务不是活动状态
 任务会先整体移动至 `archive/tasks/`，保留 `BTIR_TASK_ARCHIVE_GRACE_DAYS` 后才可能由 `purge-archive --apply` 永久删除  
 每项实际操作记录在 `archive/audit.jsonl`；模型、Python 缓存和活动任务不会被该流程触碰。
 

@@ -155,7 +155,7 @@ def purge_expired_archives(
 def _is_archive_eligible(record: TaskRecord, now: datetime) -> bool:
     if record.archived_at is not None:
         return False
-    if record.status in {TaskStatus.SUCCEEDED, TaskStatus.COMPLETED}:
+    if record.status is TaskStatus.SUCCEEDED:
         retention_days = SETTINGS.succeeded_task_retention_days
     elif record.status in {TaskStatus.FAILED, TaskStatus.CANCELED}:
         retention_days = SETTINGS.failed_task_retention_days

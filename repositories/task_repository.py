@@ -73,8 +73,7 @@ class TaskRepository(Protocol):
         '''检查任务元数据存储是否可用'''
 
 
-# 保持原有导入路径兼容：from repositories.task_repository import SqliteTaskRepository
-from repositories.sqlite_task_repository import SqliteTaskRepository
+from repositories.sqlite_task_repository import SqliteTaskRepository as _SqliteTaskRepository
 
 
-task_repository: TaskRepository = SqliteTaskRepository(SETTINGS.task_database_path)
+task_repository: TaskRepository = _SqliteTaskRepository(SETTINGS.task_database_path)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import redirect_stdout
 from io import StringIO
+import json
 import tempfile
 import unittest
 from datetime import datetime
@@ -15,11 +16,10 @@ from Main import main
 from core.task_definitions import TaskStatus
 from core.task_records import StoredTaskInput, TaskRecord
 from repositories.task_repository import (
-    SqliteTaskRepository,
     TaskNotFoundError,
     TaskRepositoryUnavailableError,
 )
-from repositories.sqlite_task_repository import CURRENT_SCHEMA_VERSION
+from repositories.sqlite_task_repository import CURRENT_SCHEMA_VERSION, SqliteTaskRepository
 from services.cleanup_service import clear_generated_files
 from services.task_queue import TaskReconciliationReport
 
@@ -225,6 +225,67 @@ class TaskStorageTests(unittest.TestCase):
         self.assertIn("archived_at", columns)
         self.assertEqual(task_id, "legacy-task")
         self.assertEqual(migrated_version, CURRENT_SCHEMA_VERSION)
+
+    def test_completed_status_is_normalized_by_schema_migration(self) -> None:
+        legacy_database_path = self.project_root / "completed-status.db"
+        connection = sqlite3.connect(legacy_database_path)
+        try:
+            connection.execute(
+                """
+                CREATE TABLE tasks (
+                    task_id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    archived_at TEXT,
+                    record_json TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE schema_migrations (
+                    version INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            connection.executemany(
+                "INSERT INTO schema_migrations (version, name) VALUES (?, ?)",
+                [(1, "create_tasks_table"), (2, "add_archived_at"), (3, "create_task_indexes")],
+            )
+            connection.execute(
+                """
+                INSERT INTO tasks (task_id, name, status, created_at, updated_at, record_json)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "completed-task",
+                    "旧完成任务",
+                    "completed",
+                    "2026-01-01",
+                    "2026-01-01",
+                    json.dumps({"task_id": "completed-task", "status": "completed"}),
+                ),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        SqliteTaskRepository(legacy_database_path)
+
+        connection = sqlite3.connect(legacy_database_path)
+        try:
+            status, record_json = connection.execute(
+                "SELECT status, record_json FROM tasks WHERE task_id = 'completed-task'"
+            ).fetchone()
+        finally:
+            connection.close()
+
+        self.assertEqual(status, TaskStatus.SUCCEEDED.value)
+        self.assertEqual(json.loads(record_json)["status"], TaskStatus.SUCCEEDED.value)
 
     def test_dry_run_keeps_output_and_database_records(self) -> None:
         task_dir = self.output_dir / "task-002"

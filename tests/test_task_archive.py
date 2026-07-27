@@ -13,7 +13,8 @@ from unittest.mock import patch
 from core.settings import SETTINGS
 from core.task_definitions import TaskStatus
 from core.task_records import StoredTaskInput, TaskRecord
-from repositories.task_repository import SqliteTaskRepository, TaskNotFoundError
+from repositories.sqlite_task_repository import SqliteTaskRepository
+from repositories.task_repository import TaskNotFoundError
 from services.archive_service import archive_expired_tasks, purge_expired_archives
 
 

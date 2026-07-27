@@ -21,7 +21,7 @@ from rq.job import JobStatus as RqJobStatus
 
 from core.settings import SETTINGS
 from api.app import app
-from repositories.task_repository import SqliteTaskRepository
+from repositories.sqlite_task_repository import SqliteTaskRepository
 
 
 class RqIntegrationTests(unittest.TestCase):
