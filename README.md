@@ -8,7 +8,7 @@ BTIR 提供脑肿瘤 MRI 图像分类与分割能力。每次分析以独立
 | 模块 | 状态 | 说明 |
 | --- | --- | --- |
 | 模型推理 | 已完成 | 支持分类、分割和完整分析流程 |
-| 任务管理 | 已完成 | 上传创建任务、异步运行、重试、取消、软删除、状态查询 |
+| 任务管理 | 已完成 | 上传创建任务、异步运行、重试、取消、软删除、恢复、状态查询 |
 | 历史查询 | 已完成 | 支持任务筛选、分页和单任务运行历史 |
 | 异步调度 | 已完成 | Redis + RQ，自动重试、状态对账和安全取消 |
 | 数据持久化 | 已完成 | SQLite 保存元数据，文件系统保存图像与完整结果 |
@@ -56,8 +56,7 @@ python -m pip install -r requirements.txt
 Copy-Item .env.example .env
 ```
 
-`requirements.txt` 默认安装 CPU 版 PyTorch。GPU 安装和 Linux 环境参见
-[安装与部署](docs/DEPLOYMENT.md)。
+`requirements.txt` 默认安装 CPU 版 PyTorch。GPU 安装和 Linux 环境参见[安装与部署](docs/DEPLOYMENT.md)。
 
 ### 3. 启动 Redis
 
@@ -90,6 +89,23 @@ python -m uvicorn api.app:app --reload
 python -m workers.run_worker
 ```
 
+Linux 已准备好项目内 `.venv` 时，也可以一条命令同时托管 API 与 Worker。
+该脚本不会启动 Docker 或 Redis；若 Redis 运行在 Docker 中，请先启动 Docker 和 Redis 容器：
+
+```bash
+bash scripts/run-supervisor.sh
+```
+
+若依赖安装在服务器的全局 Python 3.11 中，也可以直接指定解释器，不要求创建
+项目 `.venv`：
+
+```bash
+bash scripts/run-supervisor.sh /usr/bin/python3.11
+```
+
+项目根目录的 `.env` 不是必需文件。Linux 中已经导出的 `BTIR_*` 环境变量会直接生效，并且优先于 `.env` 中的同名配置。通过 systemd 启动时不要依赖用户 shell 配置，应在 service 中使用 `Environment=` 或 `EnvironmentFile=` 注入，
+具体示例参见[安装与部署](docs/DEPLOYMENT.md)。
+
 打开：
 
 - 前端页面：<http://127.0.0.1:8000/web/>
@@ -97,8 +113,7 @@ python -m workers.run_worker
 - 运行设备：<http://127.0.0.1:8000/runtime>
 - 完整就绪状态：<http://127.0.0.1:8000/readyz>
 
-只查询 SQLite 中已有任务时不要求 Worker 正在运行；创建新的推理结果需要
-Redis 和 Worker。
+只查询 SQLite 中已有任务时不要求 Worker 正在运行；创建新的推理结果需要 Redis 和 Worker。
 
 ## 最短联调流程
 
@@ -117,8 +132,7 @@ Redis 和 Worker。
 python -m unittest discover -s tests -v
 ```
 
-测试使用临时任务目录，不读取或修改已有任务数据。Redis 可用时会运行真实
-RQ 集成测试；Redis 不可用时对应集成用例按原有规则跳过。
+测试使用临时任务目录，不读取或修改已有任务数据。Redis 可用时会运行真实 RQ 集成测试；Redis 不可用时对应集成用例按原有规则跳过。
 
 ## 数据存储
 
@@ -197,13 +211,11 @@ python Main.py purge-archive
 ## 开发约定
 
 1. 前端和外部服务只通过 API 使用任务，不直接访问 SQLite 或任务目录。
-2. 新增模型时，在 `services/inference_service.py` 提供统一入口，并通过
-   `persist_model_result()` 写入结果。
+2. 新增模型时，在 `services/inference_service.py` 提供统一入口，并通过 `persist_model_result()` 写入结果。
 3. 修改公开字段时，同步检查 `contracts/task.py`、API 路由和
-   [API 对接说明](docs/API.md)。
+ [API 对接说明](docs/API.md)。
 4. 修改持久化字段时同步检查 `core/task_records.py` 和 SQLite migration。
-5. 清理和归档先使用预览模式，禁止用 Redis `FLUSHALL` 或 `FLUSHDB`
-   代替项目清理命令。
+5. 清理和归档先使用预览模式，禁止用 Redis `FLUSHALL` 或 `FLUSHDB` 代替项目清理命令。
 
 ## 下一阶段
 

@@ -258,18 +258,117 @@ logs/reconcile.log
 
 ## Linux 进程守护
 
-传入虚拟环境中的 Python 路径：
+`run-supervisor.sh` 是 Linux 的一键运行入口。项目根目录已经存在
+`.venv/bin/python` 时直接执行：
+
+```bash
+cd /opt/btir
+bash scripts/run-supervisor.sh
+```
+
+也可以显式传入 Python：
 
 ```bash
 bash scripts/run-supervisor.sh /opt/btir/.venv/bin/python
 ```
 
-脚本默认每 60 秒巡检一次任务，可通过
-`BTIR_SUPERVISOR_TASK_RECONCILE_SECONDS` 调整。存在 `curl` 时会执行 HTTP
-健康检查；没有 `curl` 时仍能在 API 或 Worker 退出后重新启动。
+Python 查找顺序：
 
-生产环境可以将该命令作为 systemd 服务的启动命令，由 systemd 负责守护
-脚本自身。
+1. 命令参数
+2. `BTIR_PYTHON_EXE`
+3. 当前已激活的 `VIRTUAL_ENV`
+4. 项目内 `.venv/bin/python`
+
+启动前脚本会检查：
+
+- Python 必须为 3.11。
+- FastAPI、Redis、RQ 和 Uvicorn 依赖可导入。
+- API 端口未被其他进程占用。
+- 同一项目没有另一个 supervisor 正在运行。
+- Redis 是否可访问；Redis 暂时不可用不会阻止 API 启动，supervisor 会持续
+  重启退出的 Worker，直到 Redis 恢复。
+
+运行期间会：
+
+- 同时启动并监控 API 与 Worker。
+- 进程退出后按退避时间重新启动。
+- 连续健康检查失败后重启 API。
+- Redis 正常、Worker 未注册且无运行中作业时安全重启 Worker。
+- 默认每 60 秒执行 `reconcile-tasks`。
+- 将标准输出、错误和巡检结果写入 `logs/`。
+- 收到 `SIGINT` 或 `SIGTERM` 时先请求子进程正常退出，超过宽限期才强制停止。
+
+按 `Ctrl+C` 可以停止 supervisor、API 和 Worker。该脚本不会执行任务归档或
+永久删除。
+
+项目根目录的 `.env` 是可选配置，不是启动必需文件。Python 应用会读取它，
+但进程中已经存在的系统环境变量优先级更高。supervisor 自身使用的
+`BTIR_API_*`、`BTIR_PYTHON_EXE` 和 `BTIR_SUPERVISOR_*` 不从 `.env` 读取，
+必须在运行脚本前通过 shell 或 systemd 注入：
+
+```bash
+export BTIR_API_HOST=127.0.0.1
+export BTIR_API_PORT=8000
+export BTIR_SUPERVISOR_RESTART_DELAY_SECONDS=10
+export BTIR_SUPERVISOR_HEALTH_CHECK_SECONDS=15
+export BTIR_SUPERVISOR_WORKER_STARTUP_GRACE_SECONDS=120
+export BTIR_SUPERVISOR_TASK_RECONCILE_SECONDS=60
+export BTIR_SUPERVISOR_RECONCILE_TIMEOUT_SECONDS=120
+export BTIR_SUPERVISOR_SHUTDOWN_GRACE_SECONDS=300
+export BTIR_SUPERVISOR_API_FAILURE_THRESHOLD=3
+bash scripts/run-supervisor.sh
+```
+
+存在 `curl` 时执行 HTTP 健康检查；没有 `curl` 时仍保留进程退出重启和任务
+状态巡检。存在 `flock` 时使用文件锁阻止重复启动，否则回退到 PID 检查。
+
+### 通过 systemd 托管
+
+supervisor 能管理 API 和 Worker，但它自身仍应交给 systemd。示例
+`/etc/systemd/system/btir.service`：
+
+```ini
+[Unit]
+Description=BTIR API and inference worker
+After=network.target redis.service
+Wants=redis.service
+
+[Service]
+Type=simple
+User=btir
+WorkingDirectory=/opt/btir
+EnvironmentFile=-/etc/btir/btir.env
+ExecStart=/bin/bash /opt/btir/scripts/run-supervisor.sh /opt/btir/.venv/bin/python
+Restart=always
+RestartSec=10
+KillMode=control-group
+TimeoutStopSec=330
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`EnvironmentFile` 行开头的 `-` 表示配置文件不存在时仍允许服务启动。服务器
+使用系统级配置时，可把所需 `BTIR_*` 变量写入 `/etc/btir/btir.env`；不要依赖
+交互式 shell 的 `.bashrc`，systemd 服务默认不会继承它。
+
+启用：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now btir
+sudo systemctl status btir
+```
+
+查看日志：
+
+```bash
+journalctl -u btir -f
+tail -f /opt/btir/logs/supervisor.log
+```
+
+生产环境应另外配置 logrotate，避免项目 `logs/` 持续增长。永久清除使用独立
+systemd timer 或 cron，不加入 supervisor 主循环。
 
 ## 部署验证
 

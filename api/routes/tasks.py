@@ -22,13 +22,14 @@ from contracts.task import (
     TaskListResponse,
     TaskRunListResponse,
     TaskRunSummaryResponse,
+    TaskRestoredResponse,
     TaskStatusResponse,
     TaskSummaryResponse,
 )
 from core.settings import SETTINGS
 from core.task_definitions import ModelName, TaskArtifact, TaskStatus
 from repositories.task_repository import task_repository
-from services.archive_service import archive_task
+from services.archive_service import archive_task, restore_task
 from services.task_files import (
     create_task_dir,
     get_task_dir,
@@ -245,6 +246,24 @@ def delete_task(task_id: str) -> TaskArchivedResponse:
         archived_at=archived_at,
         purge_eligible_at=archived_at
         + timedelta(days=SETTINGS.task_archive_grace_days),
+    )
+
+
+@router.post("/{task_id}/restore", response_model=TaskRestoredResponse)
+def restore_archived_task(task_id: str) -> TaskRestoredResponse:
+    '''将尚未永久清除的归档任务恢复到活动任务目录'''
+    try:
+        task_data = restore_task(task_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+    return TaskRestoredResponse(
+        task_id=task_id,
+        task_status=task_data.status,
+        restored_at=task_data.updated_at,
     )
 
 

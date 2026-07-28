@@ -218,6 +218,7 @@ class TaskHttpEndpointTests(unittest.TestCase):
         self.assertIn("/tasks/{task_id}/run-async", paths)
         self.assertIn("/tasks/{task_id}/runs", paths)
         self.assertIn("delete", paths["/tasks/{task_id}"])
+        self.assertIn("/tasks/{task_id}/restore", paths)
 
     def test_task_list_forwards_search_and_time_filters(self) -> None:
         with (
@@ -375,6 +376,51 @@ class TaskHttpEndpointTests(unittest.TestCase):
             response.json()["detail"],
             "排队、运行或等待取消的任务不能删除",
         )
+
+    def test_restore_task_returns_original_task_status(self) -> None:
+        restored_at = datetime.fromisoformat("2026-07-28T13:00:00+00:00")
+        task_record = TaskRecord(
+            task_id="task-restore-001",
+            name="Restore test",
+            status=TaskStatus.FAILED,
+            created_at=restored_at - timedelta(days=1),
+            updated_at=restored_at,
+            archived_at=None,
+            input=StoredTaskInput(
+                path="input/image.png",
+                storage_mode="uploaded",
+                size_bytes=1,
+                sha256="a" * 64,
+            ),
+        )
+
+        with (
+            patch("api.routes.tasks.restore_task", return_value=task_record),
+            TestClient(app) as client,
+        ):
+            response = client.post(f"/tasks/{task_record.task_id}/restore")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertEqual(payload["status"], "restored")
+        self.assertEqual(payload["task_status"], "failed")
+        self.assertEqual(
+            datetime.fromisoformat(payload["restored_at"].replace("Z", "+00:00")),
+            restored_at,
+        )
+
+    def test_restore_task_rejects_nonarchived_task(self) -> None:
+        with (
+            patch(
+                "api.routes.tasks.restore_task",
+                side_effect=ValueError("任务未归档，无需恢复"),
+            ),
+            TestClient(app) as client,
+        ):
+            response = client.post("/tasks/task-not-archived/restore")
+
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(response.json()["detail"], "任务未归档，无需恢复")
 
     def test_upload_enqueue_query_and_fetch_result(self) -> None:
         now = datetime.fromisoformat("2026-01-01T00:00:00+00:00")
