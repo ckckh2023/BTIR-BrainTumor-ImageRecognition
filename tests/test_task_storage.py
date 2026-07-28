@@ -15,7 +15,7 @@ from unittest.mock import patch
 from Main import main
 from core.task_definitions import TaskStatus
 from core.task_records import StoredTaskInput, TaskRecord
-from repositories.task_repository import (
+from repositories.task_repository_contracts import (
     TaskNotFoundError,
     TaskRepositoryUnavailableError,
 )

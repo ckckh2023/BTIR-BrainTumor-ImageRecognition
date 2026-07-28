@@ -12,7 +12,8 @@ from typing import Literal
 from core.settings import SETTINGS
 from core.task_definitions import TaskStatus
 from core.task_records import TaskRecord
-from repositories.task_repository import TaskRepository, task_repository
+from repositories.task_repository import task_repository
+from repositories.task_repository_contracts import TaskRepository
 from services.task_lock import task_write_lock
 
 
