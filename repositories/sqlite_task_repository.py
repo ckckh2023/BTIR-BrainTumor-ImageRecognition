@@ -236,12 +236,35 @@ class SqliteTaskRepository:
         limit: int,
         offset: int,
         status: TaskStatus | None = None,
+        query: str | None = None,
+        created_from: datetime | None = None,
+        created_to: datetime | None = None,
     ) -> tuple[list[TaskRecord], int]:
-        where_clause = ""
-        parameters: tuple[object, ...] = ()
+        conditions = ["archived_at IS NULL"]
+        parameters: list[object] = []
         if status is not None:
-            where_clause = "WHERE status = ?"
-            parameters = (status.value,)
+            conditions.append("status = ?")
+            parameters.append(status.value)
+        if query is not None:
+            escaped_query = (
+                query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            )
+            search_pattern = f"%{escaped_query}%"
+            conditions.append(
+                "("
+                "name COLLATE NOCASE LIKE ? ESCAPE '\\' OR "
+                "task_id COLLATE NOCASE LIKE ? ESCAPE '\\'"
+                ")"
+            )
+            parameters.extend((search_pattern, search_pattern))
+        if created_from is not None:
+            conditions.append("julianday(created_at) >= julianday(?)")
+            parameters.append(created_from.isoformat())
+        if created_to is not None:
+            conditions.append("julianday(created_at) <= julianday(?)")
+            parameters.append(created_to.isoformat())
+
+        where_clause = f"WHERE {' AND '.join(conditions)}"
 
         with self._connect() as connection:
             total_row = connection.execute(

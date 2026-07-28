@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -18,11 +19,13 @@ from contracts.task import (
     TaskErrorData,
     TaskInputData,
     TaskListResponse,
+    TaskRunListResponse,
+    TaskRunSummaryResponse,
     TaskStatusResponse,
     TaskSummaryResponse,
 )
 from core.settings import SETTINGS
-from core.task_definitions import TaskArtifact, TaskStatus
+from core.task_definitions import ModelName, TaskArtifact, TaskStatus
 from repositories.task_repository import task_repository
 from services.task_files import (
     create_task_dir,
@@ -81,6 +84,15 @@ def resolve_run_threshold(request: RunTaskRequest | None) -> float:
 def bad_request_http_error(exc: ValueError) -> HTTPException:
     '''将预期的业务校验错误转换为 HTTP 400'''
     return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+def normalize_query_datetime(value: datetime | None) -> datetime | None:
+    '''将查询时间统一为 UTC；未携带时区时按 UTC 处理'''
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def task_input_data(task_data) -> TaskInputData:
@@ -157,12 +169,30 @@ def list_tasks(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     status_filter: TaskStatus | None = Query(default=None, alias="status"),
+    query: str | None = Query(default=None, alias="q", max_length=100),
+    created_from: datetime | None = Query(default=None),
+    created_to: datetime | None = Query(default=None),
 ) -> TaskListResponse:
     '''分页查询任务，可按整体状态筛选'''
+    normalized_from = normalize_query_datetime(created_from)
+    normalized_to = normalize_query_datetime(created_to)
+    if (
+        normalized_from is not None
+        and normalized_to is not None
+        and normalized_from > normalized_to
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="created_from 不能晚于 created_to",
+        )
+
     task_records, total = task_repository.list_tasks(
         limit=limit,
         offset=offset,
         status=status_filter,
+        query=query.strip() if query and query.strip() else None,
+        created_from=normalized_from,
+        created_to=normalized_to,
     )
     return TaskListResponse(
         items=[task_summary_data(record) for record in task_records],
@@ -191,6 +221,39 @@ def get_task(task_id: str) -> TaskStatusResponse:
     return TaskStatusResponse(
         **task_common_data(task_data),
         frontend_result=frontend_result,
+    )
+
+
+@router.get("/{task_id}/runs", response_model=TaskRunListResponse)
+def list_task_runs(
+    task_id: str,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    model_filter: ModelName | None = Query(default=None, alias="model"),
+) -> TaskRunListResponse:
+    '''分页查询指定任务的历史运行元数据'''
+    task_dir = require_task_dir(task_id)
+    task_data = task_repository.load(task_dir)
+    runs = task_data.runs or []
+    if model_filter is not None:
+        runs = [run for run in runs if run.model == model_filter]
+    runs = sorted(runs, key=lambda run: (run.created_at, run.run_id), reverse=True)
+    page = runs[offset : offset + limit]
+
+    return TaskRunListResponse(
+        task_id=task_id,
+        items=[
+            TaskRunSummaryResponse(
+                run_id=run.run_id,
+                model=run.model,
+                created_at=run.created_at,
+                inference_ms=run.inference_ms,
+            )
+            for run in page
+        ],
+        total=len(runs),
+        limit=limit,
+        offset=offset,
     )
 
 
