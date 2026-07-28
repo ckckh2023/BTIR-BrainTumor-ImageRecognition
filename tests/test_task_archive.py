@@ -19,6 +19,7 @@ from services.archive_service import (
     archive_expired_tasks,
     archive_task,
     purge_expired_archives,
+    restore_task,
 )
 
 
@@ -198,6 +199,60 @@ class TaskArchiveTests(unittest.TestCase):
 
                 self.assertTrue(task_dir.is_dir())
                 self.assertIsNone(self.repository.load(task_dir).archived_at)
+
+    def test_restore_moves_archived_task_back_to_output(self) -> None:
+        task_dir = self._create_task(
+            "task-restore",
+            TaskStatus.SUCCEEDED,
+            self.now,
+        )
+        restored_at = self.now + timedelta(hours=1)
+
+        with patch("services.archive_service.task_write_lock", self._no_lock):
+            archive_task(
+                task_dir.name,
+                now=self.now,
+                repository=self.repository,
+                output_dir=self.output_dir,
+                archive_dir=self.archive_dir,
+            )
+            restored = restore_task(
+                task_dir.name,
+                now=restored_at,
+                repository=self.repository,
+                output_dir=self.output_dir,
+                archive_dir=self.archive_dir,
+            )
+
+        self.assertTrue((task_dir / "result.json").is_file())
+        self.assertFalse((self.archive_dir / "tasks" / task_dir.name).exists())
+        self.assertIsNone(restored.archived_at)
+        self.assertEqual(restored.updated_at, restored_at)
+        visible_tasks, total = self.repository.list_tasks(limit=20, offset=0)
+        self.assertEqual(total, 1)
+        self.assertEqual([record.task_id for record in visible_tasks], [task_dir.name])
+        self.assertIn(
+            '"operation": "restore_api"',
+            (self.archive_dir / "audit.jsonl").read_text(encoding="utf-8"),
+        )
+
+    def test_restore_rejects_task_that_is_not_archived(self) -> None:
+        task_dir = self._create_task(
+            "task-not-archived",
+            TaskStatus.SUCCEEDED,
+            self.now,
+        )
+
+        with self.assertRaisesRegex(ValueError, "未归档"):
+            restore_task(
+                task_dir.name,
+                now=self.now,
+                repository=self.repository,
+                output_dir=self.output_dir,
+                archive_dir=self.archive_dir,
+            )
+
+        self.assertTrue(task_dir.is_dir())
 
     def test_purge_removes_only_expired_archived_task(self) -> None:
         task_id = "task-purge-apply"

@@ -49,6 +49,7 @@ GET /tasks/{task_id}/runs 查询该任务的运行历史
 | `POST` | `/tasks/{task_id}/retry` | 重新提交最终失败的任务 |
 | `POST` | `/tasks/{task_id}/cancel` | 取消或请求停止任务 |
 | `DELETE` | `/tasks/{task_id}` | 将指定非活动任务安全移入归档区 |
+| `POST` | `/tasks/{task_id}/restore` | 恢复尚未永久清除的归档任务 |
 | `GET` | `/healthz` | API 存活检查 |
 | `GET` | `/readyz` | 完整依赖就绪检查 |
 | `GET` | `/runtime` | 查询实际推理设备 |
@@ -265,6 +266,7 @@ GET /tasks/{task_id}/runs
 | `failed` | 重试、删除 |
 | `partial`、`succeeded` | 再次运行、删除 |
 | `canceled` | 删除 |
+| 已归档 | 恢复；归档任务不出现在普通列表中 |
 
 ### 重试
 
@@ -318,6 +320,36 @@ DELETE /tasks/{task_id}
 
 `purge_eligible_at` 仅表示达到永久清除宽限期，不代表后端会自动永久删除。
 永久清除仍受运维配置和 `purge-archive --apply` 控制。
+
+### 恢复
+
+```http
+POST /tasks/{task_id}/restore
+```
+
+只要任务尚未被永久清除，即使已经超过 `purge_eligible_at`，仍可在实际 purge
+执行前恢复。恢复会：
+
+- 获取同一任务的 Redis 写入锁。
+- 将完整目录从 `archive/tasks/` 移回活动输出目录。
+- 清除 `archived_at`，保留原任务状态和运行历史。
+- 更新任务 `updated_at`，避免定期归档立即再次移走刚恢复的任务。
+- 写入 `restore_api` 审计记录。
+
+成功响应：
+
+```json
+{
+  "schema_version": "0.1",
+  "task_id": "20260728_120000_001",
+  "status": "restored",
+  "task_status": "failed",
+  "restored_at": "2026-07-30T09:00:00Z"
+}
+```
+
+恢复后任务重新出现在 `GET /tasks` 中，并可按原状态继续查看、重试或再次运行。
+未归档任务请求恢复时返回 `409`；已经永久清除的任务返回 `404`。
 
 ### 更换输入图片
 
@@ -399,6 +431,7 @@ async function requestTaskAction(taskId, action) {
 // requestTaskAction(taskId, "retry")
 // requestTaskAction(taskId, "cancel")
 // requestTaskAction(taskId, "delete")
+// requestTaskAction(taskId, "restore")
 ```
 
 前后端分开部署时，将相对路径替换为后端完整地址，并在

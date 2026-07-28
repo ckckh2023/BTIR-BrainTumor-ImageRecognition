@@ -220,6 +220,46 @@ DELETE /tasks/{task_id}
 排队、运行或等待取消的任务不能软删除。应先取消并等待状态变为
 `canceled`，再重新请求删除。
 
+恢复尚未永久清除的任务：
+
+```http
+POST /tasks/{task_id}/restore
+```
+
+恢复会将完整目录移回输出区、清除 `archived_at`、刷新 `updated_at` 并记录
+`restore_api` 审计。只要 purge 尚未实际执行，超过宽限日期的任务仍可恢复；
+永久清除后文件和 SQLite 记录都不存在，无法恢复。
+
+### 自动永久清除建议
+
+当前程序不会仅因到达 `purge_eligible_at` 就自行永久删除。生产环境建议由
+Windows 任务计划程序或 Linux systemd timer/cron 在低峰期每天执行一次：
+
+```powershell
+python Main.py purge-archive --apply --limit 100
+```
+
+同时必须明确配置：
+
+```dotenv
+BTIR_TASK_CLEANUP_ENABLED=true
+```
+
+推荐按“每天固定时间扫描”而非让 API 进程精确等待每个任务的截止时刻：
+
+- 服务停机后，下次定时运行会自动补处理已经到期的任务。
+- 多个 API 进程不会重复创建删除定时器。
+- 定时任务可独立停用，方便维护和数据恢复。
+- `--limit` 可以限制单次永久删除数量。
+- 每次清除仍经过归档时间复核、任务锁和审计。
+
+例如每日 03:00 执行时，某任务到期后会在下一次 03:00 被永久删除。若团队
+希望继续保留人工确认，则不要创建这个定时任务，维持手动预览与执行即可。
+
+Linux `run-supervisor.sh` 只负责 API、Worker、健康检查和
+`reconcile-tasks`，不会调用 `archive-tasks` 或 `purge-archive`，避免进程
+守护与永久数据删除耦合。
+
 ## 手动清理
 
 先预览：
