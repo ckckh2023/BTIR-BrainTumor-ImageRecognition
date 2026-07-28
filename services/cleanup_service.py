@@ -5,7 +5,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from repositories.task_repository import TaskRepository
+from repositories.task_repository_contracts import TaskRepository
 
 
 def clear_generated_files(

@@ -12,7 +12,8 @@ from core.task_definitions import (
     task_status_from_job_status,
 )
 from core.task_records import TaskErrorRecord, TaskJobRecord, TaskRecord, TaskRunRecord
-from repositories.task_repository import TaskRepository, task_repository
+from repositories.task_repository import task_repository
+from repositories.task_repository_contracts import TaskRepository
 from services.task_files import task_relative_path
 from services.task_lock import task_write_lock
 

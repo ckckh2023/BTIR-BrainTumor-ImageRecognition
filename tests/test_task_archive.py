@@ -14,7 +14,7 @@ from core.settings import SETTINGS
 from core.task_definitions import TaskStatus
 from core.task_records import StoredTaskInput, TaskRecord
 from repositories.sqlite_task_repository import SqliteTaskRepository
-from repositories.task_repository import TaskNotFoundError
+from repositories.task_repository_contracts import TaskNotFoundError
 from services.archive_service import archive_expired_tasks, purge_expired_archives
 
 

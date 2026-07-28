@@ -13,7 +13,7 @@ from pydantic import ValidationError
 
 from core.task_definitions import ACTIVE_ASYNC_TASK_STATUSES, TaskStatus
 from core.task_records import TaskRecord
-from repositories.task_repository import (
+from repositories.task_repository_contracts import (
     TaskNotFoundError,
     TaskRepository,
     TaskRepositoryUnavailableError,

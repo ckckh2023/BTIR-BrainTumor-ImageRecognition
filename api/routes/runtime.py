@@ -6,10 +6,10 @@ from redis.exceptions import RedisError
 from accelerator import get_runtime_status
 from core.settings import SETTINGS
 from contracts.task import InferenceQueueStatusResponse, RuntimeStatusResponse
-from repositories.task_repository import (
+from repositories.task_repository_contracts import (
     TaskRepositoryUnavailableError,
-    task_repository,
 )
+from repositories.task_repository import task_repository
 from services.redis_client import get_redis_client
 from services.task_queue import (
     get_inference_queue_status,

@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from api.routes.runtime import router as runtime_router
 from api.routes.tasks import router as tasks_router
 from core.settings import SETTINGS
-from repositories.task_repository import (
+from repositories.task_repository_contracts import (
     TaskNotFoundError,
     TaskRepositoryUnavailableError,
 )

@@ -19,7 +19,8 @@ from core.task_definitions import (
     TaskStatus,
 )
 from core.task_records import TaskRecord
-from repositories.task_repository import TaskNotFoundError, task_repository
+from repositories.task_repository import task_repository
+from repositories.task_repository_contracts import TaskNotFoundError
 from services.redis_client import get_redis_client
 from services.task_lock import TaskLockBusyError, task_write_lock
 from services.task_state import mark_task_queued, update_task_execution_status

@@ -65,7 +65,6 @@ class TaskErrorRecord(BaseModel):
 class TaskRecord(BaseModel):
     '''一条完整的任务元数据记录'''
 
-    # 允许读取未来版本新增的字段，避免旧数据或滚动升级时丢失信息
     model_config = ConfigDict(extra="allow")
 
     task_id: str
