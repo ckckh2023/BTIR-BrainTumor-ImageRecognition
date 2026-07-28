@@ -147,3 +147,11 @@ class TaskCancellationResponse(BaseModel):
     schema_version: Literal["0.1"] = "0.1"
     task_id: str
     status: TaskStatus
+
+
+class TaskArchivedResponse(BaseModel):
+    schema_version: Literal["0.1"] = "0.1"
+    task_id: str
+    status: Literal["archived"] = "archived"
+    archived_at: datetime
+    purge_eligible_at: datetime

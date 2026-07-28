@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from contracts.task import (
     RunTaskRequest,
+    TaskArchivedResponse,
     TaskCreatedResponse,
     TaskCancellationResponse,
     TaskEnqueuedResponse,
@@ -27,6 +28,7 @@ from contracts.task import (
 from core.settings import SETTINGS
 from core.task_definitions import ModelName, TaskArtifact, TaskStatus
 from repositories.task_repository import task_repository
+from services.archive_service import archive_task
 from services.task_files import (
     create_task_dir,
     get_task_dir,
@@ -221,6 +223,28 @@ def get_task(task_id: str) -> TaskStatusResponse:
     return TaskStatusResponse(
         **task_common_data(task_data),
         frontend_result=frontend_result,
+    )
+
+
+@router.delete("/{task_id}", response_model=TaskArchivedResponse)
+def delete_task(task_id: str) -> TaskArchivedResponse:
+    '''将指定的非活动任务安全移入归档区'''
+    try:
+        task_data = archive_task(task_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+    archived_at = task_data.archived_at
+    if archived_at is None:
+        raise RuntimeError("任务归档完成但缺少归档时间")
+    return TaskArchivedResponse(
+        task_id=task_id,
+        archived_at=archived_at,
+        purge_eligible_at=archived_at
+        + timedelta(days=SETTINGS.task_archive_grace_days),
     )
 
 

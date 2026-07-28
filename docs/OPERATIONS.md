@@ -193,6 +193,9 @@ python Main.py purge-archive --apply
 - 每项实际操作记录在 `archive/audit.jsonl`。
 - 模型、Python 缓存和活动任务不会被归档流程处理。
 
+`BTIR_OUTPUT_DIR` 与 `BTIR_TASK_ARCHIVE_DIR` 必须位于同一磁盘卷；生产环境
+可分别设置为 `/var/lib/btir/output` 和 `/var/lib/btir/archive`。
+
 可以限制单次候选数量：
 
 ```powershell
@@ -201,6 +204,21 @@ python Main.py purge-archive --limit 100
 ```
 
 普通 `GET /tasks` 默认排除已归档记录，避免列表存在但活动任务文件已经移走。
+
+### 指定任务软删除
+
+前端调用：
+
+```http
+DELETE /tasks/{task_id}
+```
+
+会立即将指定非活动任务移入同一归档区，审计操作记为 `archive_api`。该接口
+不受 `BTIR_TASK_CLEANUP_ENABLED` 开关限制，因为它来自用户明确操作；但后续
+永久清除仍必须启用清理并执行 `purge-archive --apply`。
+
+排队、运行或等待取消的任务不能软删除。应先取消并等待状态变为
+`canceled`，再重新请求删除。
 
 ## 手动清理
 
