@@ -12,7 +12,8 @@ from unittest.mock import Mock, patch
 from PIL import Image
 
 from core.settings import SETTINGS
-from services.task_files import initialize_uploaded_task
+from core.task_definitions import InputStorageMode
+from services.task_files import initialize_task, initialize_uploaded_task
 
 
 class TaskFileUploadTests(unittest.TestCase):
@@ -77,6 +78,23 @@ class TaskFileUploadTests(unittest.TestCase):
 
         self.assertTrue(image_path.is_file())
         repository.save.assert_called_once()
+
+    def test_local_copy_is_self_contained_and_uses_original_filename(self) -> None:
+        source_image = Path(self.temporary_directory.name) / "local-scan.png"
+        source_image.write_bytes(b"local-image")
+        repository = Mock()
+
+        with patch("services.task_files.task_repository", repository):
+            image_path = initialize_task(
+                self.task_dir,
+                source_image,
+                InputStorageMode.COPY,
+            )
+
+        self.assertEqual(image_path.parent, (self.task_dir / "input").resolve())
+        saved_record = repository.save.call_args.args[1]
+        self.assertEqual(saved_record.input.original_filename, "local-scan.png")
+        self.assertNotIn("source_file", saved_record.input.model_dump())
 
 
 if __name__ == "__main__":

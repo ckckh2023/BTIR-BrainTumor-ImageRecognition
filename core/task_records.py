@@ -18,7 +18,6 @@ class StoredTaskInput(BaseModel):
     storage_mode: str
     size_bytes: int
     sha256: str
-    source_file: str | None = None
     original_filename: str | None = None
 
 

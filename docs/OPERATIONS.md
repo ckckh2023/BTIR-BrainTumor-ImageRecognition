@@ -157,10 +157,10 @@ data/
 
 ## 归档策略
 
-归档与永久删除默认关闭：
+批量归档与永久删除默认允许执行，但不会自动或定时运行：
 
 ```dotenv
-BTIR_TASK_CLEANUP_ENABLED=false
+BTIR_TASK_CLEANUP_ENABLED=true
 BTIR_SUCCEEDED_TASK_RETENTION_DAYS=30
 BTIR_FAILED_TASK_RETENTION_DAYS=7
 BTIR_TASK_ARCHIVE_GRACE_DAYS=7
@@ -178,6 +178,9 @@ python Main.py purge-archive
 
 1. `BTIR_TASK_CLEANUP_ENABLED=true`
 2. 命令明确传入 `--apply`
+
+如需在维护期间完全禁止批量归档与永久删除，可将开关设为 `false`。不带
+`--apply` 的命令始终只做预览。
 
 ```powershell
 python Main.py archive-tasks --apply

@@ -61,7 +61,12 @@ class TaskDefinitionTests(unittest.TestCase):
         self.assertEqual(TaskArtifact.SEGMENTATION_RESULT.value, "segmentation.json")
         self.assertEqual(TaskArtifact.FRONTEND_RESULT.value, "frontend_result.json")
         self.assertEqual(TaskDirectory.INPUT.value, "input")
-        self.assertEqual(InputStorageMode.AUTO.value, "auto")
+        self.assertEqual(
+            tuple(mode.value for mode in InputStorageMode),
+            ("auto", "hardlink", "copy"),
+        )
+        with self.assertRaises(ValueError):
+            InputStorageMode("reference")
 
 
 if __name__ == "__main__":

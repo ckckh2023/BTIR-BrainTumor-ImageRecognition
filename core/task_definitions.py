@@ -73,7 +73,6 @@ class InputStorageMode(StrEnum):
     AUTO = "auto"
     HARDLINK = "hardlink"
     COPY = "copy"
-    REFERENCE = "reference"
 
 
 class TaskDirectory(StrEnum):
