@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 from core.settings import SETTINGS
-from core.task_definitions import TaskStatus
+from core.task_definitions import InputStorageMode, TaskStatus
 from repositories.task_repository import task_repository
 from services.archive_service import archive_expired_tasks, purge_expired_archives
 from services.benchmark_service import benchmark_models
@@ -112,18 +112,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"任务图像：{image_path}")
             return 0
 
-        if args.image_path is None and not args.task_id:
-            raise ValueError("请提供 --task-id，或传入图片路径以创建新任务")
-
         if args.command in {"segment", "all"} and not 0.0 <= args.threshold <= 1.0:
             raise ValueError("--threshold 必须位于 0 到 1 之间")
 
-        if args.task_id:
-            task_dir = get_task_dir(output_root, args.task_id)
-        else:
-            source_image = validate_image_path(args.image_path)
-            task_dir = create_task_dir(output_root)
-            initialize_task(task_dir, source_image, args.input_mode)
+        task_dir = get_task_dir(output_root, args.task_id)
 
         if args.command == "classify":
             progress = ConsoleProgress()
@@ -263,8 +255,8 @@ def _build_parser() -> argparse.ArgumentParser:
     create.add_argument("--name", help="任务显示名称，并非task任务id") # --name 参数
     create.add_argument( # --input-mode 参数
         "--input-mode",
-        choices=("auto", "hardlink", "copy", "reference"),
-        default="auto",
+        choices=tuple(mode.value for mode in InputStorageMode),
+        default=InputStorageMode.AUTO.value,
         help="输入保存方式：auto 优先硬链接，失败时复制",
     )
     create.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR) # --output-dir 参数
@@ -286,7 +278,6 @@ def _add_model_arguments(
     command: argparse.ArgumentParser, *, with_threshold: bool
 ) -> None:
     '''为模型运行命令添加通用参数'''
-    command.add_argument("image_path", type=Path, nargs="?", help="旧用法；建议改用 --task-id") # image_path 参数
     if with_threshold:
         command.add_argument(
             "--threshold",
@@ -295,13 +286,7 @@ def _add_model_arguments(
             help=f"分割阈值，默认 {SETTINGS.default_segment_threshold}",
         ) # --threshold 参数
     command.add_argument("--json", action="store_true", help="输出完整 JSON 结果") # --json 参数
-    command.add_argument("--task-id", help="写入已有任务；省略时自动创建新任务") # --task-id 参数
-    command.add_argument( # --input-mode 参数
-        "--input-mode",
-        choices=("auto", "hardlink", "copy", "reference"),
-        default="auto",
-        help="仅在直接传图片路径时使用",
-    )
+    command.add_argument("--task-id", required=True, help="要运行的已有任务 ID") # --task-id 参数
     command.add_argument( # --output-dir 参数
         "--output-dir",
         type=Path,

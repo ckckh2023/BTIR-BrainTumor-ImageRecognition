@@ -15,7 +15,6 @@ from core.task_definitions import ACTIVE_ASYNC_TASK_STATUSES, TaskStatus
 from core.task_records import TaskRecord
 from repositories.task_repository_contracts import (
     TaskNotFoundError,
-    TaskRepository,
     TaskRepositoryUnavailableError,
 )
 
@@ -96,12 +95,38 @@ def _migration_004_normalize_completed_status(connection: sqlite3.Connection) ->
         )
 
 
+def _migration_005_normalize_input_filename(connection: sqlite3.Connection) -> None:
+    rows = connection.execute("SELECT task_id, record_json FROM tasks").fetchall()
+    for row in rows:
+        try:
+            record_data = json.loads(row["record_json"])
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(record_data, dict):
+            continue
+
+        input_data = record_data.get("input")
+        if not isinstance(input_data, dict) or "source_file" not in input_data:
+            continue
+        source_file = input_data.pop("source_file")
+        if not input_data.get("original_filename") and isinstance(source_file, str):
+            input_data["original_filename"] = source_file
+        connection.execute(
+            "UPDATE tasks SET record_json = ? WHERE task_id = ?",
+            (
+                json.dumps(record_data, ensure_ascii=False, separators=(",", ":")),
+                row["task_id"],
+            ),
+        )
+
+
 # 创建迁移清单
 SCHEMA_MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (1, "create_tasks_table", _migration_001_create_tasks_table),
     (2, "add_archived_at", _migration_002_add_archived_at),
     (3, "create_task_indexes", _migration_003_create_task_indexes),
     (4, "normalize_completed_status", _migration_004_normalize_completed_status),
+    (5, "normalize_input_filename", _migration_005_normalize_input_filename),
 )
 CURRENT_SCHEMA_VERSION = SCHEMA_MIGRATIONS[-1][0]
 

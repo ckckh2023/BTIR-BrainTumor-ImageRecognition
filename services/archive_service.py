@@ -123,49 +123,6 @@ def restore_task(
         )
 
 
-def restore_task(
-    task_id: str,
-    *,
-    now: datetime | None = None,
-    repository: TaskRepository = task_repository,
-    output_dir: Path = SETTINGS.output_dir,
-    archive_dir: Path = SETTINGS.task_archive_dir,
-) -> TaskRecord:
-    '''将尚未永久清除的归档任务恢复到活动任务目录'''
-    now = now or datetime.now().astimezone()
-    try:
-        source = _task_directory(archive_dir / "tasks", task_id)
-        destination = _task_directory(output_dir, task_id)
-    except ValueError as exc:
-        raise TaskNotFoundError("任务不存在") from exc
-
-    current = repository.load(destination)
-    if current.archived_at is None:
-        raise ValueError("任务未归档，无需恢复")
-    if not source.is_dir():
-        raise TaskNotFoundError("归档任务数据不存在")
-    if destination.exists():
-        raise ValueError("任务恢复目标已存在")
-    _ensure_same_volume(source, destination)
-
-    with task_write_lock(task_id):
-        current = repository.load(destination)
-        if current.archived_at is None:
-            raise ValueError("任务未归档，无需恢复")
-        if not source.is_dir():
-            raise TaskNotFoundError("归档任务数据不存在")
-        if destination.exists():
-            raise ValueError("任务恢复目标已存在")
-        return _move_task_from_archive(
-            source=source,
-            destination=destination,
-            record=current,
-            timestamp=now,
-            repository=repository,
-            archive_dir=archive_dir,
-        )
-
-
 def archive_expired_tasks(
     *,
     dry_run: bool,
@@ -325,37 +282,6 @@ def _move_task_to_archive(
     _append_audit(
         archive_dir,
         operation=audit_operation,
-        task_id=record.task_id,
-        timestamp=timestamp,
-    )
-    return record
-
-
-def _move_task_from_archive(
-    *,
-    source: Path,
-    destination: Path,
-    record: TaskRecord,
-    timestamp: datetime,
-    repository: TaskRepository,
-    archive_dir: Path,
-) -> TaskRecord:
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    original_archived_at = record.archived_at
-    original_updated_at = record.updated_at
-    shutil.move(str(source), str(destination))
-    record.archived_at = None
-    record.updated_at = timestamp
-    try:
-        repository.save(destination, record)
-    except Exception:
-        record.archived_at = original_archived_at
-        record.updated_at = original_updated_at
-        shutil.move(str(destination), str(source))
-        raise
-    _append_audit(
-        archive_dir,
-        operation="restore_api",
         task_id=record.task_id,
         timestamp=timestamp,
     )

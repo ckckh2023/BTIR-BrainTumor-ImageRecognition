@@ -117,9 +117,7 @@ def initialize_task(
         raise ValueError(f"不支持的输入保存方式：{input_mode}；仅支持 {allowed}") from exc
 
     actual_mode = storage_mode.value
-    if storage_mode is InputStorageMode.REFERENCE:
-        task_image = source_image
-    elif storage_mode is InputStorageMode.COPY:
+    if storage_mode is InputStorageMode.COPY:
         shutil.copy2(source_image, stored_image)
         task_image = stored_image
     else:
@@ -135,17 +133,12 @@ def initialize_task(
             task_image = stored_image
 
     task_image = task_image.resolve()
-    stored_path = (
-        str(task_image.relative_to(task_dir))
-        if task_image.is_relative_to(task_dir)
-        else str(task_image)
-    )
     _save_created_task(
         task_dir,
         name,
         StoredTaskInput(
-            path=stored_path,
-            source_file=source_image.name,
+            path=str(task_image.relative_to(task_dir)),
+            original_filename=source_image.name,
             storage_mode=actual_mode,
             size_bytes=task_image.stat().st_size,
             sha256=sha256(task_image),

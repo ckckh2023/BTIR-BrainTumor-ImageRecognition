@@ -208,7 +208,7 @@ def _build_settings() -> Settings:
         ),
         worker_preload_models=_get_bool("BTIR_WORKER_PRELOAD_MODELS", True),
         linux_worker_mode=_get_linux_worker_mode(),
-        task_cleanup_enabled=_get_bool("BTIR_TASK_CLEANUP_ENABLED", False),
+        task_cleanup_enabled=_get_bool("BTIR_TASK_CLEANUP_ENABLED", True),
         succeeded_task_retention_days=_get_nonnegative_int(
             "BTIR_SUCCEEDED_TASK_RETENTION_DAYS",
             30,

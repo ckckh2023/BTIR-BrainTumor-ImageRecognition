@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 import json
 import tempfile
@@ -12,7 +12,7 @@ from pathlib import Path
 import sqlite3
 from unittest.mock import patch
 
-from Main import main
+from Main import _build_parser, main
 from core.task_definitions import TaskStatus
 from core.task_records import StoredTaskInput, TaskRecord
 from repositories.task_repository_contracts import (
@@ -180,6 +180,22 @@ class TaskStorageTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         game.assert_called_once_with()
 
+    def test_model_commands_require_an_existing_task_id(self) -> None:
+        parser = _build_parser()
+        for command in ("classify", "segment", "all"):
+            with (
+                self.subTest(command=command),
+                redirect_stderr(StringIO()),
+                self.assertRaises(SystemExit) as raised,
+            ):
+                parser.parse_args([command, "legacy-image.png"])
+
+            self.assertEqual(raised.exception.code, 2)
+            parsed = parser.parse_args([command, "--task-id", "task-001"])
+            self.assertEqual(parsed.task_id, "task-001")
+            self.assertFalse(hasattr(parsed, "image_path"))
+            self.assertFalse(hasattr(parsed, "input_mode"))
+
     def test_unavailable_database_raises_storage_error(self) -> None:
         blocked_parent = self.project_root / "not-a-directory"
         blocked_parent.write_text("blocked", encoding="utf-8")
@@ -326,6 +342,71 @@ class TaskStorageTests(unittest.TestCase):
 
         self.assertEqual(status, TaskStatus.SUCCEEDED.value)
         self.assertEqual(json.loads(record_json)["status"], TaskStatus.SUCCEEDED.value)
+
+    def test_source_file_is_normalized_by_schema_migration(self) -> None:
+        legacy_database_path = self.project_root / "source-file.db"
+        connection = sqlite3.connect(legacy_database_path)
+        try:
+            connection.execute(
+                """
+                CREATE TABLE tasks (
+                    task_id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    archived_at TEXT,
+                    record_json TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE schema_migrations (
+                    version INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            connection.executemany(
+                "INSERT INTO schema_migrations (version, name) VALUES (?, ?)",
+                [
+                    (1, "create_tasks_table"),
+                    (2, "add_archived_at"),
+                    (3, "create_task_indexes"),
+                    (4, "normalize_completed_status"),
+                ],
+            )
+            record = self._record("source-file-task")
+            record_data = record.model_dump(mode="json")
+            record_data["input"]["source_file"] = "legacy-scan.png"
+            connection.execute(
+                """
+                INSERT INTO tasks (
+                    task_id, name, status, created_at, updated_at, archived_at, record_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    record.task_id,
+                    record.name,
+                    record.status.value,
+                    record.created_at.isoformat(),
+                    record.updated_at.isoformat(),
+                    None,
+                    json.dumps(record_data),
+                ),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        repository = SqliteTaskRepository(legacy_database_path)
+        migrated = repository.load(self.output_dir / "source-file-task")
+
+        self.assertEqual(migrated.input.original_filename, "legacy-scan.png")
+        self.assertNotIn("source_file", migrated.input.model_dump())
 
     def test_dry_run_keeps_output_and_database_records(self) -> None:
         task_dir = self.output_dir / "task-002"
