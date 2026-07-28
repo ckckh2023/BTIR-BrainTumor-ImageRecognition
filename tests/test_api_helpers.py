@@ -217,6 +217,7 @@ class TaskHttpEndpointTests(unittest.TestCase):
         self.assertNotIn("/tasks/{task_id}/segment", paths)
         self.assertIn("/tasks/{task_id}/run-async", paths)
         self.assertIn("/tasks/{task_id}/runs", paths)
+        self.assertIn("delete", paths["/tasks/{task_id}"])
 
     def test_task_list_forwards_search_and_time_filters(self) -> None:
         with (
@@ -319,6 +320,61 @@ class TaskHttpEndpointTests(unittest.TestCase):
         self.assertEqual(payload["items"][0]["run_id"], "classification-new")
         self.assertEqual(payload["items"][0]["model"], "classification")
         self.assertNotIn("result_file", payload["items"][0])
+
+    def test_delete_task_archives_data_and_returns_purge_eligibility(self) -> None:
+        archived_at = datetime.fromisoformat("2026-07-28T12:00:00+00:00")
+        task_record = TaskRecord(
+            task_id="task-delete-001",
+            name="Delete test",
+            status=TaskStatus.SUCCEEDED,
+            created_at=archived_at - timedelta(minutes=1),
+            updated_at=archived_at,
+            archived_at=archived_at,
+            input=StoredTaskInput(
+                path="input/image.png",
+                storage_mode="uploaded",
+                size_bytes=1,
+                sha256="a" * 64,
+            ),
+        )
+
+        with (
+            patch("api.routes.tasks.archive_task", return_value=task_record),
+            TestClient(app) as client,
+        ):
+            response = client.delete(f"/tasks/{task_record.task_id}")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertEqual(payload["schema_version"], "0.1")
+        self.assertEqual(payload["task_id"], task_record.task_id)
+        self.assertEqual(payload["status"], "archived")
+        self.assertEqual(
+            datetime.fromisoformat(payload["archived_at"].replace("Z", "+00:00")),
+            archived_at,
+        )
+        self.assertEqual(
+            datetime.fromisoformat(
+                payload["purge_eligible_at"].replace("Z", "+00:00")
+            ),
+            archived_at + timedelta(days=SETTINGS.task_archive_grace_days),
+        )
+
+    def test_delete_task_rejects_active_task(self) -> None:
+        with (
+            patch(
+                "api.routes.tasks.archive_task",
+                side_effect=ValueError("排队、运行或等待取消的任务不能删除"),
+            ),
+            TestClient(app) as client,
+        ):
+            response = client.delete("/tasks/task-running-001")
+
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(
+            response.json()["detail"],
+            "排队、运行或等待取消的任务不能删除",
+        )
 
     def test_upload_enqueue_query_and_fetch_result(self) -> None:
         now = datetime.fromisoformat("2026-01-01T00:00:00+00:00")

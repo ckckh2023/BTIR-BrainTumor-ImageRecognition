@@ -87,11 +87,13 @@ BTIR_LINUX_WORKER_MODE=standard
 
 ```dotenv
 BTIR_OUTPUT_DIR=/var/lib/btir/output
+BTIR_TASK_ARCHIVE_DIR=/var/lib/btir/archive
 BTIR_CORS_ORIGINS=https://你的前端域名
 ```
 
 路径相对于项目根目录解析。前后端分离时，`BTIR_CORS_ORIGINS` 应明确列出
-允许访问 API 的前端来源。
+允许访问 API 的前端来源。输出目录与归档目录必须位于同一磁盘卷，任务软删除
+和定期归档才能通过完整目录移动保证一致性。
 
 ## 启动 Redis
 

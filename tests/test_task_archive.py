@@ -15,7 +15,11 @@ from core.task_definitions import TaskStatus
 from core.task_records import StoredTaskInput, TaskRecord
 from repositories.sqlite_task_repository import SqliteTaskRepository
 from repositories.task_repository_contracts import TaskNotFoundError
-from services.archive_service import archive_expired_tasks, purge_expired_archives
+from services.archive_service import (
+    archive_expired_tasks,
+    archive_task,
+    purge_expired_archives,
+)
 
 
 class TaskArchiveTests(unittest.TestCase):
@@ -134,6 +138,66 @@ class TaskArchiveTests(unittest.TestCase):
 
         self.assertEqual(report.processed_task_ids, [task_dir.name])
         self.assertTrue((self.archive_dir / "tasks" / task_dir.name).is_dir())
+
+    def test_manual_archive_moves_nonactive_task_and_is_idempotent(self) -> None:
+        task_dir = self._create_task(
+            "task-manual-archive",
+            TaskStatus.CREATED,
+            self.now,
+        )
+
+        with patch("services.archive_service.task_write_lock", self._no_lock):
+            archived = archive_task(
+                task_dir.name,
+                now=self.now,
+                repository=self.repository,
+                output_dir=self.output_dir,
+                archive_dir=self.archive_dir,
+            )
+            repeated = archive_task(
+                task_dir.name,
+                now=self.now + timedelta(minutes=1),
+                repository=self.repository,
+                output_dir=self.output_dir,
+                archive_dir=self.archive_dir,
+            )
+
+        archived_dir = self.archive_dir / "tasks" / task_dir.name
+        self.assertFalse(task_dir.exists())
+        self.assertTrue((archived_dir / "result.json").is_file())
+        self.assertEqual(archived.archived_at, self.now)
+        self.assertEqual(repeated.archived_at, self.now)
+        self.assertIn(
+            '"operation": "archive_api"',
+            (self.archive_dir / "audit.jsonl").read_text(encoding="utf-8"),
+        )
+
+    def test_manual_archive_rejects_active_tasks(self) -> None:
+        for task_status in (
+            TaskStatus.QUEUED,
+            TaskStatus.RUNNING,
+            TaskStatus.CANCEL_REQUESTED,
+        ):
+            with self.subTest(status=task_status):
+                task_dir = self._create_task(
+                    f"task-active-{task_status.value}",
+                    task_status,
+                    self.now,
+                )
+                with (
+                    patch("services.archive_service.task_write_lock", self._no_lock),
+                    self.assertRaisesRegex(ValueError, "不能删除"),
+                ):
+                    archive_task(
+                        task_dir.name,
+                        now=self.now,
+                        repository=self.repository,
+                        output_dir=self.output_dir,
+                        archive_dir=self.archive_dir,
+                    )
+
+                self.assertTrue(task_dir.is_dir())
+                self.assertIsNone(self.repository.load(task_dir).archived_at)
 
     def test_purge_removes_only_expired_archived_task(self) -> None:
         task_id = "task-purge-apply"

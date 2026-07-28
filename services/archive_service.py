@@ -10,10 +10,10 @@ import shutil
 from typing import Literal
 
 from core.settings import SETTINGS
-from core.task_definitions import TaskStatus
+from core.task_definitions import ACTIVE_ASYNC_TASK_STATUSES, TaskStatus
 from core.task_records import TaskRecord
 from repositories.task_repository import task_repository
-from repositories.task_repository_contracts import TaskRepository
+from repositories.task_repository_contracts import TaskNotFoundError, TaskRepository
 from services.task_lock import task_write_lock
 
 
@@ -28,6 +28,56 @@ class ArchiveReport:
     dry_run: bool
     processed_task_ids: list[str] = field(default_factory=list)
     skipped_task_ids: list[str] = field(default_factory=list)
+
+
+def archive_task(
+    task_id: str,
+    *,
+    now: datetime | None = None,
+    repository: TaskRepository = task_repository,
+    output_dir: Path = SETTINGS.output_dir,
+    archive_dir: Path = SETTINGS.task_archive_dir,
+) -> TaskRecord:
+    '''立即软删除指定的非活动任务，并保留至归档宽限期结束'''
+    now = now or datetime.now().astimezone()
+    try:
+        source = _task_directory(output_dir, task_id)
+        destination = _task_directory(archive_dir / "tasks", task_id)
+    except ValueError as exc:
+        raise TaskNotFoundError("任务不存在") from exc
+
+    current = repository.load(source)
+    if current.archived_at is not None:
+        if destination.is_dir():
+            return current
+        raise TaskNotFoundError("归档任务数据不存在")
+    if not source.is_dir():
+        raise TaskNotFoundError("任务不存在")
+    if destination.exists():
+        raise ValueError("任务归档目标已存在")
+    _ensure_same_volume(source, destination)
+
+    with task_write_lock(task_id):
+        current = repository.load(source)
+        if current.archived_at is not None:
+            if destination.is_dir():
+                return current
+            raise TaskNotFoundError("归档任务数据不存在")
+        if current.status in ACTIVE_ASYNC_TASK_STATUSES:
+            raise ValueError("排队、运行或等待取消的任务不能删除")
+        if not source.is_dir():
+            raise TaskNotFoundError("任务不存在")
+        if destination.exists():
+            raise ValueError("任务归档目标已存在")
+        return _move_task_to_archive(
+            source=source,
+            destination=destination,
+            record=current,
+            timestamp=now,
+            repository=repository,
+            archive_dir=archive_dir,
+            audit_operation="archive_api",
+        )
 
 
 def archive_expired_tasks(
@@ -70,19 +120,14 @@ def archive_expired_tasks(
             if not _is_archive_eligible(current, now) or not source.is_dir() or destination.exists():
                 report.skipped_task_ids.append(candidate.task_id)
                 continue
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(source), str(destination))
-            current.archived_at = now
-            try:
-                repository.save(source, current)
-            except Exception:
-                shutil.move(str(destination), str(source))
-                raise
-            _append_audit(
-                archive_dir,
-                operation="archive",
-                task_id=current.task_id,
+            _move_task_to_archive(
+                source=source,
+                destination=destination,
+                record=current,
                 timestamp=now,
+                repository=repository,
+                archive_dir=archive_dir,
+                audit_operation="archive",
             )
             report.processed_task_ids.append(current.task_id)
     return report
@@ -170,6 +215,34 @@ def _is_purge_eligible(record: TaskRecord, now: datetime) -> bool:
         record.archived_at is not None
         and record.archived_at <= now - timedelta(days=SETTINGS.task_archive_grace_days)
     )
+
+
+def _move_task_to_archive(
+    *,
+    source: Path,
+    destination: Path,
+    record: TaskRecord,
+    timestamp: datetime,
+    repository: TaskRepository,
+    archive_dir: Path,
+    audit_operation: str,
+) -> TaskRecord:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(source), str(destination))
+    record.archived_at = timestamp
+    try:
+        repository.save(source, record)
+    except Exception:
+        record.archived_at = None
+        shutil.move(str(destination), str(source))
+        raise
+    _append_audit(
+        archive_dir,
+        operation=audit_operation,
+        task_id=record.task_id,
+        timestamp=timestamp,
+    )
+    return record
 
 
 def _task_directory(root: Path, task_id: str) -> Path:

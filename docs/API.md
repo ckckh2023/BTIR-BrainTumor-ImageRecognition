@@ -22,7 +22,6 @@ GET /tasks 查询任务列表
 GET /tasks/{task_id}/runs 查询该任务的运行历史
 ```
 
-前端只调用 API，不直接读取 SQLite 或服务器任务目录。
 
 ## 任务状态
 
@@ -49,6 +48,7 @@ GET /tasks/{task_id}/runs 查询该任务的运行历史
 | `POST` | `/tasks/{task_id}/run-async` | 提交完整异步推理 |
 | `POST` | `/tasks/{task_id}/retry` | 重新提交最终失败的任务 |
 | `POST` | `/tasks/{task_id}/cancel` | 取消或请求停止任务 |
+| `DELETE` | `/tasks/{task_id}` | 将指定非活动任务安全移入归档区 |
 | `GET` | `/healthz` | API 存活检查 |
 | `GET` | `/readyz` | 完整依赖就绪检查 |
 | `GET` | `/runtime` | 查询实际推理设备 |
@@ -253,7 +253,20 @@ GET /tasks/{task_id}/runs
 }
 ```
 
-## 重试和取消
+## 任务操作
+
+前端可根据任务状态展示操作：
+
+| 当前状态 | 建议操作 |
+| --- | --- |
+| `created` | 运行、取消、删除 |
+| `queued`、`running` | 取消 |
+| `cancel_requested` | 等待状态收敛 |
+| `failed` | 重试、删除 |
+| `partial`、`succeeded` | 再次运行、删除 |
+| `canceled` | 删除 |
+
+### 重试
 
 最终状态为 `failed` 的任务可以手动重试：
 
@@ -263,6 +276,8 @@ POST /tasks/{task_id}/retry
 
 请求体与 `run-async` 相同，可以省略。正在排队或运行的重复请求会复用
 已有作业。
+
+### 取消
 
 取消任务：
 
@@ -274,6 +289,41 @@ POST /tasks/{task_id}/cancel
 - 运行中的任务先变为 `cancel_requested`，Worker 在安全阶段停止。
 - 已完成或已失败任务返回 `409 Conflict`。
 - 对已取消任务重复调用是幂等的。
+
+### 删除
+
+```http
+DELETE /tasks/{task_id}
+```
+
+删除采用软删除语义：
+
+- `queued`、`running`、`cancel_requested` 返回 `409 Conflict`。
+- 其他非活动状态会获取任务写入锁，将整个任务移动到归档区。
+- 设置 `archived_at` 并写入 `archive/audit.jsonl`。
+- 普通任务列表立即隐藏该任务，任务详情随后返回 `404`。
+- 重复删除尚未永久清除的同一任务会返回相同归档信息。
+
+成功响应：
+
+```json
+{
+  "schema_version": "0.1",
+  "task_id": "20260728_120000_001",
+  "status": "archived",
+  "archived_at": "2026-07-28T12:30:00Z",
+  "purge_eligible_at": "2026-08-04T12:30:00Z"
+}
+```
+
+`purge_eligible_at` 仅表示达到永久清除宽限期，不代表后端会自动永久删除。
+永久清除仍受运维配置和 `purge-archive --apply` 控制。
+
+### 更换输入图片
+
+当前不提供修改已有任务输入图片的接口。`retry` 和 `run-async` 都继续使用
+该任务原始图片。需要更换图片时应重新调用 `POST /tasks` 创建新任务，以免
+旧运行历史与新图片混在同一个 `task_id` 下。
 
 ## 读取结果文件
 
@@ -332,6 +382,23 @@ async function fetchTaskRuns(taskId, model = "") {
   }
   return response.json();
 }
+
+async function requestTaskAction(taskId, action) {
+  const method = action === "delete" ? "DELETE" : "POST";
+  const path = action === "delete"
+    ? `/tasks/${encodeURIComponent(taskId)}`
+    : `/tasks/${encodeURIComponent(taskId)}/${action}`;
+  const response = await fetch(path, {method});
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "任务操作失败");
+  }
+  return response.json();
+}
+
+// requestTaskAction(taskId, "retry")
+// requestTaskAction(taskId, "cancel")
+// requestTaskAction(taskId, "delete")
 ```
 
 前后端分开部署时，将相对路径替换为后端完整地址，并在
