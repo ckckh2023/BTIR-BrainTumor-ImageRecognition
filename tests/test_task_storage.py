@@ -93,6 +93,46 @@ class TaskStorageTests(unittest.TestCase):
         self.assertEqual(failed_total, 2)
         self.assertEqual([record.task_id for record in failed_records], ["task-003"])
 
+    def test_list_tasks_supports_search_time_range_and_excludes_archived(self) -> None:
+        records = [
+            ("task-alpha", "Patient Alpha", "2026-01-01T00:00:00+00:00", None),
+            ("task-beta", "Patient Beta", "2026-01-02T00:00:00+00:00", None),
+            (
+                "task-archived",
+                "Patient Alpha archived",
+                "2026-01-03T00:00:00+00:00",
+                "2026-01-04T00:00:00+00:00",
+            ),
+        ]
+        for task_id, name, created_at, archived_at in records:
+            task_dir = self.output_dir / task_id
+            task_dir.mkdir(parents=True)
+            record = self._record(task_id)
+            record.name = name
+            record.created_at = datetime.fromisoformat(created_at)
+            record.archived_at = (
+                datetime.fromisoformat(archived_at) if archived_at is not None else None
+            )
+            self.repository.save(task_dir, record)
+
+        matched_records, matched_total = self.repository.list_tasks(
+            limit=20,
+            offset=0,
+            query="PATIENT ALPHA",
+            created_from=datetime.fromisoformat("2025-12-31T16:00:00-08:00"),
+            created_to=datetime.fromisoformat("2026-01-02T00:00:00+00:00"),
+        )
+
+        self.assertEqual(matched_total, 1)
+        self.assertEqual([record.task_id for record in matched_records], ["task-alpha"])
+
+        active_records, active_total = self.repository.list_tasks(limit=20, offset=0)
+        self.assertEqual(active_total, 2)
+        self.assertNotIn(
+            "task-archived",
+            {record.task_id for record in active_records},
+        )
+
     def test_list_active_tasks_excludes_terminal_records(self) -> None:
         task_statuses = {
             "task-created": TaskStatus.CREATED,

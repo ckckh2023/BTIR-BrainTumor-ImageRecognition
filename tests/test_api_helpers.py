@@ -22,8 +22,14 @@ from api.routes.tasks import (
 )
 from api.routes.runtime import get_liveness, get_queue_status, get_readiness
 from contracts.task import RunTaskRequest
-from core.task_definitions import JobStatus, TaskStatus
-from core.task_records import StoredTaskInput, TaskErrorRecord, TaskJobRecord, TaskRecord
+from core.task_definitions import JobStatus, ModelName, TaskStatus
+from core.task_records import (
+    StoredTaskInput,
+    TaskErrorRecord,
+    TaskJobRecord,
+    TaskRecord,
+    TaskRunRecord,
+)
 from core.settings import SETTINGS
 from services.task_lock import TaskLockBusyError, TaskLockUnavailableError
 from services.task_queue import TaskQueueUnavailableError
@@ -210,6 +216,109 @@ class TaskHttpEndpointTests(unittest.TestCase):
         self.assertNotIn("/tasks/{task_id}/classify", paths)
         self.assertNotIn("/tasks/{task_id}/segment", paths)
         self.assertIn("/tasks/{task_id}/run-async", paths)
+        self.assertIn("/tasks/{task_id}/runs", paths)
+
+    def test_task_list_forwards_search_and_time_filters(self) -> None:
+        with (
+            patch(
+                "api.routes.tasks.task_repository.list_tasks",
+                return_value=([], 0),
+            ) as list_tasks,
+            TestClient(app) as client,
+        ):
+            response = client.get(
+                "/tasks",
+                params={
+                    "q": "  Patient Alpha  ",
+                    "status": "succeeded",
+                    "created_from": "2026-01-01T08:00:00+08:00",
+                    "created_to": "2026-01-02T08:00:00+08:00",
+                },
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        list_tasks.assert_called_once_with(
+            limit=20,
+            offset=0,
+            status=TaskStatus.SUCCEEDED,
+            query="Patient Alpha",
+            created_from=datetime.fromisoformat("2026-01-01T00:00:00+00:00"),
+            created_to=datetime.fromisoformat("2026-01-02T00:00:00+00:00"),
+        )
+
+    def test_task_list_rejects_reversed_time_range(self) -> None:
+        with (
+            patch("api.routes.tasks.task_repository.list_tasks") as list_tasks,
+            TestClient(app) as client,
+        ):
+            response = client.get(
+                "/tasks",
+                params={
+                    "created_from": "2026-01-02T00:00:00Z",
+                    "created_to": "2026-01-01T00:00:00Z",
+                },
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        list_tasks.assert_not_called()
+
+    def test_task_run_history_supports_model_filter_and_pagination(self) -> None:
+        task_dir = Path("output") / "task-run-history-001"
+        first_created_at = datetime.fromisoformat("2026-01-01T00:00:00+00:00")
+        second_created_at = datetime.fromisoformat("2026-01-02T00:00:00+00:00")
+        record = TaskRecord(
+            task_id=task_dir.name,
+            name="Run history",
+            status=TaskStatus.SUCCEEDED,
+            created_at=first_created_at,
+            updated_at=second_created_at,
+            input=StoredTaskInput(
+                path="input/image.png",
+                storage_mode="uploaded",
+                size_bytes=1,
+                sha256="a" * 64,
+            ),
+            runs=[
+                TaskRunRecord(
+                    run_id="classification-old",
+                    model=ModelName.CLASSIFICATION,
+                    result_file="runs/classification/old/result.json",
+                    created_at=first_created_at,
+                    inference_ms=10.0,
+                ),
+                TaskRunRecord(
+                    run_id="classification-new",
+                    model=ModelName.CLASSIFICATION,
+                    result_file="runs/classification/new/result.json",
+                    created_at=second_created_at,
+                    inference_ms=8.0,
+                ),
+                TaskRunRecord(
+                    run_id="segmentation-new",
+                    model=ModelName.SEGMENTATION,
+                    result_file="runs/segmentation/new/result.json",
+                    created_at=second_created_at,
+                    inference_ms=20.0,
+                ),
+            ],
+        )
+
+        with (
+            patch("api.routes.tasks.require_task_dir", return_value=task_dir),
+            patch("api.routes.tasks.task_repository.load", return_value=record),
+            TestClient(app) as client,
+        ):
+            response = client.get(
+                f"/tasks/{task_dir.name}/runs",
+                params={"model": "classification", "limit": 1, "offset": 0},
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertEqual(payload["total"], 2)
+        self.assertEqual(payload["items"][0]["run_id"], "classification-new")
+        self.assertEqual(payload["items"][0]["model"], "classification")
+        self.assertNotIn("result_file", payload["items"][0])
 
     def test_upload_enqueue_query_and_fetch_result(self) -> None:
         now = datetime.fromisoformat("2026-01-01T00:00:00+00:00")

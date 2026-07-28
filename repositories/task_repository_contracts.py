@@ -39,6 +39,9 @@ class TaskRepository(Protocol):
         limit: int,
         offset: int,
         status: TaskStatus | None = None,
+        query: str | None = None,
+        created_from: datetime | None = None,
+        created_to: datetime | None = None,
     ) -> tuple[list[TaskRecord], int]:
         '''按创建时间倒序返回任务页和筛选后的总数'''
 

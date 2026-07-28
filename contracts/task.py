@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from datetime import datetime
 
 from core.settings import SETTINGS
-from core.task_definitions import JobStatus, TaskStatus
+from core.task_definitions import JobStatus, ModelName, TaskStatus
 
 
 # 响应模型
@@ -77,6 +77,22 @@ class TaskSummaryResponse(BaseModel):
 class TaskListResponse(BaseModel):
     schema_version: Literal["0.1"] = "0.1"
     items: list[TaskSummaryResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class TaskRunSummaryResponse(BaseModel):
+    run_id: str
+    model: ModelName
+    created_at: datetime
+    inference_ms: float | None = None
+
+
+class TaskRunListResponse(BaseModel):
+    schema_version: Literal["0.1"] = "0.1"
+    task_id: str
+    items: list[TaskRunSummaryResponse]
     total: int
     limit: int
     offset: int
