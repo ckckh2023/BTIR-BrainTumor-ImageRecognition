@@ -123,6 +123,7 @@ bash scripts/run-supervisor.sh /usr/bin/python3.11
 4. 确认 `completed_models` 包含 `classification` 和 `segmentation`。
 5. 历史页面通过 `GET /tasks` 查询任务。
 6. 点击任务后通过 `GET /tasks/{task_id}/runs` 查询运行历史。
+7. 归档管理通过 `GET /tasks/archived` 列出任务，再调用恢复接口。
 
 完整请求、响应和前端 `fetch` 示例参见 [API 对接说明](docs/API.md)。
 

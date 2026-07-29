@@ -12,6 +12,8 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, sta
 from fastapi.responses import FileResponse, JSONResponse
 
 from contracts.task import (
+    ArchivedTaskListResponse,
+    ArchivedTaskSummaryResponse,
     RunTaskRequest,
     TaskArchivedResponse,
     TaskCreatedResponse,
@@ -137,6 +139,18 @@ def task_summary_data(task_data) -> TaskSummaryResponse:
     return TaskSummaryResponse(**task_common_data(task_data))
 
 
+def archived_task_summary_data(task_data) -> ArchivedTaskSummaryResponse:
+    archived_at = task_data.archived_at
+    if archived_at is None:
+        raise ValueError("任务缺少归档时间")
+    return ArchivedTaskSummaryResponse(
+        **task_common_data(task_data),
+        archived_at=archived_at,
+        purge_eligible_at=archived_at
+        + timedelta(days=SETTINGS.task_archive_grace_days),
+    )
+
+
 @router.post(
     "",
     response_model=TaskCreatedResponse,
@@ -199,6 +213,28 @@ def list_tasks(
     )
     return TaskListResponse(
         items=[task_summary_data(record) for record in task_records],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/archived", response_model=ArchivedTaskListResponse)
+def list_archived_tasks(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    status_filter: TaskStatus | None = Query(default=None, alias="status"),
+    query: str | None = Query(default=None, alias="q", max_length=100),
+) -> ArchivedTaskListResponse:
+    '''分页查询尚未永久清除的归档任务'''
+    task_records, total = task_repository.list_archived_tasks(
+        limit=limit,
+        offset=offset,
+        status=status_filter,
+        query=query.strip() if query and query.strip() else None,
+    )
+    return ArchivedTaskListResponse(
+        items=[archived_task_summary_data(record) for record in task_records],
         total=total,
         limit=limit,
         offset=offset,

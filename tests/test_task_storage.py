@@ -133,6 +133,59 @@ class TaskStorageTests(unittest.TestCase):
             {record.task_id for record in active_records},
         )
 
+    def test_list_archived_tasks_supports_filters_and_pagination(self) -> None:
+        records = [
+            (
+                "task-active",
+                "Patient Alpha active",
+                TaskStatus.SUCCEEDED,
+                None,
+            ),
+            (
+                "task-archived-old",
+                "Patient Alpha archived",
+                TaskStatus.FAILED,
+                "2026-01-03T00:00:00+00:00",
+            ),
+            (
+                "task-archived-new",
+                "Patient Beta archived",
+                TaskStatus.SUCCEEDED,
+                "2026-01-04T00:00:00+00:00",
+            ),
+        ]
+        for task_id, name, task_status, archived_at in records:
+            task_dir = self.output_dir / task_id
+            task_dir.mkdir(parents=True)
+            record = self._record(task_id, task_status)
+            record.name = name
+            record.archived_at = (
+                datetime.fromisoformat(archived_at) if archived_at is not None else None
+            )
+            self.repository.save(task_dir, record)
+
+        archived_records, archived_total = self.repository.list_archived_tasks(
+            limit=1,
+            offset=0,
+        )
+        self.assertEqual(archived_total, 2)
+        self.assertEqual(
+            [record.task_id for record in archived_records],
+            ["task-archived-new"],
+        )
+
+        matched_records, matched_total = self.repository.list_archived_tasks(
+            limit=20,
+            offset=0,
+            status=TaskStatus.FAILED,
+            query="PATIENT ALPHA",
+        )
+        self.assertEqual(matched_total, 1)
+        self.assertEqual(
+            [record.task_id for record in matched_records],
+            ["task-archived-old"],
+        )
+
     def test_list_active_tasks_excludes_terminal_records(self) -> None:
         task_statuses = {
             "task-created": TaskStatus.CREATED,

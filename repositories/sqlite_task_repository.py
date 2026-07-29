@@ -308,6 +308,50 @@ class SqliteTaskRepository:
 
         return self._records_from_rows(rows), int(total_row["total"])
 
+    def list_archived_tasks(
+        self,
+        *,
+        limit: int,
+        offset: int,
+        status: TaskStatus | None = None,
+        query: str | None = None,
+    ) -> tuple[list[TaskRecord], int]:
+        conditions = ["archived_at IS NOT NULL"]
+        parameters: list[object] = []
+        if status is not None:
+            conditions.append("status = ?")
+            parameters.append(status.value)
+        if query is not None:
+            escaped_query = (
+                query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            )
+            search_pattern = f"%{escaped_query}%"
+            conditions.append(
+                "("
+                "name COLLATE NOCASE LIKE ? ESCAPE '\\' OR "
+                "task_id COLLATE NOCASE LIKE ? ESCAPE '\\'"
+                ")"
+            )
+            parameters.extend((search_pattern, search_pattern))
+
+        where_clause = f"WHERE {' AND '.join(conditions)}"
+        with self._connect() as connection:
+            total_row = connection.execute(
+                f"SELECT COUNT(*) AS total FROM tasks {where_clause}",
+                parameters,
+            ).fetchone()
+            rows = connection.execute(
+                f"""
+                SELECT record_json FROM tasks
+                {where_clause}
+                ORDER BY archived_at DESC, task_id DESC
+                LIMIT ? OFFSET ?
+                """,
+                (*parameters, limit, offset),
+            ).fetchall()
+
+        return self._records_from_rows(rows), int(total_row["total"])
+
     def list_active_tasks(self, *, limit: int) -> list[TaskRecord]:
         with self._connect() as connection:
             rows = connection.execute(
