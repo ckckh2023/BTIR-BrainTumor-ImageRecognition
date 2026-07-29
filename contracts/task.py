@@ -82,6 +82,19 @@ class TaskListResponse(BaseModel):
     offset: int
 
 
+class ArchivedTaskSummaryResponse(TaskSummaryResponse):
+    archived_at: datetime
+    purge_eligible_at: datetime
+
+
+class ArchivedTaskListResponse(BaseModel):
+    schema_version: Literal["0.1"] = "0.1"
+    items: list[ArchivedTaskSummaryResponse]
+    total: int
+    limit: int
+    offset: int
+
+
 class TaskRunSummaryResponse(BaseModel):
     run_id: str
     model: ModelName

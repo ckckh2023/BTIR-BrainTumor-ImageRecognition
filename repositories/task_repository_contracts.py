@@ -45,6 +45,16 @@ class TaskRepository(Protocol):
     ) -> tuple[list[TaskRecord], int]:
         '''按创建时间倒序返回任务页和筛选后的总数'''
 
+    def list_archived_tasks(
+        self,
+        *,
+        limit: int,
+        offset: int,
+        status: TaskStatus | None = None,
+        query: str | None = None,
+    ) -> tuple[list[TaskRecord], int]:
+        '''按归档时间倒序返回已归档任务页和筛选后的总数'''
+
     def list_active_tasks(self, *, limit: int) -> list[TaskRecord]:
         '''返回仍需与 RQ 对账的活动任务'''
 

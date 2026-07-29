@@ -20,6 +20,10 @@ GET /tasks/{task_id} 轮询状态和读取最新结果
 GET /tasks 查询任务列表
     ↓
 GET /tasks/{task_id}/runs 查询该任务的运行历史
+
+GET /tasks/archived 查询可恢复的归档任务
+    ↓
+POST /tasks/{task_id}/restore 恢复所选任务
 ```
 
 
@@ -42,6 +46,7 @@ GET /tasks/{task_id}/runs 查询该任务的运行历史
 | --- | --- | --- |
 | `POST` | `/tasks` | 上传图片并创建任务 |
 | `GET` | `/tasks` | 分页、筛选历史任务 |
+| `GET` | `/tasks/archived` | 分页、筛选尚未永久清除的归档任务 |
 | `GET` | `/tasks/{task_id}` | 查询任务状态与最新结果 |
 | `GET` | `/tasks/{task_id}/runs` | 查询模型运行历史 |
 | `GET` | `/tasks/{task_id}/files/{file_path}` | 读取公开结果文件 |
@@ -220,6 +225,27 @@ GET /tasks?q=Patient&status=succeeded&created_from=2026-07-01T00:00:00%2B08:00&c
 }
 ```
 
+## 查询归档任务
+
+```http
+GET /tasks/archived
+```
+
+该接口仅返回尚未永久清除、因而仍可选择恢复的任务。支持与普通任务列表相同的
+`limit`、`offset`、`status` 和 `q` 参数，按归档时间倒序排列。
+
+每条记录在普通任务摘要之外增加：
+
+```json
+{
+  "archived_at": "2026-07-28T12:30:00Z",
+  "purge_eligible_at": "2026-08-04T12:30:00Z"
+}
+```
+
+`purge_eligible_at` 表示任务进入可永久清除期的时间，不代表该时间一到就一定
+被删除；在运维实际执行永久清除之前仍可调用恢复接口。
+
 ## 查询运行历史
 
 ```http
@@ -266,7 +292,7 @@ GET /tasks/{task_id}/runs
 | `failed` | 重试、删除 |
 | `partial`、`succeeded` | 再次运行、删除 |
 | `canceled` | 删除 |
-| 已归档 | 恢复；归档任务不出现在普通列表中 |
+| 已归档 | 从 `GET /tasks/archived` 列表选择恢复 |
 
 ### 重试
 

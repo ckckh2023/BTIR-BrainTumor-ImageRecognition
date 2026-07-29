@@ -217,6 +217,7 @@ class TaskHttpEndpointTests(unittest.TestCase):
         self.assertNotIn("/tasks/{task_id}/segment", paths)
         self.assertIn("/tasks/{task_id}/run-async", paths)
         self.assertIn("/tasks/{task_id}/runs", paths)
+        self.assertIn("/tasks/archived", paths)
         self.assertIn("delete", paths["/tasks/{task_id}"])
         self.assertIn("/tasks/{task_id}/restore", paths)
 
@@ -263,6 +264,63 @@ class TaskHttpEndpointTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         list_tasks.assert_not_called()
+
+    def test_archived_task_list_forwards_filters_and_exposes_archive_times(self) -> None:
+        archived_at = datetime.fromisoformat("2026-07-28T12:00:00+00:00")
+        task_record = TaskRecord(
+            task_id="task-archived-001",
+            name="Archived test",
+            status=TaskStatus.FAILED,
+            created_at=archived_at - timedelta(days=1),
+            updated_at=archived_at,
+            archived_at=archived_at,
+            input=StoredTaskInput(
+                path="input/image.png",
+                storage_mode="uploaded",
+                size_bytes=1,
+                sha256="a" * 64,
+            ),
+        )
+
+        with (
+            patch(
+                "api.routes.tasks.task_repository.list_archived_tasks",
+                return_value=([task_record], 1),
+            ) as list_archived_tasks,
+            TestClient(app) as client,
+        ):
+            response = client.get(
+                "/tasks/archived",
+                params={
+                    "q": "  Archived test  ",
+                    "status": "failed",
+                    "limit": 10,
+                    "offset": 0,
+                },
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        list_archived_tasks.assert_called_once_with(
+            limit=10,
+            offset=0,
+            status=TaskStatus.FAILED,
+            query="Archived test",
+        )
+        payload = response.json()
+        self.assertEqual(payload["total"], 1)
+        self.assertEqual(payload["items"][0]["task_id"], task_record.task_id)
+        self.assertEqual(
+            datetime.fromisoformat(
+                payload["items"][0]["archived_at"].replace("Z", "+00:00")
+            ),
+            archived_at,
+        )
+        self.assertEqual(
+            datetime.fromisoformat(
+                payload["items"][0]["purge_eligible_at"].replace("Z", "+00:00")
+            ),
+            archived_at + timedelta(days=SETTINGS.task_archive_grace_days),
+        )
 
     def test_task_run_history_supports_model_filter_and_pagination(self) -> None:
         task_dir = Path("output") / "task-run-history-001"
