@@ -57,7 +57,8 @@ def run_task_job(task_id: str, threshold: float) -> dict[str, Any]:
         return _finish_canceled_task(task_dir, job, attempt, execution_ms=execution_ms)
     except Exception as exc:
         execution_ms = round((perf_counter() - started_at) * 1000, 3)
-        retry_pending = bool(getattr(job, "should_retry", lambda: False)())
+        retry_attr = getattr(job, "should_retry", False)
+        retry_pending = bool(retry_attr() if callable(retry_attr) else retry_attr)
         update_task_execution_status(
             task_dir,
             JobStatus.QUEUED if retry_pending else JobStatus.FAILED,
