@@ -21,10 +21,6 @@ class UsernameAlreadyExistsError(ValueError):
     pass
 
 
-class EmailAlreadyExistsError(ValueError):
-    pass
-
-
 class SqliteUserRepository:
 
     def __init__(self, repository: SqliteTaskRepository) -> None:
@@ -54,7 +50,6 @@ class SqliteUserRepository:
     def create_user(
         self,
         username: str,
-        email: str,
         hashed_password: str,
     ) -> UserRecord:
         now = datetime.now(timezone.utc)
@@ -62,7 +57,6 @@ class SqliteUserRepository:
         record = UserRecord(
             user_id=user_id,
             username=username,
-            email=email,
             hashed_password=hashed_password,
             is_active=True,
             created_at=now,
@@ -74,20 +68,14 @@ class SqliteUserRepository:
             ).fetchone()
             if existing_username:
                 raise UsernameAlreadyExistsError(f"用户名 '{username}' 已被注册")
-            existing_email = connection.execute(
-                "SELECT 1 FROM users WHERE email = ?", (email,)
-            ).fetchone()
-            if existing_email:
-                raise EmailAlreadyExistsError(f"邮箱 '{email}' 已被注册")
             connection.execute(
                 """
-                INSERT INTO users (user_id, username, email, hashed_password, is_active, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO users (user_id, username, hashed_password, is_active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
                     record.user_id,
                     record.username,
-                    record.email,
                     record.hashed_password,
                     1 if record.is_active else 0,
                     record.created_at.isoformat(),
@@ -116,22 +104,11 @@ class SqliteUserRepository:
             return None
         return self._row_to_record(row)
 
-    def get_by_email(self, email: str) -> UserRecord | None:
-        with self._connect() as connection:
-            row = connection.execute(
-                "SELECT * FROM users WHERE email = ?",
-                (email,),
-            ).fetchone()
-        if row is None:
-            return None
-        return self._row_to_record(row)
-
     @staticmethod
     def _row_to_record(row: sqlite3.Row) -> UserRecord:
         return UserRecord(
             user_id=row["user_id"],
             username=row["username"],
-            email=row["email"],
             hashed_password=row["hashed_password"],
             is_active=bool(row["is_active"]),
             created_at=datetime.fromisoformat(row["created_at"]),

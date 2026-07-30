@@ -126,7 +126,6 @@ def _migration_006_create_users_table(connection: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS users (
             user_id TEXT PRIMARY KEY,
             username TEXT NOT NULL UNIQUE,
-            email TEXT NOT NULL UNIQUE,
             hashed_password TEXT NOT NULL,
             is_active INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL,
@@ -138,12 +137,6 @@ def _migration_006_create_users_table(connection: sqlite3.Connection) -> None:
         """
         CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username
         ON users (username)
-        """
-    )
-    connection.execute(
-        """
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email
-        ON users (email)
         """
     )
 

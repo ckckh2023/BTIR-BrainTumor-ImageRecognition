@@ -12,7 +12,6 @@ class UserRecord(BaseModel):
 
     user_id: str
     username: str
-    email: str
     hashed_password: str
     is_active: bool = True
     created_at: datetime
