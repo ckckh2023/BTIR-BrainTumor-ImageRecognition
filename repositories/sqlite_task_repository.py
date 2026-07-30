@@ -120,6 +120,42 @@ def _migration_005_normalize_input_filename(connection: sqlite3.Connection) -> N
         )
 
 
+def _migration_006_create_users_table(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            user_id TEXT PRIMARY KEY,
+            username TEXT NOT NULL UNIQUE,
+            hashed_password TEXT NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username
+        ON users (username)
+        """
+    )
+
+
+def _migration_007_add_user_id_to_tasks(connection: sqlite3.Connection) -> None:
+    columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(tasks)").fetchall()
+    }
+    if "user_id" not in columns:
+        connection.execute("ALTER TABLE tasks ADD COLUMN user_id TEXT")
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_tasks_user_id
+        ON tasks (user_id)
+        """
+    )
+
+
 # 创建迁移清单
 SCHEMA_MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (1, "create_tasks_table", _migration_001_create_tasks_table),
@@ -127,6 +163,8 @@ SCHEMA_MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (3, "create_task_indexes", _migration_003_create_task_indexes),
     (4, "normalize_completed_status", _migration_004_normalize_completed_status),
     (5, "normalize_input_filename", _migration_005_normalize_input_filename),
+    (6, "create_users_table", _migration_006_create_users_table),
+    (7, "add_user_id_to_tasks", _migration_007_add_user_id_to_tasks),
 )
 CURRENT_SCHEMA_VERSION = SCHEMA_MIGRATIONS[-1][0]
 
@@ -219,18 +257,25 @@ class SqliteTaskRepository:
         except (ValidationError, ValueError) as exc:
             raise ValueError("任务元数据格式无效") from exc
 
-    def save(self, task_dir: Path, record: TaskRecord) -> Path:
+    def save(self, task_dir: Path, record: TaskRecord, user_id: str | None = None) -> Path:
         if record.task_id != task_dir.name:
             raise ValueError("任务 ID 与任务目录不一致")
 
         record_json = record.model_dump_json(exclude_none=True)
         with self._connect() as connection:
+            existing = connection.execute(
+                "SELECT user_id FROM tasks WHERE task_id = ?",
+                (record.task_id,),
+            ).fetchone()
+            effective_user_id = user_id
+            if existing is not None and existing["user_id"] is not None:
+                effective_user_id = existing["user_id"]
             connection.execute(
                 """
                 INSERT INTO tasks (
-                    task_id, name, status, created_at, updated_at, archived_at, record_json
+                    task_id, name, status, created_at, updated_at, archived_at, user_id, record_json
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(task_id) DO UPDATE SET
                     name = excluded.name,
                     status = excluded.status,
@@ -245,14 +290,21 @@ class SqliteTaskRepository:
                     record.created_at.isoformat(),
                     record.updated_at.isoformat(),
                     record.archived_at.isoformat() if record.archived_at else None,
+                    effective_user_id,
                     record_json,
                 ),
             )
         return self.database_path.resolve()
 
-    def count(self) -> int:
+    def count(self, user_id: str | None = None) -> int:
         with self._connect() as connection:
-            row = connection.execute("SELECT COUNT(*) AS total FROM tasks").fetchone()
+            if user_id is not None:
+                row = connection.execute(
+                    "SELECT COUNT(*) AS total FROM tasks WHERE user_id = ?",
+                    (user_id,),
+                ).fetchone()
+            else:
+                row = connection.execute("SELECT COUNT(*) AS total FROM tasks").fetchone()
         return int(row["total"])
 
     def list_tasks(
@@ -264,9 +316,13 @@ class SqliteTaskRepository:
         query: str | None = None,
         created_from: datetime | None = None,
         created_to: datetime | None = None,
+        user_id: str | None = None,
     ) -> tuple[list[TaskRecord], int]:
         conditions = ["archived_at IS NULL"]
         parameters: list[object] = []
+        if user_id is not None:
+            conditions.append("user_id = ?")
+            parameters.append(user_id)
         if status is not None:
             conditions.append("status = ?")
             parameters.append(status.value)
@@ -315,9 +371,13 @@ class SqliteTaskRepository:
         offset: int,
         status: TaskStatus | None = None,
         query: str | None = None,
+        user_id: str | None = None,
     ) -> tuple[list[TaskRecord], int]:
         conditions = ["archived_at IS NOT NULL"]
         parameters: list[object] = []
+        if user_id is not None:
+            conditions.append("user_id = ?")
+            parameters.append(user_id)
         if status is not None:
             conditions.append("status = ?")
             parameters.append(status.value)
@@ -352,19 +412,22 @@ class SqliteTaskRepository:
 
         return self._records_from_rows(rows), int(total_row["total"])
 
-    def list_active_tasks(self, *, limit: int) -> list[TaskRecord]:
+    def list_active_tasks(self, *, limit: int, user_id: str | None = None) -> list[TaskRecord]:
+        conditions = ["archived_at IS NULL", f"status IN ({', '.join('?' for _ in ACTIVE_ASYNC_TASK_STATUSES)})"]
+        params: list[object] = [*(s.value for s in ACTIVE_ASYNC_TASK_STATUSES)]
+        if user_id is not None:
+            conditions.append("user_id = ?")
+            params.append(user_id)
+        where = f"WHERE {' AND '.join(conditions)}"
         with self._connect() as connection:
             rows = connection.execute(
-                """
+                f"""
                 SELECT record_json FROM tasks
-                WHERE archived_at IS NULL AND status IN (?, ?, ?)
+                {where}
                 ORDER BY updated_at ASC, task_id ASC
                 LIMIT ?
                 """,
-                (
-                    *(task_status.value for task_status in ACTIVE_ASYNC_TASK_STATUSES),
-                    limit,
-                ),
+                (*params, limit),
             ).fetchall()
         return self._records_from_rows(rows)
 
@@ -374,26 +437,30 @@ class SqliteTaskRepository:
         succeeded_before: datetime,
         failed_before: datetime,
         limit: int,
+        user_id: str | None = None,
     ) -> list[TaskRecord]:
+        extra_cond = "AND user_id = ?" if user_id is not None else ""
+        params: list[object] = [
+            TaskStatus.SUCCEEDED.value,
+            succeeded_before.isoformat(),
+            TaskStatus.FAILED.value,
+            TaskStatus.CANCELED.value,
+            failed_before.isoformat(),
+        ]
+        if user_id is not None:
+            params.append(user_id)
         with self._connect() as connection:
             rows = connection.execute(
-                """
+                f"""
                 SELECT record_json FROM tasks
                 WHERE archived_at IS NULL AND (
                     (status = ? AND updated_at < ?) OR
                     (status IN (?, ?) AND updated_at < ?)
-                )
+                ) {extra_cond}
                 ORDER BY updated_at ASC, task_id ASC
                 LIMIT ?
                 """,
-                (
-                    TaskStatus.SUCCEEDED.value,
-                    succeeded_before.isoformat(),
-                    TaskStatus.FAILED.value,
-                    TaskStatus.CANCELED.value,
-                    failed_before.isoformat(),
-                    limit,
-                ),
+                (*params, limit),
             ).fetchall()
         return self._records_from_rows(rows)
 
@@ -434,3 +501,13 @@ class SqliteTaskRepository:
     def health_check(self) -> None:
         with self._connect() as connection:
             connection.execute("SELECT 1").fetchone()
+
+    def get_task_user_id(self, task_id: str) -> str | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT user_id FROM tasks WHERE task_id = ?",
+                (task_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return row["user_id"]

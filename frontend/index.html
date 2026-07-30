@@ -687,7 +687,13 @@
     <div id="app">
         <div class="app-container">
             <div class="left-panel">
-                <h1>脑肿瘤MRI图像识别</h1>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <h1 style="margin-bottom: 0;">脑肿瘤MRI图像识别</h1>
+                    <div style="display: flex; align-items: center; gap: 10px; flex-shrink: 0;">
+                        <span v-if="currentUser" style="color: #2a5298; font-size: 13px;">{{ currentUser.username }}</span>
+                        <button v-if="currentUser" @click="logout" style="padding: 4px 12px; background: #e2e8f0; color: #475569; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">登出</button>
+                    </div>
+                </div>
 
                 <div class="input-group">
                     <label for="selectedFileName">已选择图片：</label>
@@ -956,6 +962,7 @@
                     taskActionId: '',
                     taskMessage: '',
                     taskMessageIsError: false,
+                    currentUser: null,
                 }
             },
             computed: {
@@ -964,6 +971,10 @@
                 },
                 taskPageCount() {
                     return Math.max(1, Math.ceil(this.taskTotal / this.taskLimit))
+                },
+                authHeaders() {
+                    const token = localStorage.getItem('btir_token')
+                    return token ? { 'Authorization': `Bearer ${token}` } : {}
                 },
             },
             methods: {
@@ -1031,7 +1042,9 @@
                         const endpoint = this.taskListMode === 'archived'
                             ? '/tasks/archived'
                             : '/tasks'
-                        const response = await fetch(`${this.API_BASE}${endpoint}?${params}`)
+                        const response = await fetch(`${this.API_BASE}${endpoint}?${params}`, {
+                            headers: this.authHeaders,
+                        })
                         if (!response.ok) {
                             throw new Error(await this.responseError(response, '查询任务'))
                         }
@@ -1062,7 +1075,8 @@
                     this.taskMessage = ''
                     try {
                         const response = await fetch(
-                            `${this.API_BASE}/tasks/${encodeURIComponent(task.task_id)}`
+                            `${this.API_BASE}/tasks/${encodeURIComponent(task.task_id)}`,
+                            { headers: this.authHeaders }
                         )
                         if (!response.ok) {
                             throw new Error(await this.responseError(response, '读取任务结果'))
@@ -1084,7 +1098,7 @@
                     try {
                         const response = await fetch(
                             `${this.API_BASE}/tasks/${encodeURIComponent(task.task_id)}`,
-                            { method: 'DELETE' }
+                            { method: 'DELETE', headers: this.authHeaders }
                         )
                         if (!response.ok) {
                             throw new Error(await this.responseError(response, '归档任务'))
@@ -1109,7 +1123,7 @@
                     try {
                         const response = await fetch(
                             `${this.API_BASE}/tasks/${encodeURIComponent(taskId)}/restore`,
-                            { method: 'POST' }
+                            { method: 'POST', headers: this.authHeaders }
                         )
                         if (!response.ok) {
                             throw new Error(await this.responseError(response, '恢复任务'))
@@ -1136,7 +1150,7 @@
                     try {
                         const response = await fetch(
                             `${this.API_BASE}/tasks/${encodeURIComponent(task.task_id)}/retry`,
-                            { method: 'POST' }
+                            { method: 'POST', headers: this.authHeaders }
                         )
                         if (!response.ok) {
                             throw new Error(await this.responseError(response, '重试任务'))
@@ -1241,14 +1255,18 @@
                     this.selectedFileLabel = label
                     this.imageLoadError = ''
 
-                    if (fileType === 'image') {
-                        this.selectedFileUrl = this.taskFileUrl(filePath)
-                        return
-                    }
-
                     try {
-                        const res = await fetch(this.taskFileUrl(filePath))
+                        const res = await fetch(this.taskFileUrl(filePath), {
+                            headers: this.authHeaders,
+                        })
                         if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+                        if (fileType === 'image') {
+                            const blob = await res.blob()
+                            this.selectedFileUrl = URL.createObjectURL(blob)
+                            return
+                        }
+
                         const text = await res.text()
                         try {
                             const parsed = JSON.parse(text)
@@ -1257,7 +1275,11 @@
                             this.selectedFileContent = text
                         }
                     } catch (err) {
-                        this.selectedFileContent = `// 读取失败: ${err.message}`
+                        if (fileType === 'image') {
+                            this.imageLoadError = `图片读取失败：${err.message}`
+                        } else {
+                            this.selectedFileContent = `// 读取失败: ${err.message}`
+                        }
                     } finally {
                         this.fileLoading = false
                     }
@@ -1315,7 +1337,7 @@
 
                     const runResponse = await fetch(`${this.API_BASE}/tasks/${taskId}/run-async`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 'Content-Type': 'application/json', ...this.authHeaders },
                         body: JSON.stringify({ threshold: 0.5 }),
                     })
 
@@ -1325,7 +1347,9 @@
 
                     const deadline = Date.now() + 120000
                     while (Date.now() < deadline) {
-                        const resultResponse = await fetch(`${this.API_BASE}/tasks/${taskId}`)
+                        const resultResponse = await fetch(`${this.API_BASE}/tasks/${taskId}`, {
+                            headers: this.authHeaders,
+                        })
                         if (!resultResponse.ok) {
                             throw new Error(`获取结果失败: ${resultResponse.status}`)
                         }
@@ -1367,6 +1391,7 @@
 
                         const createResponse = await fetch(`${this.API_BASE}/tasks`, {
                             method: 'POST',
+                            headers: this.authHeaders,
                             body: formData,
                         })
 
@@ -1437,6 +1462,24 @@
                         setTimeout(() => { this.showToast = false }, 2000)
                     })
                 },
+                logout() {
+                    localStorage.removeItem('btir_token')
+                    localStorage.removeItem('btir_user')
+                    window.location.href = '/login/login.html'
+                },
+            },
+            mounted() {
+                const token = localStorage.getItem('btir_token')
+                if (!token) {
+                    window.location.href = '/login/login.html'
+                    return
+                }
+                try {
+                    const userStr = localStorage.getItem('btir_user')
+                    this.currentUser = userStr ? JSON.parse(userStr) : null
+                } catch {
+                    this.currentUser = null
+                }
             },
         }).mount('#app')
     </script>

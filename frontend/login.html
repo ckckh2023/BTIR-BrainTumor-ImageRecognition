@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - 脑肿瘤MRI图像识别</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            background: linear-gradient(180deg, #1a3a6b 0%, #2d5aa0 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .auth-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            padding: 44px 48px;
+            width: 470px;
+            max-width: 100%;
+        }
+        h1 {
+            color: #1e3c72;
+            margin-bottom: 8px;
+            font-size: 24px;
+            text-align: center;
+        }
+        .subtitle {
+            color: #64748b;
+            font-size: 14px;
+            text-align: center;
+            margin-bottom: 28px;
+        }
+        .tabs {
+            display: flex;
+            gap: 4px;
+            padding: 3px;
+            background: #edf2f7;
+            border-radius: 8px;
+            margin-bottom: 24px;
+        }
+        .tab {
+            flex: 1;
+            padding: 8px 16px;
+            color: #64748b;
+            background: transparent;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .tab.active {
+            color: white;
+            background: #1e3c72;
+        }
+        .form-group {
+            margin-bottom: 16px;
+        }
+        label {
+            display: block;
+            margin-bottom: 6px;
+            color: #2a5298;
+            font-weight: 500;
+            font-size: 13px;
+        }
+        input {
+            width: 100%;
+            padding: 10px 14px;
+            border: 2px solid #b8d4e8;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+        input:focus {
+            outline: none;
+            border-color: #335fb1;
+            box-shadow: 0 0 0 3px rgba(51, 95, 177, 0.12);
+        }
+        .submit-btn {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(160deg, #2c3e66 0%, #1a2744 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 8px;
+        }
+        .submit-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(30, 60, 114, 0.4);
+        }
+        .submit-btn:disabled {
+            background: #a0aec0;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .message {
+            padding: 10px 12px;
+            margin-bottom: 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .message.error {
+            color: #b42318;
+            background: #fef3f2;
+        }
+        .message.success {
+            color: #18794e;
+            background: #dcfce7;
+        }
+        .loading-spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid #e8f0f8;
+            border-top: 2px solid #407eb8;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="auth-card">
+            <h1>脑肿瘤MRI图像识别</h1>
+            <div class="subtitle">多用户认证系统</div>
+
+            <div class="tabs">
+                <button :class="['tab', { active: mode === 'login' }]" @click="switchMode('login')">登录</button>
+                <button :class="['tab', { active: mode === 'register' }]" @click="switchMode('register')">注册</button>
+            </div>
+
+            <div v-if="msg" :class="['message', msgType]">{{ msg }}</div>
+
+            <form @submit.prevent="submit">
+                <div class="form-group">
+                    <label for="username">用户名</label>
+                    <input
+                        id="username"
+                        v-model.trim="username"
+                        type="text"
+                        placeholder="请输入用户名"
+                        required
+                        autocomplete="username"
+                    />
+                </div>
+
+                <div class="form-group">
+                    <label for="password">密码</label>
+                    <input
+                        id="password"
+                        v-model="password"
+                        type="password"
+                        placeholder="请输入密码"
+                        required
+                        autocomplete="current-password"
+                    />
+                </div>
+
+                <button class="submit-btn" type="submit" :disabled="loading">
+                    <span v-if="loading" class="loading-spinner"></span>
+                    {{ mode === 'login' ? '登录' : '注册' }}
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue
+
+        createApp({
+            data() {
+                return {
+                    API_BASE: '',
+                    mode: 'login',
+                    username: '',
+                    password: '',
+                    loading: false,
+                    msg: '',
+                    msgType: 'error',
+                }
+            },
+            methods: {
+                switchMode(mode) {
+                    this.mode = mode
+                    this.msg = ''
+                    this.msgType = 'error'
+                },
+                async submit() {
+                    this.loading = true
+                    this.msg = ''
+
+                    try {
+                        if (this.mode === 'register') {
+                            const res = await fetch(`${this.API_BASE}/auth/register`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    username: this.username,
+                                    password: this.password,
+                                }),
+                            })
+                            if (!res.ok) {
+                                const data = await res.json()
+                                throw new Error(data.detail || `注册失败：HTTP ${res.status}`)
+                            }
+                            const data = await res.json()
+                            this.onAuthSuccess(data)
+                        } else {
+                            const res = await fetch(`${this.API_BASE}/auth/login`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    username: this.username,
+                                    password: this.password,
+                                }),
+                            })
+                            if (!res.ok) {
+                                const data = await res.json()
+                                throw new Error(data.detail || `登录失败：HTTP ${res.status}`)
+                            }
+                            const data = await res.json()
+                            this.onAuthSuccess(data)
+                        }
+                    } catch (err) {
+                        this.msg = err.message
+                        this.msgType = 'error'
+                    } finally {
+                        this.loading = false
+                    }
+                },
+                onAuthSuccess(data) {
+                    localStorage.setItem('btir_token', data.access_token)
+                    localStorage.setItem('btir_user', JSON.stringify({
+                        user_id: data.user_id,
+                        username: data.username,
+                    }))
+                    window.location.href = '/web/'
+                },
+            },
+            mounted() {
+                const token = localStorage.getItem('btir_token')
+                if (token) {
+                    window.location.href = '/web/'
+                }
+            },
+        }).mount('#app')
+    </script>
+</body>
+</html>

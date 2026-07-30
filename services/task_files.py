@@ -82,6 +82,7 @@ def _save_created_task(
     task_dir: Path,
     name: str | None,
     input_record: StoredTaskInput,
+    user_id: str | None = None,
 ) -> None:
     '''以统一结构写入新建任务的元数据'''
     now = datetime.now().astimezone()
@@ -95,6 +96,7 @@ def _save_created_task(
             updated_at=now,
             input=input_record,
         ),
+        user_id=user_id,
     )
 
 
@@ -103,6 +105,7 @@ def initialize_task(
     source_image: Path,
     input_mode: InputStorageMode | str,
     name: str | None = None,
+    user_id: str | None = None,
 ) -> Path:
     '''保存本机图片引用或副本，并创建任务元数据'''
     source_image = source_image.resolve()
@@ -143,6 +146,7 @@ def initialize_task(
             size_bytes=task_image.stat().st_size,
             sha256=sha256(task_image),
         ),
+        user_id=user_id,
     )
     return task_image
 
@@ -152,6 +156,7 @@ def initialize_uploaded_task(
     upload: BinaryIO,
     filename: str | None,
     name: str | None = None,
+    user_id: str | None = None,
 ) -> Path:
     '''保存浏览器上传的图片，并创建任务元数据'''
     original_filename = Path(filename or "").name
@@ -190,6 +195,7 @@ def initialize_uploaded_task(
             size_bytes=task_image.stat().st_size,
             sha256=sha256(task_image),
         ),
+        user_id=user_id,
     )
     return task_image
 
