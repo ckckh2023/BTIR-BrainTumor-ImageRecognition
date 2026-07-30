@@ -8,14 +8,15 @@ python-multipart==0.0.32
 # JWT 认证与密码哈希
 python-jose[cryptography]>=3.3.0,<4.0
 passlib[bcrypt]>=1.7.4,<2.0
+bcrypt==4.0.1
 
 # FastAPI TestClient 的 HTTP 端到端测试依赖
-httpx>=0.23,<1.0
+httpx2>=2.0,<3.0
 
 numpy==2.3.5
 Pillow==12.3.0
 
-# CPU 安装：pip install torch==2.7.1+cpu torchvision==0.22.1+cpu --extra-index-url https://download.pytorch.org/whl/cpu
-# CUDA 安装：pip install torch==2.13.0+cu130 torchvision==0.28.0+cu130 --extra-index-url https://download.pytorch.org/whl/cu130
-torch>=2.7.0
-torchvision>=0.22.0
+# 支持 GPU 加速请在安装本文件后执行：python -m accelerator.install --backend auto
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.7.1+cpu
+torchvision==0.22.1+cpu

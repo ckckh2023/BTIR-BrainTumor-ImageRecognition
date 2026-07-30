@@ -12,6 +12,7 @@ from core.task_definitions import ModelName
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ENV_FILE = PROJECT_ROOT / ".env"
+UNSAFE_DEFAULT_JWT_SECRET = "change-me-to-a-random-secret-in-production"
 
 
 def _load_env_file(path: Path) -> None:
@@ -136,6 +137,9 @@ class Settings:
     jwt_secret_key: str
     jwt_expiration_hours: int
     jwt_algorithm: str
+    registration_enabled: bool
+    max_tasks_per_user: int
+    max_active_tasks_per_user: int
 
 
 def _build_settings() -> Settings:
@@ -229,9 +233,15 @@ def _build_settings() -> Settings:
             "data/btir.db",
         ),
         task_archive_dir=_get_path("BTIR_TASK_ARCHIVE_DIR", "archive"),
-        jwt_secret_key=os.getenv("BTIR_JWT_SECRET_KEY", "change-me-to-a-random-secret-in-production").strip(),
+        jwt_secret_key=os.getenv("BTIR_JWT_SECRET_KEY", "").strip(),
         jwt_expiration_hours=_get_positive_int("BTIR_JWT_EXPIRATION_HOURS", 24),
         jwt_algorithm=os.getenv("BTIR_JWT_ALGORITHM", "HS256").strip(),
+        registration_enabled=_get_bool("BTIR_REGISTRATION_ENABLED", False),
+        max_tasks_per_user=_get_positive_int("BTIR_MAX_TASKS_PER_USER", 1000),
+        max_active_tasks_per_user=_get_positive_int(
+            "BTIR_MAX_ACTIVE_TASKS_PER_USER",
+            2,
+        ),
     )
 
 

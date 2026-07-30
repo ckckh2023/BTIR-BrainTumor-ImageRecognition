@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import datetime, timezone
 from io import BytesIO
 import json
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -19,15 +21,30 @@ from redis.exceptions import RedisError
 from rq import Queue, Retry, SimpleWorker
 from rq.job import JobStatus as RqJobStatus
 
+os.environ.setdefault("BTIR_JWT_SECRET_KEY", "test-only-jwt-secret-key-at-least-32-bytes")
+
+from api.auth import get_current_user
 from core.settings import SETTINGS
 from api.app import app
+from core.user_records import UserRecord
 from repositories.sqlite_task_repository import SqliteTaskRepository
+
+
+TEST_USER = UserRecord(
+    user_id="rq-test-user",
+    username="rq_test_user",
+    hashed_password="not-used",
+    created_at=datetime.now(timezone.utc),
+    updated_at=datetime.now(timezone.utc),
+)
 
 
 class RqIntegrationTests(unittest.TestCase):
     '''验证 RQ 作业可执行、结果可读且失败后可真实重试'''
 
     def setUp(self) -> None:
+        app.dependency_overrides[get_current_user] = lambda: TEST_USER
+        self.addCleanup(app.dependency_overrides.pop, get_current_user, None)
         self.connection = Redis.from_url(
             SETTINGS.redis_url,
             decode_responses=False,

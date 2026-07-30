@@ -156,6 +156,23 @@ def _migration_007_add_user_id_to_tasks(connection: sqlite3.Connection) -> None:
     )
 
 
+def _migration_008_add_user_task_indexes(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_tasks_user_active_created
+        ON tasks (user_id, created_at DESC)
+        WHERE archived_at IS NULL
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_tasks_user_archived
+        ON tasks (user_id, archived_at DESC)
+        WHERE archived_at IS NOT NULL
+        """
+    )
+
+
 # 创建迁移清单
 SCHEMA_MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (1, "create_tasks_table", _migration_001_create_tasks_table),
@@ -165,6 +182,7 @@ SCHEMA_MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (5, "normalize_input_filename", _migration_005_normalize_input_filename),
     (6, "create_users_table", _migration_006_create_users_table),
     (7, "add_user_id_to_tasks", _migration_007_add_user_id_to_tasks),
+    (8, "add_user_task_indexes", _migration_008_add_user_task_indexes),
 )
 CURRENT_SCHEMA_VERSION = SCHEMA_MIGRATIONS[-1][0]
 
@@ -509,5 +527,21 @@ class SqliteTaskRepository:
                 (task_id,),
             ).fetchone()
         if row is None:
-            return None
+            raise TaskNotFoundError("任务元数据不存在")
         return row["user_id"]
+
+    def count_unowned_tasks(self) -> int:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) AS total FROM tasks WHERE user_id IS NULL"
+            ).fetchone()
+        return int(row["total"])
+
+    def assign_unowned_tasks(self, user_id: str) -> int:
+        '''由运维命令把历史无归属任务一次性分配给明确用户'''
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE tasks SET user_id = ? WHERE user_id IS NULL",
+                (user_id,),
+            )
+        return cursor.rowcount

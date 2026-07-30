@@ -15,7 +15,7 @@ BTIR 提供脑肿瘤 MRI 图像分类与分割能力。每次分析以独立
 | 运行安全 | 已完成 | Redis 写入锁、SQLite 事务、JSON 原子写入 |
 | CPU/GPU | 已完成 | CPU、NVIDIA CUDA、Linux AMD ROCm |
 | 接口协议 | 联调中 | 核心接口稳定，前端结果字段与错误展示仍需最终确认 |
-| 多用户 | 下一阶段 | 用户身份、任务归属和访问隔离尚未加入 |
+| 多用户 | 基础能力已完成 | JWT 登录、任务归属和跨用户访问隔离；配额与管理员查询待补充 |
 
 ## 文档导航
 
@@ -54,9 +54,12 @@ models/segmentation/model/best_unet_model.pth
 python --version
 python -m pip install -r requirements.txt
 Copy-Item .env.example .env
+python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
 `requirements.txt` 默认安装 CPU 版 PyTorch。GPU 安装和 Linux 环境参见[安装与部署](docs/DEPLOYMENT.md)。
+把最后一条命令生成的随机值写入 `.env` 的 `BTIR_JWT_SECRET_KEY`。首次创建账号时
+临时设置 `BTIR_REGISTRATION_ENABLED=true`，账号创建完成后建议改回 `false` 并重启 API。
 
 ### 3. 启动 Redis
 
@@ -103,7 +106,10 @@ bash scripts/run-supervisor.sh
 bash scripts/run-supervisor.sh /usr/bin/python3.11
 ```
 
-项目根目录的 `.env` 不是必需文件。Linux 中已经导出的 `BTIR_*` 环境变量会直接生效，并且优先于 `.env` 中的同名配置。通过 systemd 启动时不要依赖用户 shell 配置，应在 service 中使用 `Environment=` 或 `EnvironmentFile=` 注入，
+项目根目录的 `.env` 可以由系统环境变量替代，但 API 必须获得安全的
+`BTIR_JWT_SECRET_KEY`，否则会拒绝启动。Linux 中已经导出的 `BTIR_*` 环境变量
+优先于 `.env` 中的同名配置。通过 systemd 启动时不要依赖用户 shell 配置，应在
+service 中使用 `Environment=` 或 `EnvironmentFile=` 注入，
 具体示例参见[安装与部署](docs/DEPLOYMENT.md)。
 
 打开：
@@ -117,13 +123,22 @@ bash scripts/run-supervisor.sh /usr/bin/python3.11
 
 ## 最短联调流程
 
-1. `POST /tasks` 上传 `.jpg`、`.jpeg` 或 `.png`，保存返回的 `task_id`。
-2. `POST /tasks/{task_id}/run-async` 提交分类和分割。
-3. 轮询 `GET /tasks/{task_id}`，直到状态变为 `succeeded`。
-4. 确认 `completed_models` 包含 `classification` 和 `segmentation`。
-5. 历史页面通过 `GET /tasks` 查询任务。
-6. 点击任务后通过 `GET /tasks/{task_id}/runs` 查询运行历史。
-7. 归档管理通过 `GET /tasks/archived` 列出任务，再调用恢复接口。
+1. 调用 `POST /auth/register` 创建账号，或通过 `POST /auth/login` 登录。
+2. 后续任务请求携带 `Authorization: Bearer <access_token>`。
+3. `POST /tasks` 上传 `.jpg`、`.jpeg` 或 `.png`，保存返回的 `task_id`。
+4. `POST /tasks/{task_id}/run-async` 提交分类和分割。
+5. 轮询 `GET /tasks/{task_id}`，直到状态变为 `succeeded`。
+6. 历史和归档接口只返回当前用户自己的任务。
+
+从旧版本升级后，历史任务默认不属于任何用户，也不会被普通账号访问。服务器
+操作者确认接收账号后执行：
+
+```powershell
+python Main.py claim-legacy-tasks <username>
+python Main.py claim-legacy-tasks <username> --apply
+```
+
+第一条仅预览，第二条才会写入归属关系。
 
 完整请求、响应和前端 `fetch` 示例参见 [API 对接说明](docs/API.md)。
 
@@ -221,8 +236,7 @@ python Main.py purge-archive
 ## 下一阶段
 
 1. 与前端最终确认 `frontend_result` 字段和错误展示格式。
-2. 增加用户身份、任务归属和访问隔离。
-3. 在多用户结构确定后补充配额、审计与管理员查询。
+2. 补充每用户任务配额、登录限流、审计与管理员查询。
 
 ## 彩蛋
 

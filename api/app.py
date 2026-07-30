@@ -1,5 +1,7 @@
 '''FastAPI 应用组装入口'''
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -15,9 +17,20 @@ from repositories.task_repository_contracts import (
 )
 from services.task_lock import TaskLockBusyError, TaskLockUnavailableError
 from services.task_queue import TaskQueueUnavailableError
+from services.auth_service import validate_auth_configuration
 
 
-app = FastAPI(title="脑肿瘤图像分析 API", version="0.10.0")
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    validate_auth_configuration()
+    yield
+
+
+app = FastAPI(
+    title="脑肿瘤图像分析 API",
+    version="0.11.0",
+    lifespan=lifespan,
+)
 
 
 @app.exception_handler(TaskNotFoundError)
@@ -66,10 +79,9 @@ app.mount(
     name="web",
 )
 
-login_dir = SETTINGS.project_root / "frontend"
 app.mount(
     "/login",
-    StaticFiles(directory=str(login_dir), html=True),
+    StaticFiles(directory=SETTINGS.frontend_dir, html=True),
     name="login",
 )
 

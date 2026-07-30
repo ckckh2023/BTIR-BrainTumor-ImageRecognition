@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -13,7 +14,10 @@ from fastapi import HTTPException, status
 from fastapi.testclient import TestClient
 from redis.exceptions import RedisError
 
+os.environ.setdefault("BTIR_JWT_SECRET_KEY", "test-only-jwt-secret-key-at-least-32-bytes")
+
 from api.app import app
+from api.auth import get_current_user
 from api.routes import tasks
 from api.routes.tasks import (
     bad_request_http_error,
@@ -31,10 +35,20 @@ from core.task_records import (
     TaskRunRecord,
 )
 from core.settings import SETTINGS
+from core.user_records import UserRecord
 from services.task_lock import TaskLockBusyError, TaskLockUnavailableError
 from services.task_queue import TaskQueueUnavailableError
 from services.task_queue import get_inference_queue_status
 from unittest.mock import Mock, patch
+
+
+TEST_USER = UserRecord(
+    user_id="test-user",
+    username="test_user",
+    hashed_password="not-used",
+    created_at=datetime.now(timezone.utc),
+    updated_at=datetime.now(timezone.utc),
+)
 
 
 class TaskRouteHelperTests(unittest.TestCase):
@@ -107,6 +121,10 @@ class TaskRouteHelperTests(unittest.TestCase):
         )
 
         with (
+            patch(
+                "api.routes.tasks.task_repository.get_task_user_id",
+                return_value=TEST_USER.user_id,
+            ),
             patch("api.routes.tasks.require_task_dir", return_value=task_dir),
             patch("api.routes.tasks.reconcile_task_job", return_value=record),
             patch("api.routes.tasks.Path.is_file", return_value=True),
@@ -115,7 +133,7 @@ class TaskRouteHelperTests(unittest.TestCase):
                 return_value='{"task_id": "task-result-image-001"}',
             ),
         ):
-            response = tasks.get_task(task_dir.name)
+            response = tasks.get_task(task_dir.name, current_user=TEST_USER)
 
         self.assertEqual(response.frontend_result["image_file"], "uploaded-image.png")
 
@@ -208,6 +226,18 @@ class TaskRouteHelperTests(unittest.TestCase):
 class TaskHttpEndpointTests(unittest.TestCase):
     '''通过 FastAPI TestClient 验证浏览器实际会经历的任务 HTTP 流程'''
 
+    def setUp(self) -> None:
+        app.dependency_overrides[get_current_user] = lambda: TEST_USER
+        self.owner_patcher = patch(
+            "api.routes.tasks.task_repository.get_task_user_id",
+            return_value=TEST_USER.user_id,
+        )
+        self.owner_patcher.start()
+
+    def tearDown(self) -> None:
+        self.owner_patcher.stop()
+        app.dependency_overrides.pop(get_current_user, None)
+
     def test_legacy_and_single_model_endpoints_are_not_registered(self) -> None:
         paths = app.openapi()["paths"]
 
@@ -247,6 +277,7 @@ class TaskHttpEndpointTests(unittest.TestCase):
             query="Patient Alpha",
             created_from=datetime.fromisoformat("2026-01-01T00:00:00+00:00"),
             created_to=datetime.fromisoformat("2026-01-02T00:00:00+00:00"),
+            user_id=TEST_USER.user_id,
         )
 
     def test_task_list_rejects_reversed_time_range(self) -> None:
@@ -305,6 +336,7 @@ class TaskHttpEndpointTests(unittest.TestCase):
             offset=0,
             status=TaskStatus.FAILED,
             query="Archived test",
+            user_id=TEST_USER.user_id,
         )
         payload = response.json()
         self.assertEqual(payload["total"], 1)
