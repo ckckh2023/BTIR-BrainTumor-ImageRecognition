@@ -15,6 +15,10 @@ httpx2>=2.0,<3.0
 
 numpy==2.3.5
 Pillow==12.3.0
+nibabel>=5.0,<6.0
+einops>=0.7,<1.0
+monai==1.3.0
+tqdm>=4.65,<5.0
 
 # 支持 GPU 加速请在安装本文件后执行：python -m accelerator.install --backend auto
 --extra-index-url https://download.pytorch.org/whl/cpu

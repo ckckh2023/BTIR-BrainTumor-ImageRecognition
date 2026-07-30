@@ -58,6 +58,32 @@ def _load_segmentation_model(device_name: str):
     )
 
 
+@lru_cache(maxsize=1)
+def _load_3d_segmentation_namespace() -> dict[str, Any]:
+    '''缓存四模态 3D 分割脚本命名空间'''
+
+    original_sys_path = sys.path[:]
+    try:
+        sys.path.insert(0, str(SETTINGS.segmenter_3d_script.parent))
+        return runpy.run_path(
+            str(SETTINGS.segmenter_3d_script),
+            run_name="btir_segmenter_3d",
+        )
+    finally:
+        sys.path[:] = original_sys_path
+
+
+@lru_cache(maxsize=2)
+def _load_3d_segmentation_model(device_name: str):
+    '''缓存 SuperLightNet 权重，避免每项任务重新加载'''
+
+    namespace = _load_3d_segmentation_namespace()
+    return namespace["load_model"](
+        device=device_name,
+        weights_path=SETTINGS.segmenter_3d_model,
+    )
+
+
 def classify(image_path: Path) -> dict[str, Any]:
     '''跑分类模型，返回预测结果'''
     namespace = _load_classifier_namespace()
@@ -95,12 +121,53 @@ def segment(image_path: Path, threshold: float, output_dir: Path) -> dict[str, A
     }
 
 
+def segment_volume(
+    modality_paths: dict[str, Path],
+    output_dir: Path,
+) -> dict[str, Any]:
+    '''执行四模态完整体积 SuperLightNet 分割'''
+
+    namespace = _load_3d_segmentation_namespace()
+    torch = namespace["torch"]
+    device = resolve_device(torch, SETTINGS.device)
+    model = _load_3d_segmentation_model(str(device))
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    mask_path = output_dir / "prediction.nii.gz"
+    prediction = namespace["predict"](
+        {
+            modality: str(path)
+            for modality, path in modality_paths.items()
+        },
+        device=str(device),
+        model=model,
+        save_nifti=mask_path,
+        weights_path=SETTINGS.segmenter_3d_model,
+        overlap=SETTINGS.segmenter_3d_overlap,
+    )
+    return {
+        "model": "models/segmentation3d/superlightnet",
+        "analysis_mode": "3d",
+        "device": prediction["device"],
+        "model_metadata": prediction["model"],
+        "spatial": prediction["spatial"],
+        "labels": prediction["labels"],
+        "regions": prediction["regions"],
+        "mask_path": prediction["saved_path"],
+    }
+
+
 def preload_inference_models() -> dict[str, float | str]:
     '''预加载模型到当前进程缓存；单个模型失败不会阻止另一个模型预热'''
     outcomes: dict[str, float | str] = {}
     for name, namespace_loader, model_loader in (
         ("classification", _load_classifier_namespace, _load_classifier_model),
         ("segmentation", _load_segmentation_namespace, _load_segmentation_model),
+        (
+            "segmentation3d",
+            _load_3d_segmentation_namespace,
+            _load_3d_segmentation_model,
+        ),
     ):
         started_at = perf_counter()
         try:

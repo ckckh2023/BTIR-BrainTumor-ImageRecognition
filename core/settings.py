@@ -100,6 +100,13 @@ def _get_nonnegative_float(name: str, default: float) -> float:
     return value
 
 
+def _get_overlap(name: str, default: float) -> float:
+    value = float(os.getenv(name, str(default)))
+    if not 0 <= value < 1:
+        raise ValueError(f"{name} 必须位于 [0, 1)")
+    return value
+
+
 @dataclass(frozen=True)
 class Settings:
     '''由环境变量和 .env 文件构建的不可变运行配置'''
@@ -112,11 +119,16 @@ class Settings:
     classifier_config: Path
     segmenter_script: Path
     segmenter_model: Path
+    segmenter_3d_script: Path
+    segmenter_3d_model: Path
+    segmenter_3d_overlap: float
     task_database_path: Path
     task_archive_dir: Path
     device: str
     default_segment_threshold: float
     max_upload_bytes: int
+    max_3d_upload_bytes: int
+    max_3d_voxels: int
     max_image_pixels: int
     cors_origins: list[str]
     redis_url: str
@@ -150,6 +162,7 @@ def _build_settings() -> Settings:
 
     classifier_dir = models_dir / ModelName.CLASSIFICATION
     segmenter_dir = models_dir / ModelName.SEGMENTATION
+    segmenter_3d_dir = models_dir / "segmentation3d"
     return Settings(
         project_root=PROJECT_ROOT,
         output_dir=_get_path("BTIR_OUTPUT_DIR", "output"),
@@ -169,11 +182,28 @@ def _build_settings() -> Settings:
         segmenter_model=_get_path(
             "BTIR_SEGMENTER_MODEL", str(segmenter_dir / "model" / "best_unet_model.pth")
         ),
+        segmenter_3d_script=_get_path(
+            "BTIR_3D_SEGMENTER_SCRIPT",
+            str(segmenter_3d_dir / "inference.py"),
+        ),
+        segmenter_3d_model=_get_path(
+            "BTIR_3D_SEGMENTER_MODEL",
+            str(segmenter_3d_dir / "model" / "model_epoch_297.pth"),
+        ),
+        segmenter_3d_overlap=_get_overlap("BTIR_3D_SEGMENTER_OVERLAP", 0.5),
         device=device,
         default_segment_threshold=_get_threshold(),
         max_upload_bytes=_get_positive_int(
             "BTIR_MAX_UPLOAD_BYTES",
             20 * 1024 * 1024,
+        ),
+        max_3d_upload_bytes=_get_positive_int(
+            "BTIR_MAX_3D_UPLOAD_BYTES",
+            512 * 1024 * 1024,
+        ),
+        max_3d_voxels=_get_positive_int(
+            "BTIR_MAX_3D_VOXELS",
+            20_000_000,
         ),
         max_image_pixels=_get_positive_int(
             "BTIR_MAX_IMAGE_PIXELS",

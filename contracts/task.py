@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from datetime import datetime
 
 from core.settings import SETTINGS
-from core.task_definitions import JobStatus, ModelName, TaskStatus
+from core.task_definitions import AnalysisMode, JobStatus, ModelName, TaskStatus
 
 
 # 响应模型
@@ -18,14 +18,30 @@ class TaskCreatedResponse(BaseModel):
     schema_version: Literal["0.1"] = "0.1"
     task_id: str
     status: TaskStatus = TaskStatus.CREATED
+    analysis_mode: Literal["2d"] = "2d"
     input_file: str
+
+
+class VolumeTaskCreatedResponse(BaseModel):
+    schema_version: Literal["0.1"] = "0.1"
+    task_id: str
+    status: TaskStatus = TaskStatus.CREATED
+    analysis_mode: Literal["3d"] = "3d"
+    input_files: dict[str, str]
+
+
+class TaskInputFileData(BaseModel):
+    filename: str
+    size_bytes: int
+    sha256: str
 
 # 任务输入数据模型
 class TaskInputData(BaseModel):
-    filename: str
+    filename: str | None
     storage_mode: str
     size_bytes: int
     sha256: str
+    files: dict[str, TaskInputFileData] | None = None
 
 
 class TaskJobData(BaseModel):
@@ -55,6 +71,8 @@ class TaskStatusResponse(BaseModel):
     status: TaskStatus
     created_at: datetime
     updated_at: datetime
+    analysis_mode: AnalysisMode
+    expected_models: list[str]
     completed_models: list[str]
     input: TaskInputData
     job: TaskJobData | None = None
@@ -68,6 +86,8 @@ class TaskSummaryResponse(BaseModel):
     status: TaskStatus
     created_at: datetime
     updated_at: datetime
+    analysis_mode: AnalysisMode
+    expected_models: list[str]
     completed_models: list[str]
     input: TaskInputData
     job: TaskJobData | None = None
