@@ -88,4 +88,10 @@ class TaskRepository(Protocol):
         '''检查任务元数据存储是否可用'''
 
     def get_task_user_id(self, task_id: str) -> str | None:
-        '''返回任务所属用户ID，不存在时返回None'''
+        '''返回任务所属用户ID；任务不存在时抛出 TaskNotFoundError'''
+
+    def count_unowned_tasks(self) -> int:
+        '''返回尚未分配用户的历史任务数量'''
+
+    def assign_unowned_tasks(self, user_id: str) -> int:
+        '''把尚未分配用户的历史任务归给指定用户'''

@@ -10,7 +10,9 @@ from pathlib import Path
 
 from core.settings import SETTINGS
 from core.task_definitions import InputStorageMode, TaskStatus
+from repositories.sqlite_task_repository import SqliteTaskRepository
 from repositories.task_repository import task_repository
+from repositories.user_repository import SqliteUserRepository
 from services.archive_service import archive_expired_tasks, purge_expired_archives
 from services.benchmark_service import benchmark_models
 from services.cleanup_service import clear_generated_files
@@ -86,6 +88,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "reconcile-tasks":
             report = reconcile_active_tasks(limit=args.limit)
             _print_task_reconciliation_report(report)
+            return 0
+
+        if args.command == "claim-legacy-tasks":
+            _claim_legacy_tasks(args.username, apply=args.apply)
             return 0
 
         if args.command == "benchmark":
@@ -230,6 +236,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help="本次最多巡检的活动任务数，默认由 BTIR_TASK_RECONCILE_BATCH_SIZE 决定",
     )
 
+    claim_legacy = commands.add_parser(
+        "claim-legacy-tasks",
+        help="将多用户上线前的无归属任务分配给指定用户",
+    )
+    claim_legacy.add_argument("username", help="接收历史任务的已注册用户名")
+    claim_legacy.add_argument(
+        "--apply",
+        action="store_true",
+        help="实际写入；省略时仅预览数量",
+    )
+
     benchmark = commands.add_parser(
         "benchmark",
         help="测量分类与分割模型在当前进程中的首次和连续推理耗时",
@@ -309,6 +326,7 @@ def _print_help(parser: argparse.ArgumentParser) -> None:
         "  python Main.py archive-tasks\n"
         "  python Main.py purge-archive\n"
         "  python Main.py reconcile-tasks\n"
+        "  python Main.py claim-legacy-tasks <username> --apply\n"
         "  python Main.py benchmark dataset/no/1.jpg --warm-runs 3\n"
         "  python Main.py game\n"
     )
@@ -338,6 +356,24 @@ def _print_task_reconciliation_report(report) -> None:
         print(f"  {task_id}")
     if report.skipped_task_ids:
         print(f"正在写入而跳过：{len(report.skipped_task_ids)} 条")
+
+
+def _claim_legacy_tasks(username: str, *, apply: bool) -> None:
+    if not isinstance(task_repository, SqliteTaskRepository):
+        raise RuntimeError("历史任务认领仅支持 SQLite 任务仓储")
+
+    user = SqliteUserRepository(task_repository).get_by_username(username)
+    if user is None:
+        raise ValueError(f"用户 '{username}' 不存在，请先完成注册")
+
+    pending = task_repository.count_unowned_tasks()
+    if not apply:
+        print(f"将把 {pending} 条无归属历史任务分配给用户：{username}")
+        print("当前为预览；确认后追加 --apply")
+        return
+
+    changed = task_repository.assign_unowned_tasks(user.user_id)
+    print(f"已把 {changed} 条无归属历史任务分配给用户：{username}")
 
 
 if __name__ == "__main__":

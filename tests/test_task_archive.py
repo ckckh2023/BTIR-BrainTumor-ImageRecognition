@@ -150,6 +150,7 @@ class TaskArchiveTests(unittest.TestCase):
         with patch("services.archive_service.task_write_lock", self._no_lock):
             archived = archive_task(
                 task_dir.name,
+                actor_user_id="user-a",
                 now=self.now,
                 repository=self.repository,
                 output_dir=self.output_dir,
@@ -170,6 +171,10 @@ class TaskArchiveTests(unittest.TestCase):
         self.assertEqual(repeated.archived_at, self.now)
         self.assertIn(
             '"operation": "archive_api"',
+            (self.archive_dir / "audit.jsonl").read_text(encoding="utf-8"),
+        )
+        self.assertIn(
+            '"actor_user_id": "user-a"',
             (self.archive_dir / "audit.jsonl").read_text(encoding="utf-8"),
         )
 
@@ -218,6 +223,7 @@ class TaskArchiveTests(unittest.TestCase):
             )
             restored = restore_task(
                 task_dir.name,
+                actor_user_id="user-a",
                 now=restored_at,
                 repository=self.repository,
                 output_dir=self.output_dir,
@@ -233,6 +239,10 @@ class TaskArchiveTests(unittest.TestCase):
         self.assertEqual([record.task_id for record in visible_tasks], [task_dir.name])
         self.assertIn(
             '"operation": "restore_api"',
+            (self.archive_dir / "audit.jsonl").read_text(encoding="utf-8"),
+        )
+        self.assertIn(
+            '"actor_user_id": "user-a"',
             (self.archive_dir / "audit.jsonl").read_text(encoding="utf-8"),
         )
 

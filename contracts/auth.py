@@ -2,17 +2,35 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
-class RegisterRequest(BaseModel):
-    username: str = Field(min_length=3, max_length=32, pattern=r"^[a-zA-Z0-9_-]+$")
-    password: str = Field(min_length=6, max_length=128)
+USERNAME_FIELD = Field(
+    min_length=3,
+    max_length=32,
+    pattern=r"^[a-zA-Z0-9_-]+$",
+)
+PASSWORD_FIELD = Field(min_length=6, max_length=72)
 
 
-class LoginRequest(BaseModel):
-    username: str
-    password: str
+class CredentialsRequest(BaseModel):
+    username: str = USERNAME_FIELD
+    password: str = PASSWORD_FIELD
+
+    @field_validator("password")
+    @classmethod
+    def validate_bcrypt_password_size(cls, value: str) -> str:
+        if len(value.encode("utf-8")) > 72:
+            raise ValueError("密码的 UTF-8 编码不能超过 72 字节")
+        return value
+
+
+class RegisterRequest(CredentialsRequest):
+    pass
+
+
+class LoginRequest(CredentialsRequest):
+    pass
 
 
 class AuthResponse(BaseModel):

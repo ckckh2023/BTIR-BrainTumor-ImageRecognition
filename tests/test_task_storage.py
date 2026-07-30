@@ -20,6 +20,7 @@ from repositories.task_repository_contracts import (
     TaskRepositoryUnavailableError,
 )
 from repositories.sqlite_task_repository import CURRENT_SCHEMA_VERSION, SqliteTaskRepository
+from repositories.user_repository import SqliteUserRepository
 from services.cleanup_service import clear_generated_files
 from services.task_queue import TaskReconciliationReport
 
@@ -71,6 +72,63 @@ class TaskStorageTests(unittest.TestCase):
     def test_missing_task_raises_not_found_error(self) -> None:
         with self.assertRaises(TaskNotFoundError):
             self.repository.load(self.output_dir / "missing-task")
+
+    def test_task_owner_is_preserved_across_regular_updates(self) -> None:
+        task_dir = self.output_dir / "owned-task"
+        task_dir.mkdir(parents=True)
+        record = self._record(task_dir.name)
+        self.repository.save(task_dir, record, user_id="owner-a")
+
+        record.status = TaskStatus.QUEUED
+        self.repository.save(task_dir, record, user_id="owner-b")
+
+        self.assertEqual(self.repository.get_task_user_id(task_dir.name), "owner-a")
+
+    def test_missing_task_owner_lookup_raises_not_found(self) -> None:
+        with self.assertRaises(TaskNotFoundError):
+            self.repository.get_task_user_id("missing-task")
+
+    def test_unowned_tasks_require_explicit_operator_assignment(self) -> None:
+        task_dir = self.output_dir / "legacy-task"
+        task_dir.mkdir(parents=True)
+        self.repository.save(task_dir, self._record(task_dir.name))
+
+        self.assertEqual(self.repository.count_unowned_tasks(), 1)
+        self.assertIsNone(self.repository.get_task_user_id(task_dir.name))
+
+        changed = self.repository.assign_unowned_tasks("owner-a")
+
+        self.assertEqual(changed, 1)
+        self.assertEqual(self.repository.count_unowned_tasks(), 0)
+        self.assertEqual(self.repository.get_task_user_id(task_dir.name), "owner-a")
+
+    def test_claim_legacy_tasks_command_previews_then_assigns(self) -> None:
+        task_dir = self.output_dir / "legacy-cli-task"
+        task_dir.mkdir(parents=True)
+        self.repository.save(task_dir, self._record(task_dir.name))
+        SqliteUserRepository(self.repository).create_user(
+            username="legacy_owner",
+            hashed_password="not-used-by-command",
+        )
+
+        with (
+            patch("Main.task_repository", self.repository),
+            redirect_stdout(StringIO()) as preview_output,
+        ):
+            self.assertEqual(main(["claim-legacy-tasks", "legacy_owner"]), 0)
+        self.assertIn("1 条", preview_output.getvalue())
+        self.assertEqual(self.repository.count_unowned_tasks(), 1)
+
+        with (
+            patch("Main.task_repository", self.repository),
+            redirect_stdout(StringIO()) as apply_output,
+        ):
+            self.assertEqual(
+                main(["claim-legacy-tasks", "legacy_owner", "--apply"]),
+                0,
+            )
+        self.assertIn("已把 1 条", apply_output.getvalue())
+        self.assertEqual(self.repository.count_unowned_tasks(), 0)
 
     def test_list_tasks_supports_status_filter_and_pagination(self) -> None:
         task_ids = ["task-001", "task-002", "task-003"]

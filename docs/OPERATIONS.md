@@ -126,6 +126,16 @@ data/btir.db
 任务目录存在但 SQLite 没有对应元数据时，任务接口返回 `404`；数据库不可用
 时返回 `503`。
 
+从单用户版本升级后，原任务的 `user_id` 为空，默认不会向任何普通账号开放。
+先注册接收账号，再由服务器操作者预览并确认认领：
+
+```powershell
+python Main.py claim-legacy-tasks <username>
+python Main.py claim-legacy-tasks <username> --apply
+```
+
+认领只处理仍为空的归属，不会覆盖已经属于其他用户的任务。
+
 ## 任务目录
 
 默认结构：
@@ -216,7 +226,8 @@ python Main.py purge-archive --limit 100
 DELETE /tasks/{task_id}
 ```
 
-会立即将指定非活动任务移入同一归档区，审计操作记为 `archive_api`。该接口
+会立即将指定非活动任务移入同一归档区，审计操作记为 `archive_api`，并记录
+发起操作的 `actor_user_id`。该接口
 不受 `BTIR_TASK_CLEANUP_ENABLED` 开关限制，因为它来自用户明确操作；但后续
 永久清除仍必须启用清理并执行 `purge-archive --apply`。
 
@@ -230,7 +241,7 @@ POST /tasks/{task_id}/restore
 ```
 
 恢复会将完整目录移回输出区、清除 `archived_at`、刷新 `updated_at` 并记录
-`restore_api` 审计。只要 purge 尚未实际执行，超过宽限日期的任务仍可恢复；
+带 `actor_user_id` 的 `restore_api` 审计。只要 purge 尚未实际执行，超过宽限日期的任务仍可恢复；
 永久清除后文件和 SQLite 记录都不存在，无法恢复。
 
 ### 自动永久清除建议

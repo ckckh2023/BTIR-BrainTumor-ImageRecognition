@@ -33,6 +33,7 @@ from core.settings import SETTINGS
 from core.task_definitions import ModelName, TaskArtifact, TaskStatus
 from core.user_records import UserRecord
 from repositories.task_repository import task_repository
+from repositories.task_repository_contracts import TaskNotFoundError
 from services.archive_service import archive_task, restore_task
 from services.task_files import (
     create_task_dir,
@@ -80,12 +81,40 @@ def require_task_dir(task_id: str) -> Path:
 
 
 def verify_task_owner(task_id: str, user: UserRecord) -> None:
-    '''验证任务归属当前用户，不属于时返回 HTTP 403'''
-    owner_id = task_repository.get_task_user_id(task_id)
-    if owner_id is not None and owner_id != user.user_id:
+    '''严格验证任务归属；不存在、未分配或越权时统一返回 404'''
+    try:
+        owner_id = task_repository.get_task_user_id(task_id)
+    except TaskNotFoundError as exc:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="无权访问此任务",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="任务不存在",
+        ) from exc
+    if owner_id != user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="任务不存在",
+        )
+
+
+def enforce_task_storage_limit(user: UserRecord) -> None:
+    if task_repository.count(user_id=user.user_id) >= SETTINGS.max_tasks_per_user:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="当前账号保存的任务数已达到上限，请先归档并等待管理员清理",
+        )
+
+
+def enforce_active_task_limit(task_id: str, user: UserRecord) -> None:
+    active_tasks = task_repository.list_active_tasks(
+        limit=SETTINGS.max_active_tasks_per_user + 1,
+        user_id=user.user_id,
+    )
+    if any(task.task_id == task_id for task in active_tasks):
+        return
+    if len(active_tasks) >= SETTINGS.max_active_tasks_per_user:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="当前账号同时排队或运行的任务数已达到上限",
         )
 
 
@@ -174,6 +203,7 @@ def create_task_from_upload(
     current_user: UserRecord = Depends(get_current_user),
 ) -> TaskCreatedResponse:
     '''上传图片并创建任务'''
+    enforce_task_storage_limit(current_user)
     task_dir: Path | None = None
     try:
         task_dir = create_task_dir(SETTINGS.output_dir)
@@ -293,7 +323,7 @@ def delete_task(
     '''将指定的非活动任务安全移入归档区'''
     verify_task_owner(task_id, current_user)
     try:
-        task_data = archive_task(task_id)
+        task_data = archive_task(task_id, actor_user_id=current_user.user_id)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -319,7 +349,7 @@ def restore_archived_task(
     '''将尚未永久清除的归档任务恢复到活动任务目录'''
     verify_task_owner(task_id, current_user)
     try:
-        task_data = restore_task(task_id)
+        task_data = restore_task(task_id, actor_user_id=current_user.user_id)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -418,6 +448,7 @@ def enqueue_task(
     '''将完整推理提交到 RQ 队列，并立即返回作业信息'''
     verify_task_owner(task_id, current_user)
     task_dir = require_task_dir(task_id)
+    enforce_active_task_limit(task_id, current_user)
     threshold = resolve_run_threshold(request)
     try:
         job, reused = enqueue_task_run(task_dir, threshold)
@@ -467,6 +498,7 @@ def retry_failed_task(
     '''手动重新提交一项最终失败的推理任务'''
     verify_task_owner(task_id, current_user)
     task_dir = require_task_dir(task_id)
+    enforce_active_task_limit(task_id, current_user)
     threshold = resolve_run_threshold(request)
     try:
         job, reused = enqueue_task_run(

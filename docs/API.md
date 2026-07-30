@@ -7,6 +7,10 @@
 ## 调用流程
 
 ```text
+POST /auth/register 或 POST /auth/login
+    ↓
+后续请求携带 Authorization: Bearer <access_token>
+    ↓
 POST /tasks 上传图片
     ↓
 POST /tasks/{task_id}/run-async 提交异步推理
@@ -44,6 +48,9 @@ POST /tasks/{task_id}/restore 恢复所选任务
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
+| `POST` | `/auth/register` | 注册账号；受服务器注册开关控制 |
+| `POST` | `/auth/login` | 登录并获取访问令牌 |
+| `GET` | `/auth/me` | 查询当前登录用户 |
 | `POST` | `/tasks` | 上传图片并创建任务 |
 | `GET` | `/tasks` | 分页、筛选历史任务 |
 | `GET` | `/tasks/archived` | 分页、筛选尚未永久清除的归档任务 |
@@ -59,6 +66,28 @@ POST /tasks/{task_id}/restore 恢复所选任务
 | `GET` | `/readyz` | 完整依赖就绪检查 |
 | `GET` | `/runtime` | 查询实际推理设备 |
 | `GET` | `/ops/queue` | 查询队列运行状态 |
+
+## 认证
+
+注册和登录请求：
+
+```http
+POST /auth/login
+Content-Type: application/json
+
+{"username": "alice", "password": "safe-password"}
+```
+
+成功后返回 `access_token`、`user_id` 和 `username`。除健康检查、运行信息和
+`/auth/register`、`/auth/login` 外，任务接口都必须携带：
+
+```http
+Authorization: Bearer <access_token>
+```
+
+用户名长度为 3～32，只允许字母、数字、下划线和连字符。注册是否开放由
+`BTIR_REGISTRATION_ENABLED` 控制。任务列表只返回当前用户的数据；访问其他
+用户、无归属或不存在的任务统一返回 `404`，避免泄露任务是否存在。
 
 ## 上传并创建任务
 
@@ -328,7 +357,7 @@ DELETE /tasks/{task_id}
 
 - `queued`、`running`、`cancel_requested` 返回 `409 Conflict`。
 - 其他非活动状态会获取任务写入锁，将整个任务移动到归档区。
-- 设置 `archived_at` 并写入 `archive/audit.jsonl`。
+- 设置 `archived_at`，并把操作用户写入 `archive/audit.jsonl`。
 - 普通任务列表立即隐藏该任务，任务详情随后返回 `404`。
 - 重复删除尚未永久清除的同一任务会返回相同归档信息。
 
@@ -405,6 +434,9 @@ GET /tasks/{task_id}/files/frontend_result.json
 中的 `+` 等字符：
 
 ```javascript
+const token = localStorage.getItem("btir_token");
+const authHeaders = {Authorization: `Bearer ${token}`};
+
 async function fetchTasks({
   q = "",
   status = "",
@@ -419,7 +451,7 @@ async function fetchTasks({
   if (createdFrom) params.set("created_from", new Date(createdFrom).toISOString());
   if (createdTo) params.set("created_to", new Date(createdTo).toISOString());
 
-  const response = await fetch(`/tasks?${params}`);
+  const response = await fetch(`/tasks?${params}`, {headers: authHeaders});
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.detail || "任务查询失败");
@@ -433,6 +465,7 @@ async function fetchTaskRuns(taskId, model = "") {
 
   const response = await fetch(
     `/tasks/${encodeURIComponent(taskId)}/runs?${params}`,
+    {headers: authHeaders},
   );
   if (!response.ok) {
     const error = await response.json();
@@ -446,7 +479,7 @@ async function requestTaskAction(taskId, action) {
   const path = action === "delete"
     ? `/tasks/${encodeURIComponent(taskId)}`
     : `/tasks/${encodeURIComponent(taskId)}/${action}`;
-  const response = await fetch(path, {method});
+  const response = await fetch(path, {method, headers: authHeaders});
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.detail || "任务操作失败");
@@ -467,9 +500,12 @@ async function requestTaskAction(taskId, action) {
 
 | HTTP 状态 | 含义 |
 | --- | --- |
+| `401` | Token 缺失、无效或已过期 |
+| `403` | 注册已关闭或用户已禁用 |
 | `400` | 上传、阈值或查询参数不合法 |
-| `404` | 任务或公开文件不存在 |
+| `404` | 任务、无权访问的任务或公开文件不存在 |
 | `409` | 当前任务状态不允许操作，或写入锁等待超时 |
+| `429` | 当前用户的任务存储或并发运行数量达到上限 |
 | `422` | FastAPI 请求字段校验失败 |
 | `503` | SQLite、Redis、队列或其他关键依赖不可用 |
 

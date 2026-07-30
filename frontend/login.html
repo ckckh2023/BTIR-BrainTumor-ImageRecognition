@@ -257,10 +257,23 @@
                     window.location.href = '/web/'
                 },
             },
-            mounted() {
+            async mounted() {
                 const token = localStorage.getItem('btir_token')
+                if (!token) return
+                try {
+                    const response = await fetch(`${this.API_BASE}/auth/me`, {
+                        headers: { 'Authorization': `Bearer ${token}` },
+                    })
+                    if (response.ok) {
+                        window.location.href = '/web/'
+                        return
+                    }
+                } catch {
+                    // 服务暂时不可用时保留登录页，允许用户稍后重试。
+                }
                 if (token) {
-                    window.location.href = '/web/'
+                    localStorage.removeItem('btir_token')
+                    localStorage.removeItem('btir_user')
                 }
             },
         }).mount('#app')

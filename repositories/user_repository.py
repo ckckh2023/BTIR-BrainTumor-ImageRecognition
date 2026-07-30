@@ -11,10 +11,7 @@ from typing import Iterator
 
 from core.user_records import UserRecord
 from repositories.sqlite_task_repository import SqliteTaskRepository
-
-
-class UserNotFoundError(LookupError):
-    pass
+from repositories.task_repository_contracts import TaskRepositoryUnavailableError
 
 
 class UsernameAlreadyExistsError(ValueError):
@@ -33,14 +30,17 @@ class SqliteUserRepository:
             connection.row_factory = sqlite3.Row
             connection.execute("PRAGMA busy_timeout = 5000")
         except sqlite3.Error as exc:
-            raise RuntimeError("SQLite 用户数据库不可用") from exc
+            raise TaskRepositoryUnavailableError("SQLite 用户数据库不可用") from exc
 
         try:
             yield connection
             connection.commit()
+        except sqlite3.IntegrityError:
+            connection.rollback()
+            raise
         except sqlite3.Error as exc:
             connection.rollback()
-            raise RuntimeError("SQLite 用户数据库不可用") from exc
+            raise TaskRepositoryUnavailableError("SQLite 用户数据库不可用") from exc
         except Exception:
             connection.rollback()
             raise
@@ -62,26 +62,30 @@ class SqliteUserRepository:
             created_at=now,
             updated_at=now,
         )
-        with self._connect() as connection:
-            existing_username = connection.execute(
-                "SELECT 1 FROM users WHERE username = ?", (username,)
-            ).fetchone()
-            if existing_username:
-                raise UsernameAlreadyExistsError(f"用户名 '{username}' 已被注册")
-            connection.execute(
-                """
-                INSERT INTO users (user_id, username, hashed_password, is_active, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    record.user_id,
-                    record.username,
-                    record.hashed_password,
-                    1 if record.is_active else 0,
-                    record.created_at.isoformat(),
-                    record.updated_at.isoformat(),
-                ),
-            )
+        try:
+            with self._connect() as connection:
+                connection.execute(
+                    """
+                    INSERT INTO users (
+                        user_id, username, hashed_password, is_active, created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        record.user_id,
+                        record.username,
+                        record.hashed_password,
+                        1 if record.is_active else 0,
+                        record.created_at.isoformat(),
+                        record.updated_at.isoformat(),
+                    ),
+                )
+        except sqlite3.IntegrityError as exc:
+            if "users.username" in str(exc):
+                raise UsernameAlreadyExistsError(
+                    f"用户名 '{username}' 已被注册"
+                ) from exc
+            raise
         return record
 
     def get_by_username(self, username: str) -> UserRecord | None:

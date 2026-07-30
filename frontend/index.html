@@ -1188,6 +1188,12 @@
                         }
                     )
                 },
+                escapeHtml(value) {
+                    return String(value)
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                },
                 resetState() {
                     this.loading = true
                     this.statusText = '<span class="loading-spinner"></span>创建任务中...'
@@ -1404,7 +1410,7 @@
 
                         await this.runAndGetResult(this.taskId)
                     } catch (error) {
-                        this.statusText = `<span class="status-error">✗ ${error.message}</span>`
+                        this.statusText = `<span class="status-error">✗ ${this.escapeHtml(error.message)}</span>`
                         console.error('识别错误:', error)
                     } finally {
                         this.loading = false
@@ -1468,17 +1474,27 @@
                     window.location.href = '/login/login.html'
                 },
             },
-            mounted() {
+            async mounted() {
                 const token = localStorage.getItem('btir_token')
                 if (!token) {
                     window.location.href = '/login/login.html'
                     return
                 }
                 try {
+                    const response = await fetch(`${this.API_BASE}/auth/me`, {
+                        headers: this.authHeaders,
+                    })
+                    if (response.status === 401 || response.status === 403) {
+                        this.logout()
+                        return
+                    }
+                    if (response.ok) {
+                        this.currentUser = await response.json()
+                        localStorage.setItem('btir_user', JSON.stringify(this.currentUser))
+                    }
+                } catch {
                     const userStr = localStorage.getItem('btir_user')
                     this.currentUser = userStr ? JSON.parse(userStr) : null
-                } catch {
-                    this.currentUser = null
                 }
             },
         }).mount('#app')

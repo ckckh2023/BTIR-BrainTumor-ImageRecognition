@@ -33,6 +33,7 @@ class ArchiveReport:
 def archive_task(
     task_id: str,
     *,
+    actor_user_id: str | None = None,
     now: datetime | None = None,
     repository: TaskRepository = task_repository,
     output_dir: Path = SETTINGS.output_dir,
@@ -77,12 +78,14 @@ def archive_task(
             repository=repository,
             archive_dir=archive_dir,
             audit_operation="archive_api",
+            actor_user_id=actor_user_id,
         )
 
 
 def restore_task(
     task_id: str,
     *,
+    actor_user_id: str | None = None,
     now: datetime | None = None,
     repository: TaskRepository = task_repository,
     output_dir: Path = SETTINGS.output_dir,
@@ -120,6 +123,7 @@ def restore_task(
             timestamp=now,
             repository=repository,
             archive_dir=archive_dir,
+            actor_user_id=actor_user_id,
         )
 
 
@@ -269,6 +273,7 @@ def _move_task_to_archive(
     repository: TaskRepository,
     archive_dir: Path,
     audit_operation: str,
+    actor_user_id: str | None = None,
 ) -> TaskRecord:
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(source), str(destination))
@@ -284,6 +289,7 @@ def _move_task_to_archive(
         operation=audit_operation,
         task_id=record.task_id,
         timestamp=timestamp,
+        actor_user_id=actor_user_id,
     )
     return record
 
@@ -296,6 +302,7 @@ def _move_task_from_archive(
     timestamp: datetime,
     repository: TaskRepository,
     archive_dir: Path,
+    actor_user_id: str | None = None,
 ) -> TaskRecord:
     destination.parent.mkdir(parents=True, exist_ok=True)
     original_archived_at = record.archived_at
@@ -315,6 +322,7 @@ def _move_task_from_archive(
         operation="restore_api",
         task_id=record.task_id,
         timestamp=timestamp,
+        actor_user_id=actor_user_id,
     )
     return record
 
@@ -341,6 +349,7 @@ def _append_audit(
     operation: str,
     task_id: str,
     timestamp: datetime,
+    actor_user_id: str | None = None,
 ) -> None:
     archive_dir.mkdir(parents=True, exist_ok=True)
     entry = {
@@ -348,5 +357,7 @@ def _append_audit(
         "task_id": task_id,
         "timestamp": timestamp.isoformat(),
     }
+    if actor_user_id is not None:
+        entry["actor_user_id"] = actor_user_id
     with (archive_dir / "audit.jsonl").open("a", encoding="utf-8") as audit_file:
         audit_file.write(json.dumps(entry, ensure_ascii=False) + "\n")

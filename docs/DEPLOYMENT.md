@@ -81,7 +81,21 @@ BTIR_TASK_DATABASE_PATH=data/btir.db
 BTIR_TASK_QUEUE_NAME=inference
 BTIR_WORKER_PRELOAD_MODELS=true
 BTIR_LINUX_WORKER_MODE=standard
+BTIR_JWT_SECRET_KEY=至少32字节的随机字符串
+BTIR_REGISTRATION_ENABLED=false
+BTIR_MAX_TASKS_PER_USER=1000
+BTIR_MAX_ACTIVE_TASKS_PER_USER=2
 ```
+
+可以生成 JWT 密钥：
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+API 缺少安全的 `BTIR_JWT_SECRET_KEY` 时会拒绝启动。首次创建账号可以临时开启
+`BTIR_REGISTRATION_ENABLED=true`，注册完成后关闭并重启 API。生产环境还应在
+反向代理层对 `/auth/login` 和 `/auth/register` 设置请求频率限制。
 
 生产环境常见调整：
 
@@ -301,8 +315,9 @@ Python 查找顺序：
 按 `Ctrl+C` 可以停止 supervisor、API 和 Worker。该脚本不会执行任务归档或
 永久删除。
 
-项目根目录的 `.env` 是可选配置，不是启动必需文件。Python 应用会读取它，
-但进程中已经存在的系统环境变量优先级更高。supervisor 自身使用的
+项目根目录的 `.env` 可以由系统环境变量替代，但 API 必须获得
+`BTIR_JWT_SECRET_KEY`。Python 应用会读取 `.env`，但进程中已经存在的系统环境
+变量优先级更高。supervisor 自身使用的
 `BTIR_API_*`、`BTIR_PYTHON_EXE` 和 `BTIR_SUPERVISOR_*` 不从 `.env` 读取，
 必须在运行脚本前通过 shell 或 systemd 注入：
 
@@ -337,7 +352,7 @@ Wants=redis.service
 Type=simple
 User=btir
 WorkingDirectory=/opt/btir
-EnvironmentFile=-/etc/btir/btir.env
+EnvironmentFile=/etc/btir/btir.env
 ExecStart=/bin/bash /opt/btir/scripts/run-supervisor.sh /opt/btir/.venv/bin/python
 Restart=always
 RestartSec=10
@@ -348,9 +363,9 @@ TimeoutStopSec=330
 WantedBy=multi-user.target
 ```
 
-`EnvironmentFile` 行开头的 `-` 表示配置文件不存在时仍允许服务启动。服务器
-使用系统级配置时，可把所需 `BTIR_*` 变量写入 `/etc/btir/btir.env`；不要依赖
-交互式 shell 的 `.bashrc`，systemd 服务默认不会继承它。
+服务器使用系统级配置时，可把所需 `BTIR_*` 变量写入
+`/etc/btir/btir.env`；该文件至少应包含 `BTIR_JWT_SECRET_KEY`。不要依赖交互式
+shell 的 `.bashrc`，systemd 服务默认不会继承它。
 
 启用：
 
