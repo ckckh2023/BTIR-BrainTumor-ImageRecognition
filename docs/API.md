@@ -11,7 +11,8 @@ POST /auth/register 或 POST /auth/login
     ↓
 后续请求携带 Authorization: Bearer <access_token>
     ↓
-POST /tasks 上传图片
+POST /tasks 上传 2D 图片
+或 POST /tasks/3d 上传四模态 3D NIfTI
     ↓
 POST /tasks/{task_id}/run-async 提交异步推理
     ↓
@@ -40,7 +41,7 @@ POST /tasks/{task_id}/restore 恢复所选任务
 | `running` | Worker 正在执行 |
 | `cancel_requested` | 已请求在安全阶段停止 |
 | `partial` | 只完成了部分模型 |
-| `succeeded` | 分类和分割均已完成 |
+| `succeeded` | 当前任务 `expected_models` 中的模型均已完成 |
 | `failed` | 自动重试耗尽后仍失败 |
 | `canceled` | 任务已取消 |
 
@@ -51,7 +52,8 @@ POST /tasks/{task_id}/restore 恢复所选任务
 | `POST` | `/auth/register` | 注册账号；受服务器注册开关控制 |
 | `POST` | `/auth/login` | 登录并获取访问令牌 |
 | `GET` | `/auth/me` | 查询当前登录用户 |
-| `POST` | `/tasks` | 上传图片并创建任务 |
+| `POST` | `/tasks` | 上传图片并创建 2D 任务 |
+| `POST` | `/tasks/3d` | 上传四模态 NIfTI 并创建 3D 任务 |
 | `GET` | `/tasks` | 分页、筛选历史任务 |
 | `GET` | `/tasks/archived` | 分页、筛选尚未永久清除的归档任务 |
 | `GET` | `/tasks/{task_id}` | 查询任务状态与最新结果 |
@@ -89,7 +91,7 @@ Authorization: Bearer <access_token>
 `BTIR_REGISTRATION_ENABLED` 控制。任务列表只返回当前用户的数据；访问其他
 用户、无归属或不存在的任务统一返回 `404`，避免泄露任务是否存在。
 
-## 上传并创建任务
+## 上传并创建 2D 任务
 
 ```http
 POST /tasks
@@ -110,12 +112,55 @@ Content-Type: multipart/form-data
   "schema_version": "0.1",
   "task_id": "20260728_120000_001",
   "status": "created",
+  "analysis_mode": "2d",
   "input_file": "image.png"
 }
 ```
 
 上传大小和解码后像素数量由 `BTIR_MAX_UPLOAD_BYTES` 与
 `BTIR_MAX_IMAGE_PIXELS` 限制。
+
+## 上传并创建 3D 任务
+
+```http
+POST /tasks/3d
+Content-Type: multipart/form-data
+```
+
+一次请求必须同时携带属于同一受试者、同一空间的四个 NIfTI：
+
+| 字段 | 必填 | 说明 |
+| --- | --- | --- |
+| `flair` | 是 | FLAIR，`.nii` 或 `.nii.gz` |
+| `t1ce` | 是 | 增强 T1，`.nii` 或 `.nii.gz` |
+| `t1` | 是 | T1，`.nii` 或 `.nii.gz` |
+| `t2` | 是 | T2，`.nii` 或 `.nii.gz` |
+| `name` | 否 | 任务显示名称 |
+
+后端会校验四个文件的 shape、affine、spacing 和方向是否一致。文件名无须遵循
+BraTS 命名规则，模态由表单字段确定。四个文件总大小由
+`BTIR_MAX_3D_UPLOAD_BYTES` 限制，解压后的单个体积还受
+`BTIR_MAX_3D_VOXELS` 限制。
+
+成功返回 `201 Created`：
+
+```json
+{
+  "schema_version": "0.1",
+  "task_id": "20260728_120100_001",
+  "status": "created",
+  "analysis_mode": "3d",
+  "input_files": {
+    "flair": "flair.nii.gz",
+    "t1ce": "t1ce.nii.gz",
+    "t1": "t1.nii.gz",
+    "t2": "t2.nii.gz"
+  }
+}
+```
+
+当前 3D 路线只执行 SuperLightNet 分割，不会把单张切片交给旧 2D 分类器。
+后续可在不改变四模态上传协议的前提下，为 3D 任务增加独立分类模型。
 
 ## 提交异步推理
 
@@ -131,6 +176,10 @@ Content-Type: application/json
   "threshold": 0.5
 }
 ```
+
+`threshold` 只用于 2D 分割；3D SuperLightNet 使用多类 argmax，不读取该值。
+创建任务后，两条路线都调用同一个 `run-async` 接口，后端根据
+`analysis_mode` 自动分流。
 
 成功返回 `202 Accepted`。如果同一任务已经处于 `queued` 或 `running`，
 后端会复用现有作业，并通过 `reused_existing_job` 标识：
@@ -159,10 +208,16 @@ GET /tasks/{task_id}
 ```
 
 前端可定时轮询，直到进入 `succeeded`、`failed` 或 `canceled`。
-成功任务的 `completed_models` 应包含：
+2D 成功任务的 `completed_models` 为：
 
 ```json
 ["classification", "segmentation"]
+```
+
+3D 成功任务当前为：
+
+```json
+["segmentation"]
 ```
 
 响应中的主要字段：
@@ -173,6 +228,8 @@ GET /tasks/{task_id}
   "task_id": "20260728_120000_001",
   "name": "示例任务",
   "status": "succeeded",
+  "analysis_mode": "2d",
+  "expected_models": ["classification", "segmentation"],
   "created_at": "2026-07-28T12:00:00+08:00",
   "updated_at": "2026-07-28T12:00:03+08:00",
   "completed_models": ["classification", "segmentation"],
@@ -195,6 +252,19 @@ GET /tasks/{task_id}
   "frontend_result": {}
 }
 ```
+
+3D 任务的 `input.filename` 为 `null`，`input.files` 分别给出四个模态的
+文件名、大小与 SHA-256。
+`frontend_result.segmentation` 提供：
+
+- `mask_file`：预测标签 NIfTI 的任务内相对路径，可通过
+  `GET /tasks/{task_id}/files/{file_path}` 下载；
+- `spatial`：原始 shape、spacing、orientation 等空间信息；
+- `labels`：输出标签定义，采用 BraTS 标签 `0/1/2/4`；
+- `regions`：各标签的体素数、体积与占比。
+
+输出 `prediction.nii.gz` 保持原始 shape 和 affine。上述数据是分割及定量统计，
+不是肿瘤类型诊断、脑叶定位或临床结论。
 
 失败任务只公开可展示的 `error.code`、`error.message` 和
 `error.updated_at`，内部异常详情与本机路径不会通过 API 返回。

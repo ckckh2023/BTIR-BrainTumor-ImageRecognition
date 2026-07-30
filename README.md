@@ -7,7 +7,7 @@ BTIR 提供脑肿瘤 MRI 图像分类与分割能力。每次分析以独立
 
 | 模块 | 状态 | 说明 |
 | --- | --- | --- |
-| 模型推理 | 已完成 | 支持分类、分割和完整分析流程 |
+| 模型推理 | 已完成 | 2D 图片执行分类与分割；3D 四模态 NIfTI 执行 SuperLightNet 分割 |
 | 任务管理 | 已完成 | 上传创建任务、异步运行、重试、取消、软删除、恢复、状态查询 |
 | 历史查询 | 已完成 | 支持任务筛选、分页和单任务运行历史 |
 | 异步调度 | 已完成 | Redis + RQ，自动重试、状态对账和安全取消 |
@@ -44,6 +44,7 @@ git lfs status
 ```text
 models/classification/model/pytorch_model.pth
 models/segmentation/model/best_unet_model.pth
+models/segmentation3d/model/model_epoch_297.pth
 ```
 
 ### 2. 准备 Python 3.11 环境
@@ -125,8 +126,14 @@ service 中使用 `Environment=` 或 `EnvironmentFile=` 注入，
 
 1. 调用 `POST /auth/register` 创建账号，或通过 `POST /auth/login` 登录。
 2. 后续任务请求携带 `Authorization: Bearer <access_token>`。
-3. `POST /tasks` 上传 `.jpg`、`.jpeg` 或 `.png`，保存返回的 `task_id`。
-4. `POST /tasks/{task_id}/run-async` 提交分类和分割。
+3. 选择输入路线并保存返回的 `task_id`：
+
+   - 2D：`POST /tasks` 上传 `.jpg`、`.jpeg` 或 `.png`。
+   - 3D：`POST /tasks/3d` 同时上传 `flair`、`t1ce`、`t1`、`t2`
+     四个 `.nii` 或 `.nii.gz` 文件。
+
+4. `POST /tasks/{task_id}/run-async` 提交任务。2D 任务执行分类与分割，
+   3D 任务只执行 SuperLightNet 分割。
 5. 轮询 `GET /tasks/{task_id}`，直到状态变为 `succeeded`。
 6. 历史和归档接口只返回当前用户自己的任务。
 
@@ -236,7 +243,9 @@ python Main.py purge-archive
 ## 下一阶段
 
 1. 与前端最终确认 `frontend_result` 字段和错误展示格式。
-2. 补充每用户任务配额、登录限流、审计与管理员查询。
+2. 为 3D 路线接入经过验证的体积分类模型；现有 2D 分类器不会用于 3D 输入。
+3. 在医学依据和输出协议明确后，再增加基于 3D 分割结果的高级分析或诊断路线。
+4. 补充每用户任务配额、登录限流、审计与管理员查询。
 
 ## 彩蛋
 

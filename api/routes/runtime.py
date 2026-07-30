@@ -58,6 +58,8 @@ def get_readiness() -> dict[str, object]:
         SETTINGS.classifier_config,
         SETTINGS.segmenter_script,
         SETTINGS.segmenter_model,
+        SETTINGS.segmenter_3d_script,
+        SETTINGS.segmenter_3d_model,
     )
     components["models"] = "ok" if all(path.is_file() for path in model_files) else "unavailable"
 

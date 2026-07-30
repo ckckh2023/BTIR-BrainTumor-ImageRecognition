@@ -6,7 +6,24 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from core.task_definitions import JobStatus, ModelName, TaskStatus
+from core.task_definitions import (
+    ALL_MODELS,
+    AnalysisMode,
+    JobStatus,
+    ModelName,
+    TaskStatus,
+)
+
+
+class StoredTaskModality(BaseModel):
+    """三维任务中一项模态文件的持久化信息。"""
+
+    model_config = ConfigDict(extra="allow")
+
+    path: str
+    size_bytes: int
+    sha256: str
+    original_filename: str | None = None
 
 
 class StoredTaskInput(BaseModel):
@@ -19,6 +36,7 @@ class StoredTaskInput(BaseModel):
     size_bytes: int
     sha256: str
     original_filename: str | None = None
+    modalities: dict[str, StoredTaskModality] | None = None
 
 
 class TaskJobRecord(BaseModel):
@@ -72,6 +90,10 @@ class TaskRecord(BaseModel):
     created_at: datetime
     updated_at: datetime
     archived_at: datetime | None = None
+    analysis_mode: AnalysisMode = AnalysisMode.TWO_D
+    expected_models: list[ModelName] = Field(
+        default_factory=lambda: sorted(ALL_MODELS, key=lambda model: model.value)
+    )
     completed_models: list[ModelName] = Field(default_factory=list)
     input: StoredTaskInput
     job: TaskJobRecord | None = None

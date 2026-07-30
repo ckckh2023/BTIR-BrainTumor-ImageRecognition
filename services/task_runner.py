@@ -8,11 +8,13 @@ from time import perf_counter
 from collections.abc import Callable
 from typing import Any
 
-from core.task_definitions import ModelName
-from services.inference_service import classify, segment
+from core.task_definitions import AnalysisMode, ModelName
+from repositories.task_repository import task_repository
+from services.inference_service import classify, segment, segment_volume
 from services.task_files import (
     create_run_dir,
     load_task_image,
+    load_task_modalities,
 )
 from services.task_results import (
     persist_model_result,
@@ -24,7 +26,7 @@ class TaskRunResult:
     '''一次完整推理生成的输入与两项模型结果'''
 
     image_path: Path
-    classification_result: dict[str, Any]
+    classification_result: dict[str, Any] | None
     segmentation_result: dict[str, Any]
     total_inference_ms: float
 
@@ -77,6 +79,28 @@ def _run_segmentation(
     )
 
 
+def _run_volume_segmentation(
+    task_dir: Path,
+    modality_paths: dict[str, Path],
+) -> dict[str, Any]:
+    '''执行并持久化四模态三维分割'''
+
+    run_dir = create_run_dir(task_dir, ModelName.SEGMENTATION)
+    started_at = perf_counter()
+    result = segment_volume(
+        modality_paths=modality_paths,
+        output_dir=run_dir,
+    )
+    result["timing"] = {"inference_ms": _elapsed_ms(started_at)}
+    return persist_model_result(
+        task_dir=task_dir,
+        image_path=task_dir / "input",
+        model_name=ModelName.SEGMENTATION,
+        result=result,
+        run_dir=run_dir,
+    )
+
+
 def run_classification(task_dir: Path) -> ModelRunResult:
     '''执行单任务分类，并持久化分类结果'''
     image_path = load_task_image(task_dir)
@@ -104,6 +128,26 @@ def run_task_models(
 ) -> TaskRunResult:
     '''顺序执行分类、分割，并将两项结果写入同一任务目录'''
     started_at = perf_counter()
+    task_record = task_repository.load(task_dir)
+    if task_record.analysis_mode is AnalysisMode.THREE_D:
+        modality_paths = load_task_modalities(task_dir)
+        if progress_callback is not None:
+            progress_callback("3D 分割推理中", 0)
+        if should_cancel is not None and should_cancel():
+            raise TaskCancellationRequested("任务已在 3D 分割开始前取消")
+        segmentation_result = _run_volume_segmentation(
+            task_dir,
+            modality_paths,
+        )
+        if progress_callback is not None:
+            progress_callback("3D 分割完成", 100)
+        return TaskRunResult(
+            image_path=task_dir / "input",
+            classification_result=None,
+            segmentation_result=segmentation_result,
+            total_inference_ms=_elapsed_ms(started_at),
+        )
+
     image_path = load_task_image(task_dir)
     if progress_callback is not None:
         progress_callback("分类推理中", 0)

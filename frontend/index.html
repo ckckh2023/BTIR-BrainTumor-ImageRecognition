@@ -64,6 +64,40 @@
             flex-shrink: 0;
         }
 
+        .analysis-mode-switch {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px;
+            margin-bottom: 16px;
+            padding: 4px;
+            background: #edf2f7;
+            border-radius: 9px;
+            flex-shrink: 0;
+        }
+
+        .analysis-mode-button {
+            padding: 9px 12px;
+            color: #64748b;
+            background: transparent;
+            border: none;
+            border-radius: 7px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+        }
+
+        .analysis-mode-button.active {
+            color: #fff;
+            background: #1e3c72;
+            box-shadow: 0 2px 8px rgba(30, 60, 114, 0.22);
+        }
+
+        .analysis-mode-button:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+        }
+
         label {
             display: block;
             margin-bottom: 8px;
@@ -127,6 +161,48 @@
             cursor: not-allowed;
             transform: none;
             box-shadow: none;
+        }
+
+        .browse-btn.compact {
+            min-width: 68px;
+            padding: 9px 12px;
+            font-size: 12px;
+        }
+
+        .volume-inputs {
+            display: grid;
+            gap: 8px;
+        }
+
+        .volume-input-row {
+            display: grid;
+            grid-template-columns: 58px minmax(0, 1fr) auto;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .volume-modality {
+            color: #1e3c72;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+        }
+
+        .volume-file-name {
+            min-width: 0;
+            padding: 9px 11px;
+            overflow: hidden;
+            color: #475569;
+            background: #f8fafc;
+            border: 1px solid #cbd5e1;
+            border-radius: 7px;
+            font-size: 12px;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .volume-file-name.empty {
+            color: #94a3b8;
         }
 
         .drop-hint {
@@ -203,6 +279,34 @@
 
         .result-item {
             margin-bottom: 12px;
+        }
+
+        .result-regions {
+            display: grid;
+            gap: 7px;
+            margin-top: 6px;
+        }
+
+        .result-region-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 8px 10px;
+            color: #334155;
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 12px;
+        }
+
+        .result-note {
+            padding: 9px 10px;
+            color: #64748b;
+            background: #eef4fa;
+            border-radius: 6px;
+            font-size: 12px;
+            line-height: 1.5;
         }
 
         .result-label {
@@ -695,7 +799,22 @@
                     </div>
                 </div>
 
-                <div class="input-group">
+                <div class="analysis-mode-switch" role="tablist" aria-label="分析模式">
+                    <button
+                        type="button"
+                        :class="['analysis-mode-button', { active: analysisMode === '2d' }]"
+                        :disabled="loading"
+                        @click="switchAnalysisMode('2d')"
+                    >2D 图片分析</button>
+                    <button
+                        type="button"
+                        :class="['analysis-mode-button', { active: analysisMode === '3d' }]"
+                        :disabled="loading"
+                        @click="switchAnalysisMode('3d')"
+                    >3D 四模态分割</button>
+                </div>
+
+                <div class="input-group" v-if="analysisMode === '2d'">
                     <label for="selectedFileName">已选择图片：</label>
                     <div class="input-row">
                         <div class="input-wrapper"
@@ -722,14 +841,50 @@
                     <input
                         type="file"
                         ref="fileInput"
-                        accept=".jpg,.jpeg,.png,.bmp,.tif,.tiff,.webp,.gif,.dcm,.dicom"
+                        accept=".jpg,.jpeg,.png"
                         style="display: none"
                         @change="onFileSelected"
                     />
                 </div>
 
-                <button class="recognize-btn" @click="recognizeFromUpload" :disabled="loading || !selectedFile">
-                    {{ loading ? '识别中...' : '识别' }}
+                <div class="input-group" v-else>
+                    <label>四模态 NIfTI：</label>
+                    <div class="volume-inputs">
+                        <div
+                            class="volume-input-row"
+                            v-for="modality in volumeModalities"
+                            :key="modality.key"
+                        >
+                            <span class="volume-modality">{{ modality.label }}</span>
+                            <div
+                                :class="['volume-file-name', { empty: !volumeFiles[modality.key] }]"
+                                :title="volumeFiles[modality.key]?.name || ''"
+                            >
+                                {{ volumeFiles[modality.key]?.name || '未选择 .nii / .nii.gz' }}
+                            </div>
+                            <button
+                                type="button"
+                                class="browse-btn compact"
+                                :disabled="loading"
+                                @click="triggerVolumePicker(modality.key)"
+                            >浏览...</button>
+                            <input
+                                type="file"
+                                :id="`volume-file-${modality.key}`"
+                                accept=".nii,.nii.gz"
+                                style="display: none"
+                                @change="onVolumeFileSelected($event, modality.key)"
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                <button class="recognize-btn" @click="recognizeFromUpload" :disabled="loading || !canRecognize">
+                    {{
+                        loading
+                            ? (analysisMode === '3d' ? '3D分割中...' : '识别中...')
+                            : (analysisMode === '3d' ? '开始3D分割' : '识别')
+                    }}
                 </button>
 
                 <div class="result-section">
@@ -743,6 +898,12 @@
                             <div class="result-label">任务ID：</div>
                             <div class="result-value">{{ taskId }}</div>
                         </div>
+                        <div class="result-item" v-if="resultAnalysisMode">
+                            <div class="result-label">分析模式：</div>
+                            <div class="result-value">
+                                {{ resultAnalysisMode === '3d' ? '3D 四模态分割' : '2D 图片分析' }}
+                            </div>
+                        </div>
                         <div class="result-item" v-if="classificationLabel">
                             <div class="result-label">分类结果：</div>
                             <div class="result-value">
@@ -753,8 +914,22 @@
                             </div>
                         </div>
                         <div class="result-item" v-if="tumorArea !== null">
-                            <div class="result-label">肿瘤占比：</div>
+                            <div class="result-label">
+                                {{ resultAnalysisMode === '3d' ? '非背景分割占比：' : '肿瘤占比：' }}
+                            </div>
                             <div class="result-value">{{ (tumorArea * 100).toFixed(2) }}%</div>
+                        </div>
+                        <div class="result-item" v-if="regionStats.length">
+                            <div class="result-label">BraTS 区域体积：</div>
+                            <div class="result-regions">
+                                <div class="result-region-row" v-for="region in regionStats" :key="region.label">
+                                    <span>{{ region.label }} · {{ region.name }}</span>
+                                    <span>{{ formatVolume(region.volumeMm3) }} mm³</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="result-note" v-if="resultAnalysisMode === '3d'">
+                            当前 3D 路线仅提供分割与定量统计，不包含分类或医学诊断。
                         </div>
                     </div>
                 </div>
@@ -863,7 +1038,8 @@
                                 </span>
                             </div>
                             <div class="task-meta">
-                                文件：{{ task.input?.filename || '未知' }}<br>
+                                模式：{{ task.analysis_mode === '3d' ? '3D' : '2D' }}<br>
+                                文件：{{ taskInputSummary(task) }}<br>
                                 <template v-if="taskListMode === 'archived'">
                                     归档：{{ formatTaskTime(task.archived_at) }}<br>
                                     进入可清除期：{{ formatTaskTime(task.purge_eligible_at) }}
@@ -936,12 +1112,27 @@
                     taskId: '',
                     jsonPath: '',
                     jsonData: '',
+                    analysisMode: '2d',
                     selectedFile: null,
+                    volumeModalities: [
+                        { key: 'flair', label: 'FLAIR' },
+                        { key: 't1ce', label: 'T1CE' },
+                        { key: 't1', label: 'T1' },
+                        { key: 't2', label: 'T2' },
+                    ],
+                    volumeFiles: {
+                        flair: null,
+                        t1ce: null,
+                        t1: null,
+                        t2: null,
+                    },
                     isDragOver: false,
                     showToast: false,
                     classificationLabel: '',
                     confidence: 0,
                     tumorArea: null,
+                    resultAnalysisMode: '',
+                    regionStats: [],
                     fileList: [],
                     selectedFilePath: '',
                     selectedFileContent: '',
@@ -976,8 +1167,21 @@
                     const token = localStorage.getItem('btir_token')
                     return token ? { 'Authorization': `Bearer ${token}` } : {}
                 },
+                canRecognize() {
+                    if (this.analysisMode === '2d') {
+                        return Boolean(this.selectedFile)
+                    }
+                    return this.volumeModalities.every(
+                        modality => Boolean(this.volumeFiles[modality.key])
+                    )
+                },
             },
             methods: {
+                switchAnalysisMode(mode) {
+                    if (this.loading || !['2d', '3d'].includes(mode)) return
+                    this.analysisMode = mode
+                    this.isDragOver = false
+                },
                 switchRightView(view) {
                     this.activeRightView = view
                     if (view === 'tasks') {
@@ -1010,6 +1214,19 @@
                     if (!value) return '未知'
                     const date = new Date(value)
                     return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN')
+                },
+                formatVolume(value) {
+                    const number = Number(value)
+                    return Number.isFinite(number)
+                        ? number.toLocaleString('zh-CN', { maximumFractionDigits: 3 })
+                        : '0'
+                },
+                taskInputSummary(task) {
+                    if (task.analysis_mode === '3d' && task.input?.files) {
+                        const count = Object.keys(task.input.files).length
+                        return `${count} 个 NIfTI（FLAIR / T1CE / T1 / T2）`
+                    }
+                    return task.input?.filename || '未知'
                 },
                 async responseError(response, action) {
                     let detail = ''
@@ -1210,10 +1427,14 @@
                     this.classificationLabel = ''
                     this.confidence = 0
                     this.tumorArea = null
+                    this.resultAnalysisMode = this.analysisMode
+                    this.regionStats = []
                 },
                 buildFileList(resultData = {}, taskData = null) {
                     const files = []
                     const paths = new Set()
+                    const mode = taskData?.analysis_mode || resultData.analysis_mode || '2d'
+                    const is3d = mode === '3d'
                     const addFile = (label, path, type) => {
                         if (!path || paths.has(path)) return
                         paths.add(path)
@@ -1221,18 +1442,26 @@
                     }
 
                     const inputFilename = taskData?.input?.filename || resultData.image_file
-                    if (inputFilename) {
+                    if (!is3d && inputFilename) {
                         addFile('原始图', `input/${inputFilename}`, 'image')
                     }
 
                     if (resultData.result_files) {
                         const rf = resultData.result_files
-                        addFile('分割图', rf.mask, 'image')
                         addFile('frontend_result.json', rf.frontend, 'json')
                         addFile('classification.json', rf.classification, 'json')
                         addFile('segmentation.json', rf.segmentation, 'json')
+                        addFile(
+                            is3d ? '下载3D掩码' : '分割图',
+                            rf.mask,
+                            is3d ? 'download' : 'image'
+                        )
                     }
-                    addFile('分割图', resultData.segmentation?.mask_file, 'image')
+                    addFile(
+                        is3d ? '下载3D掩码' : '分割图',
+                        resultData.segmentation?.mask_file,
+                        is3d ? 'download' : 'image'
+                    )
 
                     if (resultData.latest_runs) {
                         const lr = resultData.latest_runs
@@ -1243,6 +1472,20 @@
                         if (lr.segmentation) {
                             const short = lr.segmentation.replace(/^runs\//, '')
                             addFile(short, lr.segmentation, 'json')
+                        }
+                    }
+                    if (is3d) {
+                        const inputs = taskData?.input?.files || resultData.input_files || {}
+                        for (const modality of this.volumeModalities) {
+                            const entry = inputs[modality.key]
+                            const filename = typeof entry === 'string' ? entry : entry?.filename
+                            if (filename) {
+                                addFile(
+                                    `下载 ${modality.label}`,
+                                    `input/${filename}`,
+                                    'download'
+                                )
+                            }
                         }
                     }
                     return files
@@ -1291,8 +1534,40 @@
                     }
                 },
                 selectFile(f) {
+                    if (f.type === 'download') {
+                        this.downloadTaskFile(f)
+                        return
+                    }
                     if (this.selectedFilePath === f.path) return
                     this.fetchFileContent(f.path, f.type, f.label)
+                },
+                async downloadTaskFile(file) {
+                    const previousPath = this.selectedFilePath
+                    this.fileLoading = true
+                    this.selectedFilePath = file.path
+                    try {
+                        const response = await fetch(this.taskFileUrl(file.path), {
+                            headers: this.authHeaders,
+                        })
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}`)
+                        }
+                        const blob = await response.blob()
+                        const url = URL.createObjectURL(blob)
+                        const anchor = document.createElement('a')
+                        anchor.href = url
+                        anchor.download = file.path.split('/').pop() || 'btir-result'
+                        document.body.appendChild(anchor)
+                        anchor.click()
+                        document.body.removeChild(anchor)
+                        URL.revokeObjectURL(url)
+                    } catch (error) {
+                        const message = this.escapeHtml(`下载失败：${error.message}`)
+                        this.statusText = `<span class="status-error">✗ ${message}</span>`
+                    } finally {
+                        this.fileLoading = false
+                        this.selectedFilePath = previousPath
+                    }
                 },
                 onImageLoadError() {
                     this.fileLoading = false
@@ -1300,22 +1575,30 @@
                 },
                 presentTaskResult(taskData) {
                     this.taskId = taskData.task_id
+                    const resultData = taskData.frontend_result || {}
+                    this.resultAnalysisMode = (
+                        taskData.analysis_mode
+                        || resultData.analysis_mode
+                        || '2d'
+                    )
                     const status = taskData.status
                     if (status === 'succeeded') {
-                        this.statusText = '<span class="status-success">✓ 识别完成</span>'
+                        this.statusText = this.resultAnalysisMode === '3d'
+                            ? '<span class="status-success">✓ 3D分割完成</span>'
+                            : '<span class="status-success">✓ 识别完成</span>'
                     } else if (status === 'failed') {
                         this.statusText = '<span class="status-error">✗ 任务失败</span>'
                     } else {
                         this.statusText = `任务状态：${this.taskStatusLabel(status)}`
                     }
 
-                    const resultData = taskData.frontend_result || {}
                     this.jsonData = Object.keys(resultData).length
                         ? JSON.stringify(resultData, null, 2)
                         : ''
                     this.classificationLabel = ''
                     this.confidence = 0
                     this.tumorArea = null
+                    this.regionStats = []
                     if (resultData.classification) {
                         const classification = resultData.classification
                         this.classificationLabel = classification.class === 'yes'
@@ -1324,7 +1607,30 @@
                         this.confidence = classification.confidence
                     }
                     if (resultData.segmentation) {
-                        this.tumorArea = resultData.segmentation.tumor_area_ratio
+                        if (this.resultAnalysisMode === '3d') {
+                            const regions = resultData.segmentation.regions || {}
+                            const names = {
+                                '1': 'NCR/NET',
+                                '2': 'ED',
+                                '4': 'ET',
+                            }
+                            this.regionStats = ['1', '2', '4']
+                                .filter(label => regions[label])
+                                .map(label => ({
+                                    label,
+                                    name: names[label],
+                                    volumeMm3: Number(regions[label].volume_mm3) || 0,
+                                }))
+                            const ratios = ['1', '2', '4']
+                                .map(label => Number(regions[label]?.ratio))
+                                .filter(Number.isFinite)
+                            if (ratios.length) {
+                                this.tumorArea = ratios.reduce((sum, ratio) => sum + ratio, 0)
+                            }
+                        } else {
+                            const area = Number(resultData.segmentation.tumor_area_ratio)
+                            this.tumorArea = Number.isFinite(area) ? area : null
+                        }
                     }
 
                     this.fileList = this.buildFileList(resultData, taskData)
@@ -1334,12 +1640,15 @@
                     this.selectedFileUrl = ''
                     this.imageLoadError = ''
                     this.activeRightView = 'results'
-                    if (this.fileList.length) {
-                        this.selectFile(this.fileList[0])
+                    const initialFile = this.fileList.find(file => file.type !== 'download')
+                    if (initialFile) {
+                        this.selectFile(initialFile)
                     }
                 },
-                async runAndGetResult(taskId) {
-                    this.statusText = '<span class="loading-spinner"></span>运行模型中...'
+                async runAndGetResult(taskId, mode) {
+                    this.statusText = mode === '3d'
+                        ? '<span class="loading-spinner"></span>运行3D分割模型中...'
+                        : '<span class="loading-spinner"></span>运行模型中...'
 
                     const runResponse = await fetch(`${this.API_BASE}/tasks/${taskId}/run-async`, {
                         method: 'POST',
@@ -1351,7 +1660,7 @@
                         throw new Error(`运行模型失败: ${runResponse.status}`)
                     }
 
-                    const deadline = Date.now() + 120000
+                    const deadline = Date.now() + (mode === '3d' ? 30 * 60 * 1000 : 120000)
                     while (Date.now() < deadline) {
                         const resultResponse = await fetch(`${this.API_BASE}/tasks/${taskId}`, {
                             headers: this.authHeaders,
@@ -1372,7 +1681,11 @@
 
                         this.statusText = resultData.status === 'queued'
                             ? '<span class="loading-spinner"></span>任务排队中...'
-                            : '<span class="loading-spinner"></span>运行模型中...'
+                            : (
+                                mode === '3d'
+                                    ? '<span class="loading-spinner"></span>3D分割推理中...'
+                                    : '<span class="loading-spinner"></span>运行模型中...'
+                            )
                         await new Promise(resolve => setTimeout(resolve, 1000))
                     }
 
@@ -1381,34 +1694,61 @@
                 triggerFilePicker() {
                     this.$refs.fileInput.click()
                 },
+                triggerVolumePicker(modality) {
+                    document.getElementById(`volume-file-${modality}`)?.click()
+                },
                 async onFileSelected(event) {
                     const file = event.target.files[0]
                     if (!file) return
                     this.selectedFile = file
                 },
+                onVolumeFileSelected(event, modality) {
+                    const file = event.target.files[0]
+                    if (!file) return
+                    if (!file.name.match(/\.nii(?:\.gz)?$/i)) {
+                        alert('请选择 .nii 或 .nii.gz 文件')
+                        event.target.value = ''
+                        this.volumeFiles[modality] = null
+                        return
+                    }
+                    this.volumeFiles[modality] = file
+                },
                 async recognizeFromUpload() {
-                    if (!this.selectedFile) return
+                    if (!this.canRecognize) return
                     this.resetState()
 
                     try {
                         const formData = new FormData()
-                        formData.append('file', this.selectedFile)
-                        formData.append('name', 'vue-recognize')
+                        let endpoint = '/tasks'
+                        if (this.analysisMode === '3d') {
+                            endpoint = '/tasks/3d'
+                            for (const modality of this.volumeModalities) {
+                                formData.append(
+                                    modality.key,
+                                    this.volumeFiles[modality.key]
+                                )
+                            }
+                            formData.append('name', 'web-3d-segmentation')
+                        } else {
+                            formData.append('file', this.selectedFile)
+                            formData.append('name', 'web-2d-analysis')
+                        }
 
-                        const createResponse = await fetch(`${this.API_BASE}/tasks`, {
+                        const createResponse = await fetch(`${this.API_BASE}${endpoint}`, {
                             method: 'POST',
                             headers: this.authHeaders,
                             body: formData,
                         })
 
                         if (!createResponse.ok) {
-                            throw new Error(`创建任务失败: ${createResponse.status}`)
+                            throw new Error(await this.responseError(createResponse, '创建任务'))
                         }
 
                         const createData = await createResponse.json()
                         this.taskId = createData.task_id
+                        this.resultAnalysisMode = createData.analysis_mode || this.analysisMode
 
-                        await this.runAndGetResult(this.taskId)
+                        await this.runAndGetResult(this.taskId, this.resultAnalysisMode)
                     } catch (error) {
                         this.statusText = `<span class="status-error">✗ ${this.escapeHtml(error.message)}</span>`
                         console.error('识别错误:', error)
@@ -1437,16 +1777,12 @@
                     const validTypes = [
                         'image/jpeg',
                         'image/png',
-                        'image/bmp',
-                        'image/tiff',
-                        'image/webp',
-                        'image/gif',
                     ]
                     if (
                         !validTypes.includes(file.type) &&
-                        !file.name.match(/\.(jpg|jpeg|png|bmp|tif|tiff|webp|gif|dcm|dicom)$/i)
+                        !file.name.match(/\.(jpg|jpeg|png)$/i)
                     ) {
-                        alert('请拖入图片文件（支持 JPG/PNG/BMP/TIFF/WebP/GIF/DICOM）')
+                        alert('请拖入 JPG、JPEG 或 PNG 图片')
                         return
                     }
 

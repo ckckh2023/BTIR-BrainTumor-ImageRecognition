@@ -6,6 +6,7 @@ import unittest
 
 from core.task_definitions import (
     ACTIVE_ASYNC_TASK_STATUSES,
+    AnalysisMode,
     InputStorageMode,
     JobStatus,
     ModelName,
@@ -48,6 +49,13 @@ class TaskDefinitionTests(unittest.TestCase):
             TaskStatus.SUCCEEDED,
         )
         self.assertEqual(
+            task_status_for_completed_models(
+                [ModelName.SEGMENTATION],
+                [ModelName.SEGMENTATION],
+            ),
+            TaskStatus.SUCCEEDED,
+        )
+        self.assertEqual(
             task_status_from_job_status(JobStatus.QUEUED),
             TaskStatus.QUEUED,
         )
@@ -61,6 +69,10 @@ class TaskDefinitionTests(unittest.TestCase):
         self.assertEqual(TaskArtifact.SEGMENTATION_RESULT.value, "segmentation.json")
         self.assertEqual(TaskArtifact.FRONTEND_RESULT.value, "frontend_result.json")
         self.assertEqual(TaskDirectory.INPUT.value, "input")
+        self.assertEqual(
+            tuple(mode.value for mode in AnalysisMode),
+            ("2d", "3d"),
+        )
         self.assertEqual(
             tuple(mode.value for mode in InputStorageMode),
             ("auto", "hardlink", "copy"),

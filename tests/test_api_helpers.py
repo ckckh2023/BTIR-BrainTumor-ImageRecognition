@@ -22,13 +22,15 @@ from api.routes import tasks
 from api.routes.tasks import (
     bad_request_http_error,
     resolve_run_threshold,
+    task_input_data,
     task_summary_data,
 )
 from api.routes.runtime import get_liveness, get_queue_status, get_readiness
 from contracts.task import RunTaskRequest
-from core.task_definitions import JobStatus, ModelName, TaskStatus
+from core.task_definitions import AnalysisMode, JobStatus, ModelName, TaskStatus
 from core.task_records import (
     StoredTaskInput,
+    StoredTaskModality,
     TaskErrorRecord,
     TaskJobRecord,
     TaskRecord,
@@ -136,6 +138,41 @@ class TaskRouteHelperTests(unittest.TestCase):
             response = tasks.get_task(task_dir.name, current_user=TEST_USER)
 
         self.assertEqual(response.frontend_result["image_file"], "uploaded-image.png")
+
+    def test_3d_task_input_exposes_named_files_without_fake_filename(self) -> None:
+        now = datetime.fromisoformat("2026-01-01T00:00:00+00:00")
+        modalities = {
+            name: StoredTaskModality(
+                path=f"input/{name}.nii.gz",
+                size_bytes=10,
+                sha256=name * 16,
+            )
+            for name in ("flair", "t1ce", "t1", "t2")
+        }
+        record = TaskRecord(
+            task_id="task-3d-input-001",
+            name="3D 输入",
+            status=TaskStatus.CREATED,
+            created_at=now,
+            updated_at=now,
+            analysis_mode=AnalysisMode.THREE_D,
+            expected_models=[ModelName.SEGMENTATION],
+            input=StoredTaskInput(
+                path="input",
+                storage_mode="uploaded_multimodal",
+                size_bytes=40,
+                sha256="a" * 64,
+                modalities=modalities,
+            ),
+        )
+
+        public_input = task_input_data(record).model_dump(mode="json")
+
+        self.assertIsNone(public_input["filename"])
+        self.assertEqual(
+            set(public_input["files"]),
+            {"flair", "t1ce", "t1", "t2"},
+        )
 
     def test_liveness_never_checks_external_dependencies(self) -> None:
         self.assertEqual(get_liveness(), {"status": "ok"})
@@ -245,11 +282,55 @@ class TaskHttpEndpointTests(unittest.TestCase):
         self.assertNotIn("/tasks/{task_id}/run", paths)
         self.assertNotIn("/tasks/{task_id}/classify", paths)
         self.assertNotIn("/tasks/{task_id}/segment", paths)
+        self.assertIn("/tasks/3d", paths)
         self.assertIn("/tasks/{task_id}/run-async", paths)
         self.assertIn("/tasks/{task_id}/runs", paths)
         self.assertIn("/tasks/archived", paths)
         self.assertIn("delete", paths["/tasks/{task_id}"])
         self.assertIn("/tasks/{task_id}/restore", paths)
+
+    def test_create_3d_task_accepts_four_named_modalities(self) -> None:
+        with TemporaryDirectory() as directory:
+            task_dir = Path(directory) / "task-http-3d-001"
+            task_dir.mkdir()
+            stored = {
+                modality: task_dir / "input" / f"{modality}.nii.gz"
+                for modality in ("flair", "t1ce", "t1", "t2")
+            }
+            with (
+                patch("api.routes.tasks.task_repository.count", return_value=0),
+                patch("api.routes.tasks.create_task_dir", return_value=task_dir),
+                patch(
+                    "api.routes.tasks.initialize_uploaded_volume_task",
+                    return_value=stored,
+                ) as initialize_volume,
+                TestClient(app) as client,
+            ):
+                response = client.post(
+                    "/tasks/3d",
+                    files={
+                        modality: (
+                            f"patient_{modality}.nii.gz",
+                            b"nifti-data",
+                            "application/gzip",
+                        )
+                        for modality in stored
+                    },
+                    data={"name": "3D patient"},
+                )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        payload = response.json()
+        self.assertEqual(payload["analysis_mode"], "3d")
+        self.assertEqual(payload["task_id"], task_dir.name)
+        self.assertEqual(
+            set(payload["input_files"]),
+            {"flair", "t1ce", "t1", "t2"},
+        )
+        self.assertEqual(
+            set(initialize_volume.call_args.kwargs["uploads"]),
+            {"flair", "t1ce", "t1", "t2"},
+        )
 
     def test_task_list_forwards_search_and_time_filters(self) -> None:
         with (

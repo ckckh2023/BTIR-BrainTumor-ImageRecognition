@@ -89,17 +89,19 @@ def run_task_job(task_id: str, threshold: float) -> dict[str, Any]:
         execution_ms,
         getattr(run_result, "total_inference_ms", None),
     )
-    return {
+    result_payload = {
         "task_id": task_id,
         "status": task_record.status.value,
         "completed_models": [model.value for model in task_record.completed_models],
-        "classification_result_file": run_result.classification_result[
-            "model_result_path"
-        ],
         "segmentation_result_file": run_result.segmentation_result[
             "model_result_path"
         ],
     }
+    if run_result.classification_result is not None:
+        result_payload["classification_result_file"] = (
+            run_result.classification_result["model_result_path"]
+        )
+    return result_payload
 
 
 def _get_job_attempt(job: Any) -> int | None:

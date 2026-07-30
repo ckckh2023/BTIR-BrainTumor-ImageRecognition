@@ -14,7 +14,6 @@ from rq.job import Job, JobStatus as RqJobStatus
 from core.settings import SETTINGS
 from core.task_definitions import (
     ACTIVE_ASYNC_TASK_STATUSES,
-    ALL_MODELS,
     JobStatus,
     TaskStatus,
 )
@@ -253,7 +252,7 @@ def reconcile_task_job(task_dir: Path) -> TaskRecord:
         return _update_reconciled_status(task_dir, record, JobStatus.CANCELED)
 
     if rq_status is RqJobStatus.FINISHED:
-        if ALL_MODELS <= set(record.completed_models):
+        if set(record.expected_models) <= set(record.completed_models):
             return _update_reconciled_status(task_dir, record, JobStatus.SUCCEEDED)
         return _mark_reconciled_task_failed(
             task_dir,

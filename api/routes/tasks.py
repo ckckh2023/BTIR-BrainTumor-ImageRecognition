@@ -21,6 +21,7 @@ from contracts.task import (
     TaskCancellationResponse,
     TaskEnqueuedResponse,
     TaskErrorData,
+    TaskInputFileData,
     TaskInputData,
     TaskListResponse,
     TaskRunListResponse,
@@ -28,9 +29,10 @@ from contracts.task import (
     TaskRestoredResponse,
     TaskStatusResponse,
     TaskSummaryResponse,
+    VolumeTaskCreatedResponse,
 )
 from core.settings import SETTINGS
-from core.task_definitions import ModelName, TaskArtifact, TaskStatus
+from core.task_definitions import AnalysisMode, ModelName, TaskArtifact, TaskStatus
 from core.user_records import UserRecord
 from repositories.task_repository import task_repository
 from repositories.task_repository_contracts import TaskNotFoundError
@@ -39,6 +41,7 @@ from services.task_files import (
     create_task_dir,
     get_task_dir,
     initialize_uploaded_task,
+    initialize_uploaded_volume_task,
 )
 from services.task_queue import cancel_task_run, enqueue_task_run, reconcile_task_job
 
@@ -143,11 +146,24 @@ def normalize_query_datetime(value: datetime | None) -> datetime | None:
 
 def task_input_data(task_data) -> TaskInputData:
     input_data = task_data.input
+    modality_files = (
+        {
+            modality: TaskInputFileData(
+                filename=Path(file_data.path).name,
+                size_bytes=file_data.size_bytes,
+                sha256=file_data.sha256,
+            )
+            for modality, file_data in input_data.modalities.items()
+        }
+        if input_data.modalities
+        else None
+    )
     return TaskInputData(
-        filename=Path(input_data.path).name,
+        filename=None if modality_files else Path(input_data.path).name,
         storage_mode=input_data.storage_mode,
         size_bytes=input_data.size_bytes,
         sha256=input_data.sha256,
+        files=modality_files,
     )
 
 
@@ -169,6 +185,8 @@ def task_common_data(task_data) -> dict[str, Any]:
         "status": task_data.status,
         "created_at": task_data.created_at,
         "updated_at": task_data.updated_at,
+        "analysis_mode": task_data.analysis_mode,
+        "expected_models": [model.value for model in task_data.expected_models],
         "completed_models": [model.value for model in task_data.completed_models],
         "input": task_input_data(task_data),
         "job": task_data.job.model_dump(mode="json") if task_data.job else None,
@@ -223,6 +241,61 @@ def create_task_from_upload(
         ) from exc
 
     return TaskCreatedResponse(task_id=task_dir.name, input_file=task_image.name)
+
+
+@router.post(
+    "/3d",
+    response_model=VolumeTaskCreatedResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_3d_task_from_upload(
+    flair: UploadFile = File(...),
+    t1ce: UploadFile = File(...),
+    t1: UploadFile = File(...),
+    t2: UploadFile = File(...),
+    name: str | None = Form(default=None),
+    current_user: UserRecord = Depends(get_current_user),
+) -> VolumeTaskCreatedResponse:
+    '''上传四模态 NIfTI 并创建 3D 分割任务'''
+
+    enforce_task_storage_limit(current_user)
+    task_dir: Path | None = None
+    uploads = {
+        "flair": flair,
+        "t1ce": t1ce,
+        "t1": t1,
+        "t2": t2,
+    }
+    try:
+        task_dir = create_task_dir(SETTINGS.output_dir)
+        stored_files = initialize_uploaded_volume_task(
+            task_dir=task_dir,
+            uploads={
+                modality: upload.file
+                for modality, upload in uploads.items()
+            },
+            filenames={
+                modality: upload.filename
+                for modality, upload in uploads.items()
+            },
+            name=name,
+            user_id=current_user.user_id,
+        )
+    except ValueError as exc:
+        if task_dir is not None:
+            shutil.rmtree(task_dir, ignore_errors=True)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    return VolumeTaskCreatedResponse(
+        task_id=task_dir.name,
+        input_files={
+            modality: path.name
+            for modality, path in stored_files.items()
+        },
+    )
 
 
 @router.get("", response_model=TaskListResponse)
@@ -307,7 +380,11 @@ def get_task(
     )
     if frontend_result is not None:
         frontend_result = sanitize_public_payload(frontend_result)
-        frontend_result.setdefault("image_file", Path(task_data.input.path).name)
+        if task_data.analysis_mode is AnalysisMode.TWO_D:
+            frontend_result.setdefault(
+                "image_file",
+                Path(task_data.input.path).name,
+            )
 
     return TaskStatusResponse(
         **task_common_data(task_data),

@@ -26,7 +26,11 @@ git lfs status
 ```text
 models/classification/model/pytorch_model.pth
 models/segmentation/model/best_unet_model.pth
+models/segmentation3d/model/model_epoch_297.pth
 ```
+
+3D 路线还依赖 `nibabel`、`einops`、`MONAI 1.3` 与 `tqdm`，均已写入
+`requirements.txt`，不需要单独复制原模型的训练环境。
 
 ## Windows 开发环境
 
@@ -85,6 +89,9 @@ BTIR_JWT_SECRET_KEY=至少32字节的随机字符串
 BTIR_REGISTRATION_ENABLED=false
 BTIR_MAX_TASKS_PER_USER=1000
 BTIR_MAX_ACTIVE_TASKS_PER_USER=2
+BTIR_MAX_3D_UPLOAD_BYTES=536870912
+BTIR_MAX_3D_VOXELS=20000000
+BTIR_3D_SEGMENTER_OVERLAP=0.5
 ```
 
 可以生成 JWT 密钥：
@@ -170,6 +177,8 @@ python -m workers.run_worker
 
 - 先使用一个 API 进程和一个推理 Worker 验证部署。
 - 单张 GPU 默认只运行一个 Worker，避免并发模型推理争抢显存。
+- 3D 四模态任务会占用更多显存与执行时间，任务超时应保留默认的 3600 秒
+  或根据服务器实测调高。
 - 使用 Nginx 等反向代理提供 HTTPS。
 - 将 API、Worker 和守护脚本交给 systemd、任务计划程序或其他进程管理器。
 - 启动后检查 `/healthz`、`/readyz`、`/runtime` 和 `/ops/queue`。
@@ -207,6 +216,11 @@ python -m accelerator.install --backend cpu
 - AMD ROCm 仅支持 Linux；AMD Windows 使用 CPU。
 - `BTIR_DEVICE=auto` 会在已正确安装后端时自动选择 GPU。
 - 多张 GPU 可通过 `BTIR_DEVICE=cuda:0` 指定设备。
+- SuperLightNet 3D 路线支持 CPU 和 NVIDIA CUDA；CPU 可用于功能验证，
+  正式体积推理建议使用 CUDA。
+- 当前实现采用 `128×128×128` 滑窗和可配置重叠率，已在 8 GB 显存的
+  RTX 5070 Laptop GPU 上完成 `240×240×155` 体积验证，因此不要求把
+  整个原始体积一次性放入显存。实际耗时与显卡、重叠率和输入尺寸有关。
 
 验证 CUDA：
 
@@ -237,7 +251,8 @@ BTIR_WORKER_PRELOAD_MODELS=true
 ```
 
 `simple` 不 fork，一次执行一个任务，应由 systemd 或项目守护脚本在进程
-异常退出时重新拉起。
+异常退出时重新拉起。它还能让 2D 与 3D 模型缓存跨任务复用；标准 Worker
+每项作业使用子进程，模型会在该作业中按需加载。
 
 Worker 名称包含主机名和进程号。旧 Worker 异常退出后可以直接重新执行
 启动命令；Redis 中短暂保留的旧注册不会阻止新 Worker 启动。
