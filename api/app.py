@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from api.routes.auth import router as auth_router
 from api.routes.runtime import router as runtime_router
 from api.routes.tasks import router as tasks_router
 from core.settings import SETTINGS
@@ -16,7 +17,7 @@ from services.task_lock import TaskLockBusyError, TaskLockUnavailableError
 from services.task_queue import TaskQueueUnavailableError
 
 
-app = FastAPI(title="脑肿瘤图像分析 API", version="0.9.0")
+app = FastAPI(title="脑肿瘤图像分析 API", version="0.10.0")
 
 
 @app.exception_handler(TaskNotFoundError)
@@ -65,5 +66,13 @@ app.mount(
     name="web",
 )
 
+login_dir = SETTINGS.project_root / "frontend"
+app.mount(
+    "/login",
+    StaticFiles(directory=str(login_dir), html=True),
+    name="login",
+)
+
+app.include_router(auth_router)
 app.include_router(runtime_router)
 app.include_router(tasks_router)
