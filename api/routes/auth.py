@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from contracts.auth import AuthResponse, LoginRequest, RegisterRequest, UserInfoResponse
 from api.auth import get_current_user, _get_user_repository
@@ -72,7 +72,7 @@ def login(request: LoginRequest) -> AuthResponse:
 
 
 @router.get("/me", response_model=UserInfoResponse)
-def get_current_user_info(current_user: UserRecord = get_current_user) -> UserInfoResponse:
+def get_current_user_info(current_user: UserRecord = Depends(get_current_user)) -> UserInfoResponse:
     return UserInfoResponse(
         user_id=current_user.user_id,
         username=current_user.username,
