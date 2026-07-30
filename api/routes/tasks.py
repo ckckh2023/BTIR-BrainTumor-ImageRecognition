@@ -8,9 +8,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse, JSONResponse
 
+from api.auth import get_current_user
 from contracts.task import (
     ArchivedTaskListResponse,
     ArchivedTaskSummaryResponse,
@@ -30,6 +31,7 @@ from contracts.task import (
 )
 from core.settings import SETTINGS
 from core.task_definitions import ModelName, TaskArtifact, TaskStatus
+from core.user_records import UserRecord
 from repositories.task_repository import task_repository
 from services.archive_service import archive_task, restore_task
 from services.task_files import (
@@ -75,6 +77,16 @@ def require_task_dir(task_id: str) -> Path:
             status_code=status.HTTP_404_NOT_FOUND,
             detail="任务不存在",
         ) from exc
+
+
+def verify_task_owner(task_id: str, user: UserRecord) -> None:
+    '''验证任务归属当前用户，不属于时返回 HTTP 403'''
+    owner_id = task_repository.get_task_user_id(task_id)
+    if owner_id is not None and owner_id != user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="无权访问此任务",
+        )
 
 
 def resolve_run_threshold(request: RunTaskRequest | None) -> float:
@@ -159,6 +171,7 @@ def archived_task_summary_data(task_data) -> ArchivedTaskSummaryResponse:
 def create_task_from_upload(
     file: UploadFile = File(...),
     name: str | None = Form(default=None),
+    current_user: UserRecord = Depends(get_current_user),
 ) -> TaskCreatedResponse:
     '''上传图片并创建任务'''
     task_dir: Path | None = None
@@ -169,6 +182,7 @@ def create_task_from_upload(
             upload=file.file,
             filename=file.filename,
             name=name,
+            user_id=current_user.user_id,
         )
     except ValueError as exc:
         if task_dir is not None:
@@ -189,6 +203,7 @@ def list_tasks(
     query: str | None = Query(default=None, alias="q", max_length=100),
     created_from: datetime | None = Query(default=None),
     created_to: datetime | None = Query(default=None),
+    current_user: UserRecord = Depends(get_current_user),
 ) -> TaskListResponse:
     '''分页查询任务，可按整体状态筛选'''
     normalized_from = normalize_query_datetime(created_from)
@@ -210,6 +225,7 @@ def list_tasks(
         query=query.strip() if query and query.strip() else None,
         created_from=normalized_from,
         created_to=normalized_to,
+        user_id=current_user.user_id,
     )
     return TaskListResponse(
         items=[task_summary_data(record) for record in task_records],
@@ -225,6 +241,7 @@ def list_archived_tasks(
     offset: int = Query(default=0, ge=0),
     status_filter: TaskStatus | None = Query(default=None, alias="status"),
     query: str | None = Query(default=None, alias="q", max_length=100),
+    current_user: UserRecord = Depends(get_current_user),
 ) -> ArchivedTaskListResponse:
     '''分页查询尚未永久清除的归档任务'''
     task_records, total = task_repository.list_archived_tasks(
@@ -232,6 +249,7 @@ def list_archived_tasks(
         offset=offset,
         status=status_filter,
         query=query.strip() if query and query.strip() else None,
+        user_id=current_user.user_id,
     )
     return ArchivedTaskListResponse(
         items=[archived_task_summary_data(record) for record in task_records],
@@ -242,8 +260,12 @@ def list_archived_tasks(
 
 
 @router.get("/{task_id}", response_model=TaskStatusResponse)
-def get_task(task_id: str) -> TaskStatusResponse:
+def get_task(
+    task_id: str,
+    current_user: UserRecord = Depends(get_current_user),
+) -> TaskStatusResponse:
     '''获取指定任务状态和当前结果'''
+    verify_task_owner(task_id, current_user)
     task_dir = require_task_dir(task_id)
     task_data = reconcile_task_job(task_dir)
 
@@ -264,8 +286,12 @@ def get_task(task_id: str) -> TaskStatusResponse:
 
 
 @router.delete("/{task_id}", response_model=TaskArchivedResponse)
-def delete_task(task_id: str) -> TaskArchivedResponse:
+def delete_task(
+    task_id: str,
+    current_user: UserRecord = Depends(get_current_user),
+) -> TaskArchivedResponse:
     '''将指定的非活动任务安全移入归档区'''
+    verify_task_owner(task_id, current_user)
     try:
         task_data = archive_task(task_id)
     except ValueError as exc:
@@ -286,8 +312,12 @@ def delete_task(task_id: str) -> TaskArchivedResponse:
 
 
 @router.post("/{task_id}/restore", response_model=TaskRestoredResponse)
-def restore_archived_task(task_id: str) -> TaskRestoredResponse:
+def restore_archived_task(
+    task_id: str,
+    current_user: UserRecord = Depends(get_current_user),
+) -> TaskRestoredResponse:
     '''将尚未永久清除的归档任务恢复到活动任务目录'''
+    verify_task_owner(task_id, current_user)
     try:
         task_data = restore_task(task_id)
     except ValueError as exc:
@@ -309,8 +339,10 @@ def list_task_runs(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     model_filter: ModelName | None = Query(default=None, alias="model"),
+    current_user: UserRecord = Depends(get_current_user),
 ) -> TaskRunListResponse:
     '''分页查询指定任务的历史运行元数据'''
+    verify_task_owner(task_id, current_user)
     task_dir = require_task_dir(task_id)
     task_data = task_repository.load(task_dir)
     runs = task_data.runs or []
@@ -337,8 +369,13 @@ def list_task_runs(
 
 
 @router.get("/{task_id}/files/{file_path:path}")
-def get_task_file(task_id: str, file_path: str) -> FileResponse:
+def get_task_file(
+    task_id: str,
+    file_path: str,
+    current_user: UserRecord = Depends(get_current_user),
+) -> FileResponse:
     '''安全读取任务目录中的结果文件'''
+    verify_task_owner(task_id, current_user)
     task_dir = require_task_dir(task_id)
     try:
         file = (task_dir / file_path).resolve()
@@ -376,8 +413,10 @@ def get_task_file(task_id: str, file_path: str) -> FileResponse:
 def enqueue_task(
     task_id: str,
     request: RunTaskRequest | None = None,
+    current_user: UserRecord = Depends(get_current_user),
 ) -> TaskEnqueuedResponse:
     '''将完整推理提交到 RQ 队列，并立即返回作业信息'''
+    verify_task_owner(task_id, current_user)
     task_dir = require_task_dir(task_id)
     threshold = resolve_run_threshold(request)
     try:
@@ -394,8 +433,12 @@ def enqueue_task(
 
 
 @router.post("/{task_id}/cancel", response_model=TaskCancellationResponse)
-def cancel_task(task_id: str) -> TaskCancellationResponse:
+def cancel_task(
+    task_id: str,
+    current_user: UserRecord = Depends(get_current_user),
+) -> TaskCancellationResponse:
     '''取消排队任务，或请求运行中的任务在安全阶段停止'''
+    verify_task_owner(task_id, current_user)
     task_dir = require_task_dir(task_id)
     try:
         task_record = cancel_task_run(task_dir)
@@ -419,8 +462,10 @@ def cancel_task(task_id: str) -> TaskCancellationResponse:
 def retry_failed_task(
     task_id: str,
     request: RunTaskRequest | None = None,
+    current_user: UserRecord = Depends(get_current_user),
 ) -> TaskEnqueuedResponse:
     '''手动重新提交一项最终失败的推理任务'''
+    verify_task_owner(task_id, current_user)
     task_dir = require_task_dir(task_id)
     threshold = resolve_run_threshold(request)
     try:

@@ -133,6 +133,9 @@ class Settings:
     succeeded_task_retention_days: int
     failed_task_retention_days: int
     task_archive_grace_days: int
+    jwt_secret_key: str
+    jwt_expiration_hours: int
+    jwt_algorithm: str
 
 
 def _build_settings() -> Settings:
@@ -226,6 +229,9 @@ def _build_settings() -> Settings:
             "data/btir.db",
         ),
         task_archive_dir=_get_path("BTIR_TASK_ARCHIVE_DIR", "archive"),
+        jwt_secret_key=os.getenv("BTIR_JWT_SECRET_KEY", "change-me-to-a-random-secret-in-production").strip(),
+        jwt_expiration_hours=_get_positive_int("BTIR_JWT_EXPIRATION_HOURS", 24),
+        jwt_algorithm=os.getenv("BTIR_JWT_ALGORITHM", "HS256").strip(),
     )
 
 
