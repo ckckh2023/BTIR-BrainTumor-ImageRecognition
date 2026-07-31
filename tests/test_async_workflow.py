@@ -865,7 +865,11 @@ class TaskPerformanceRecordTests(unittest.TestCase):
             self.task_dir,
             image_path,
             classification={
-                "classification": {"class": "yes"},
+                "model": "classification",
+                "classification": {
+                    "class": "yes",
+                    "confidence": 0.9,
+                },
                 "run_directory": "runs/classification/run-001",
                 "timing": {"inference_ms": 12.5},
             },
@@ -885,6 +889,9 @@ class TaskPerformanceRecordTests(unittest.TestCase):
             result["timing"],
             {"classification_inference_ms": 12.5, "segmentation_inference_ms": 34.5},
         )
+        self.assertEqual(result["schema_version"], "1.0")
+        self.assertEqual(result["classification"]["model"], "classification")
+        self.assertEqual(result["segmentation"]["model"], "segmentation")
 
     def test_frontend_result_supports_3d_segmentation_without_classifier(self) -> None:
         input_dir = self.task_dir / "input"
@@ -929,6 +936,7 @@ class TaskPerformanceRecordTests(unittest.TestCase):
             result["segmentation"]["mask_file"],
             "runs/segmentation/run-3d-001/prediction.nii.gz",
         )
+        self.assertIn("model_metadata", result["segmentation"])
 
     def test_frontend_result_supports_3d_slice_ensemble_classification(self) -> None:
         input_dir = self.task_dir / "input"
@@ -939,6 +947,7 @@ class TaskPerformanceRecordTests(unittest.TestCase):
             expected_models=[ModelName.CLASSIFICATION, ModelName.SEGMENTATION],
             input_files={"flair": "flair.nii.gz"},
             classification={
+                "model": "models/classification/resnet50-slice-ensemble",
                 "classification": {
                     "class": "yes",
                     "confidence": 0.91,
@@ -958,6 +967,10 @@ class TaskPerformanceRecordTests(unittest.TestCase):
             "2d_slice_ensemble",
         )
         self.assertTrue(result["classification"]["experimental"])
+        self.assertEqual(
+            result["classification"]["model"],
+            "models/classification/resnet50-slice-ensemble",
+        )
 
 
 class ModelPreloadTests(unittest.TestCase):

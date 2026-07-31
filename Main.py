@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import traceback
 from datetime import datetime
@@ -104,6 +105,22 @@ def main(argv: list[str] | None = None) -> int:
             )
             print_result(result, args.json)
             return 0
+
+        if args.command == "evaluate-3d":
+            from services.segmentation_evaluation import (
+                evaluate_brats_segmentation,
+            )
+
+            progress = ConsoleProgress()
+            result = evaluate_brats_segmentation(
+                args.dataset_dir,
+                predictions_dir=args.predictions_dir,
+                limit=args.limit,
+                progress_callback=progress.update,
+            )
+            report_path = write_json(args.report.resolve(), result)
+            _print_3d_evaluation_report(result, report_path, as_json=args.json)
+            return 1 if result["failed_subjects"] else 0
 
         output_root = args.output_dir.resolve()
         if args.command == "create":
@@ -264,6 +281,39 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     benchmark.add_argument("--json", action="store_true", help="输出完整 JSON 结果")
 
+    evaluate_3d = commands.add_parser(
+        "evaluate-3d",
+        help="用带 seg 标签的 BraTS 数据集评测 3D 分割 Dice、耗时和显存",
+    )
+    evaluate_3d.add_argument(
+        "dataset_dir",
+        type=Path,
+        help="包含多个四模态 BraTS 受试者目录的数据集根目录",
+    )
+    evaluate_3d.add_argument(
+        "--report",
+        type=Path,
+        default=DEFAULT_OUTPUT_DIR / "evaluations" / "segmentation3d-report.json",
+        help="JSON 报告路径，默认 output/evaluations/segmentation3d-report.json",
+    )
+    evaluate_3d.add_argument(
+        "--predictions-dir",
+        type=Path,
+        help="可选；保留每个病例预测 NIfTI 的目录，默认仅保留报告",
+    )
+    evaluate_3d.add_argument(
+        "--limit",
+        type=int,
+        choices=range(1, 10001),
+        metavar="1-10000",
+        help="可选；仅评测排序后的前 N 个病例",
+    )
+    evaluate_3d.add_argument(
+        "--json",
+        action="store_true",
+        help="除保存报告外，同时在控制台输出完整 JSON",
+    )
+
     # 添加create子命令
     create = commands.add_parser("create", help="创建任务并保存一次输入图片")
     create.add_argument("image_path", type=Path, help="输入 MRI 图像路径") # image_path 参数
@@ -326,8 +376,43 @@ def _print_help(parser: argparse.ArgumentParser) -> None:
         "  python Main.py reconcile-tasks\n"
         "  python Main.py claim-legacy-tasks <username> --apply\n"
         "  python Main.py benchmark dataset/no/1.jpg --warm-runs 3\n"
+        "  python Main.py evaluate-3d <BraTS数据集目录>\n"
         "  python Main.py game\n"
     )
+
+
+def _print_3d_evaluation_report(
+    report: dict,
+    report_path: Path,
+    *,
+    as_json: bool,
+) -> None:
+    '''输出简明 3D 评测摘要，并保留完整 JSON 报告路径'''
+
+    if as_json:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    else:
+        print(
+            "3D 分割评测："
+            f"成功 {report['successful_subjects']} 例，"
+            f"失败 {report['failed_subjects']} 例"
+        )
+        dice_summary = report["summary"]["dice"]
+        for region in ("WT", "TC", "ET"):
+            statistics = dice_summary[region]
+            value = statistics["mean"]
+            value_text = "不可评估" if value is None else f"{value:.4f}"
+            print(
+                f"  {region} Dice 均值：{value_text}"
+                f"（{statistics['evaluated_cases']} 例）"
+            )
+        timing = report["summary"]["inference_ms"]
+        if timing["mean"] is not None:
+            print(f"  单病例平均耗时：{timing['mean'] / 1000:.3f} 秒")
+        memory = report["summary"]["peak_gpu_memory_mb"]
+        if memory["max"] is not None:
+            print(f"  GPU 峰值显存：{memory['max']:.1f} MiB")
+    print(f"完整报告：{report_path}")
 
 
 def _print_archive_report(report) -> None:

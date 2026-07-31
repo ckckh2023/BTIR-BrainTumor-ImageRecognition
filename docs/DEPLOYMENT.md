@@ -390,5 +390,8 @@ systemd timer 或 cron，不加入 supervisor 主循环。
 4. `GET /runtime` 显示预期的 CPU、CUDA 或 ROCm 后端。
 5. 上传测试图片，调用 `POST /tasks/{task_id}/run-async`。
 6. 轮询任务直到 `succeeded`，确认分类与分割结果均存在。
+7. 有带 `seg` 标签的 BraTS 验证集时，执行
+   `python Main.py evaluate-3d <数据集目录>`，记录 WT/TC/ET Dice、耗时和
+   峰值显存，作为模型升级前后的固定基线。
 
 运行时监控、归档和异常恢复参见 [运维说明](OPERATIONS.md)。

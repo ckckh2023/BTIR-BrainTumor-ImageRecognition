@@ -255,10 +255,62 @@ GET /tasks/{task_id}
 }
 ```
 
+这里外层 `schema_version: "0.1"` 是任务查询接口版本。任务成功后，
+`frontend_result` 自身还有独立的推理结果协议版本：
+
+```json
+{
+  "schema_version": "1.0",
+  "task_id": "20260728_120000_001",
+  "analysis_mode": "3d",
+  "status": "succeeded",
+  "completed_models": ["classification", "segmentation"],
+  "input_files": {
+    "flair": "flair.nii.gz",
+    "t1ce": "t1ce.nii.gz",
+    "t1": "t1.nii.gz",
+    "t2": "t2.nii.gz"
+  },
+  "classification": {
+    "model": "models/classification/resnet50-slice-ensemble",
+    "class": "yes",
+    "confidence": 0.91,
+    "method": "2d_slice_ensemble",
+    "experimental": true
+  },
+  "segmentation": {
+    "model": "models/segmentation3d/superlightnet",
+    "model_metadata": {
+      "name": "SuperLightNet",
+      "variant": "small",
+      "weights": "model_epoch_297.pth"
+    },
+    "spatial": {},
+    "labels": {},
+    "regions": {},
+    "mask_file": "runs/segmentation/<run_id>/prediction.nii.gz"
+  },
+  "result_files": {},
+  "latest_runs": {},
+  "timing": {}
+}
+```
+
+`frontend_result` 的兼容规则：
+
+- 前端按 `analysis_mode` 选择 2D 或 3D 展示；
+- `classification.class`、`classification.confidence` 和
+  `segmentation.mask_file` 保持原位置，现有前端无需修改；
+- 分类与分割对象均包含稳定的 `model` 标识，3D 分割另外提供
+  `model_metadata`；
+- 替换模型可以新增模型专属字段，但不能删除或改义版本 `1.0` 的既有字段；
+- 需要破坏性修改时必须提升 `frontend_result.schema_version`，并同步前端和本文档。
+
 3D 任务的 `input.filename` 为 `null`，`input.files` 分别给出四个模态的
 文件名、大小与 SHA-256。
 `frontend_result.classification` 是切片集成结果，主要字段包括：
 
+- `model`：当前分类适配器的稳定标识；
 - `method`：固定为 `2d_slice_ensemble`；
 - `experimental`：固定为 `true`，表示尚未替代患者级验证的原生 3D 分类器；
 - `modality`、`axis`：切片来源和方向；
@@ -268,6 +320,7 @@ GET /tasks/{task_id}
 
 `frontend_result.segmentation` 提供：
 
+- `model`、`model_metadata`：分割适配器标识及模型名称、变体和权重；
 - `mask_file`：预测标签 NIfTI 的任务内相对路径，可通过
   `GET /tasks/{task_id}/files/{file_path}` 下载；
 - `spatial`：原始 shape、spacing、orientation 等空间信息；

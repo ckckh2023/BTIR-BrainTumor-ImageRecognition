@@ -227,6 +227,7 @@ python Main.py classify --task-id <task_id>
 python Main.py segment --task-id <task_id>
 python Main.py all --task-id <task_id>
 python Main.py benchmark <image_path> --warm-runs 3 --json
+python Main.py evaluate-3d <BraTS数据集目录>
 python Main.py reconcile-tasks
 python Main.py clear --dry-run
 python Main.py archive-tasks
@@ -234,6 +235,15 @@ python Main.py purge-archive
 ```
 
 命令行模型调用仅用于开发调试；正式前端流程使用异步 API。
+`evaluate-3d` 会发现数据集根目录下包含四模态和 `*_seg.nii[.gz]` 的病例，
+逐例计算 BraTS WT、TC、ET Dice，同时记录耗时和 CUDA 峰值显存。默认报告写入
+`output/evaluations/segmentation3d-report.json`，不保留大型预测掩码；需要人工
+复核时可增加 `--predictions-dir <目录>`。
+
+前端统一结果 `frontend_result.json` 使用独立的 `schema_version: "1.0"`。
+分类和分割对象都保留稳定的 `model` 标识；更换模型实现时不得改变既有字段语义，
+需要新增字段时保持向后兼容。完整字段见 [API 对接说明](docs/API.md)。
+
 `clear` 是开发环境全量重置命令：实际执行会清空用户账号、活动任务、归档、
 归档审计、全部任务记录、BTIR 推理队列/作业/任务锁和 Python 缓存，使业务数据
 回到首次启动前的空白状态；`.env`、模型权重和其他 Redis 应用的数据仍会保留。
