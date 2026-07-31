@@ -79,6 +79,30 @@ def clear_generated_files(
             print(f"  已删除 SQLite 用户账号：{deleted_count} 条")
 
 
+def purge_logs_and_data(
+    project_root: Path,
+    *,
+    dry_run: bool,
+) -> None:
+    '''删除 logs 和 data 目录本身及其全部内容。'''
+    project_root = project_root.resolve()
+    logs_dir = project_root / "logs"
+    data_dir = project_root / "data"
+
+    targets = [d for d in (logs_dir, data_dir) if d.is_dir()]
+
+    if not targets:
+        print("logs 和 data 目录均不存在，无需清理")
+        return
+
+    print("将清理：" if dry_run else "已清理：")
+    for path in targets:
+        print(f"  {_display_path(path, project_root)}")
+        if dry_run:
+            continue
+        shutil.rmtree(path)
+
+
 def _display_path(path: Path, project_root: Path) -> str:
     '''项目内显示相对路径，项目外显示绝对路径'''
     try:

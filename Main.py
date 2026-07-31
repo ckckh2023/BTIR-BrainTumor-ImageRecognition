@@ -22,7 +22,7 @@ from repositories.user_repository import (
 from services.archive_service import archive_expired_tasks, purge_expired_archives
 from services.auth_service import hash_password
 from services.benchmark_service import benchmark_models
-from services.cleanup_service import clear_generated_files
+from services.cleanup_service import clear_generated_files, purge_logs_and_data
 from services.console import ConsoleProgress, print_event
 from services.presentation import print_result
 from services.terminal_game import run_game
@@ -76,6 +76,21 @@ def main(argv: list[str] | None = None) -> int:
                 task_repository=task_repository,
                 user_repository=SqliteUserRepository(task_repository),
             )
+            return 0
+
+        if args.command == "purge":
+            queue_report = clear_task_queue_state(dry_run=args.dry_run)
+            _print_queue_reset_report(queue_report, dry_run=args.dry_run)
+            clear_generated_files(
+                PROJECT_ROOT,
+                SETTINGS.output_dir,
+                SETTINGS.task_archive_dir,
+                SEGMENTER_DIR,
+                dry_run=args.dry_run,
+                task_repository=task_repository,
+                user_repository=SqliteUserRepository(task_repository),
+            )
+            purge_logs_and_data(PROJECT_ROOT, dry_run=args.dry_run)
             return 0
 
         if args.command == "archive-tasks":
@@ -225,6 +240,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help="清空账号、任务、归档、BTIR 队列状态和 Python 缓存",
     )
     clear.add_argument( # --dry-run 参数
+        "--dry-run",
+        action="store_true",
+        help="仅列出将清理的文件，不实际删除",
+    )
+
+    # 添加purge子命令
+    purge = commands.add_parser(
+        "purge",
+        help="执行 clear 全部操作并删除 logs 和 data 目录",
+    )
+    purge.add_argument(
         "--dry-run",
         action="store_true",
         help="仅列出将清理的文件，不实际删除",
@@ -397,6 +423,7 @@ def _print_help(parser: argparse.ArgumentParser) -> None:
         "  python Main.py all --task-id <task_id>\n"
         "  python Main.py create dataset/yes/Y101.jpg --input-mode copy\n"
         "  python Main.py clear --dry-run\n"
+        "  python Main.py purge --dry-run\n"
         "  python Main.py archive-tasks\n"
         "  python Main.py purge-archive\n"
         "  python Main.py reconcile-tasks\n"

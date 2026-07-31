@@ -262,6 +262,7 @@ python Main.py benchmark <image_path> --warm-runs 3 --json
 python Main.py evaluate-3d <BraTS数据集目录>
 python Main.py reconcile-tasks
 python Main.py clear --dry-run
+python Main.py purge --dry-run
 python Main.py archive-tasks
 python Main.py purge-archive
 ```
@@ -281,6 +282,10 @@ python Main.py purge-archive
 回到首次启动前的空白状态；`.env`、模型权重和其他 Redis 应用的数据仍会保留。
 执行前必须先停止 API 和 Worker，并先使用 `--dry-run` 检查目标。Redis 不可用
 或仍存在活动 Worker 时，实际清理会拒绝执行。
+
+`purge` 在 `clear` 的基础上额外删除 `logs/` 和 `data/` 目录本身及其全部内容
+（包括日志文件、SQLite 数据库等），使项目回到无日志、无数据库的初始状态。
+执行前同样必须先停止 API 和 Worker，并先使用 `--dry-run` 检查目标。
 
 ## 开发约定
 
