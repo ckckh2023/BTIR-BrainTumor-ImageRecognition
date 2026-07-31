@@ -14,5 +14,6 @@ class UserRecord(BaseModel):
     username: str
     hashed_password: str
     is_active: bool = True
+    token_version: int = 0
     created_at: datetime
     updated_at: datetime

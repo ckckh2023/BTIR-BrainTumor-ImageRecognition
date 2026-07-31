@@ -91,6 +91,10 @@ Authorization: Bearer <access_token>
 `BTIR_REGISTRATION_ENABLED` 控制。任务列表只返回当前用户的数据；访问其他
 用户、无归属或不存在的任务统一返回 `404`，避免泄露任务是否存在。
 
+登录和注册受 Redis 固定窗口限流保护，超过限制返回 `429` 并携带
+`Retry-After`。Redis 不可用时认证入口返回 `503`，已经登录用户的普通任务请求
+不依赖认证限流计数器。账号被禁用或密码被管理员重置后，旧 Token 会立即失效。
+
 ## 上传并创建 2D 任务
 
 ```http

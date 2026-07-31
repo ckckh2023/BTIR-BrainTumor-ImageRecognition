@@ -88,6 +88,11 @@ BTIR_WORKER_PRELOAD_MODELS=true
 BTIR_LINUX_WORKER_MODE=standard
 BTIR_JWT_SECRET_KEY=至少32字节的随机字符串
 BTIR_REGISTRATION_ENABLED=false
+BTIR_AUTH_LOGIN_USER_ATTEMPTS=10
+BTIR_AUTH_LOGIN_IP_ATTEMPTS=60
+BTIR_AUTH_LOGIN_WINDOW_SECONDS=300
+BTIR_AUTH_REGISTRATION_IP_ATTEMPTS=5
+BTIR_AUTH_REGISTRATION_WINDOW_SECONDS=3600
 BTIR_MAX_TASKS_PER_USER=1000
 BTIR_MAX_ACTIVE_TASKS_PER_USER=2
 BTIR_MAX_3D_UPLOAD_BYTES=536870912
@@ -105,9 +110,19 @@ BTIR_3D_CLASSIFIER_TOP_FRACTION=0.1
 python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-API 缺少安全的 `BTIR_JWT_SECRET_KEY` 时会拒绝启动。首次创建账号可以临时开启
-`BTIR_REGISTRATION_ENABLED=true`，注册完成后关闭并重启 API。生产环境还应在
-反向代理层对 `/auth/login` 和 `/auth/register` 设置请求频率限制。
+API 缺少安全的 `BTIR_JWT_SECRET_KEY` 时会拒绝启动。账号可以直接在服务器终端
+创建，无需临时开放公开注册：
+
+```bash
+python Main.py user create <username>
+python Main.py user list
+python Main.py user disable <username>
+python Main.py user enable <username>
+python Main.py user reset-password <username>
+```
+
+登录和注册已有 Redis 应用层限流；生产环境仍建议在反向代理层增加第二层频率
+限制。禁用账号或重置密码会递增 Token 版本，使已经签发的旧 Token 立即失效。
 
 生产环境常见调整：
 
@@ -196,6 +211,15 @@ python -m workers.run_worker --pipeline 3d
 - 使用 Nginx 等反向代理提供 HTTPS。
 - 将 API、Worker 和守护脚本交给 systemd、任务计划程序或其他进程管理器。
 - 启动后检查 `/healthz`、`/readyz`、`/runtime` 和 `/ops/queue`。
+
+应用不会强制 HTTPS，`http://127.0.0.1:8000` 可继续用于本机测试。只有服务正式
+暴露到公网时才需要在 Nginx 等反向代理上终止 TLS。认证限流按客户端 IP 统计；
+Nginx 与 Uvicorn 位于同一服务器时，应仅信任本机代理传入的转发头，例如：
+
+```bash
+python -m uvicorn api.app:app --host 127.0.0.1 --port 8000 \
+  --proxy-headers --forwarded-allow-ips=127.0.0.1
+```
 
 ## GPU 后端
 

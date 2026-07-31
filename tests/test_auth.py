@@ -25,7 +25,8 @@ from core.task_definitions import TaskStatus
 from core.task_records import StoredTaskInput, TaskRecord
 from repositories.sqlite_task_repository import SqliteTaskRepository
 from repositories.user_repository import SqliteUserRepository
-from services.auth_service import validate_auth_configuration
+from services.auth_service import hash_password, validate_auth_configuration
+from services.auth_rate_limit import AuthRateLimitExceededError
 
 
 class AuthenticationTests(unittest.TestCase):
@@ -38,6 +39,8 @@ class AuthenticationTests(unittest.TestCase):
             patch("api.auth.task_repository", self.repository),
             patch("api.routes.tasks.task_repository", self.repository),
             patch("api.routes.auth.SETTINGS", self.registration_settings),
+            patch("api.routes.auth.consume_auth_rate_limit"),
+            patch("api.routes.auth.clear_auth_rate_limit"),
         ]
         for patcher in self.patches:
             patcher.start()
@@ -208,6 +211,62 @@ class AuthenticationTests(unittest.TestCase):
         ):
             with self.assertRaises(RuntimeError):
                 validate_auth_configuration()
+
+    def test_rate_limited_login_returns_retry_after(self) -> None:
+        with (
+            patch(
+                "api.routes.auth.consume_auth_rate_limit",
+                side_effect=AuthRateLimitExceededError(37),
+            ),
+            TestClient(app) as client,
+        ):
+            response = client.post(
+                "/auth/login",
+                json={"username": "alice", "password": "safe-password"},
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+        self.assertEqual(response.headers["Retry-After"], "37")
+
+    def test_password_reset_revokes_existing_token(self) -> None:
+        with TestClient(app) as client:
+            registered = self._register(client, "alice")
+            user_repository = SqliteUserRepository(self.repository)
+            updated = user_repository.update_password(
+                "alice",
+                hash_password("new-safe-password"),
+            )
+            self.assertIsNotNone(updated)
+
+            old_profile = client.get(
+                "/auth/me",
+                headers=self._headers(registered),
+            )
+            new_login = client.post(
+                "/auth/login",
+                json={"username": "alice", "password": "new-safe-password"},
+            )
+
+        self.assertEqual(old_profile.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(new_login.status_code, status.HTTP_200_OK)
+
+    def test_disable_then_enable_keeps_old_token_revoked(self) -> None:
+        with TestClient(app) as client:
+            registered = self._register(client, "alice")
+            user_repository = SqliteUserRepository(self.repository)
+            user_repository.set_active("alice", False)
+            disabled_profile = client.get(
+                "/auth/me",
+                headers=self._headers(registered),
+            )
+            user_repository.set_active("alice", True)
+            reenabled_profile = client.get(
+                "/auth/me",
+                headers=self._headers(registered),
+            )
+
+        self.assertEqual(disabled_profile.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(reenabled_profile.status_code, status.HTTP_401_UNAUTHORIZED)
 
 
 if __name__ == "__main__":

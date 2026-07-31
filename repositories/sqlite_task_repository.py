@@ -173,6 +173,17 @@ def _migration_008_add_user_task_indexes(connection: sqlite3.Connection) -> None
     )
 
 
+def _migration_009_add_user_token_version(connection: sqlite3.Connection) -> None:
+    columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(users)").fetchall()
+    }
+    if "token_version" not in columns:
+        connection.execute(
+            "ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0"
+        )
+
+
 # 创建迁移清单
 SCHEMA_MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (1, "create_tasks_table", _migration_001_create_tasks_table),
@@ -183,6 +194,7 @@ SCHEMA_MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (6, "create_users_table", _migration_006_create_users_table),
     (7, "add_user_id_to_tasks", _migration_007_add_user_id_to_tasks),
     (8, "add_user_task_indexes", _migration_008_add_user_task_indexes),
+    (9, "add_user_token_version", _migration_009_add_user_token_version),
 )
 CURRENT_SCHEMA_VERSION = SCHEMA_MIGRATIONS[-1][0]
 
