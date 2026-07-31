@@ -300,15 +300,6 @@
             font-size: 12px;
         }
 
-        .result-note {
-            padding: 9px 10px;
-            color: #64748b;
-            background: #eef4fa;
-            border-radius: 6px;
-            font-size: 12px;
-            line-height: 1.5;
-        }
-
         .result-label {
             color: #4a5568;
             font-size: 13px;
@@ -870,9 +861,38 @@
 
         .task-card-actions {
             display: flex;
+            flex-wrap: wrap;
             justify-content: flex-end;
             gap: 6px;
             margin-top: 8px;
+        }
+
+        .task-run-history {
+            display: grid;
+            gap: 5px;
+            margin-top: 10px;
+            padding-top: 9px;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .task-run-history-row {
+            display: grid;
+            grid-template-columns: 48px minmax(0, 1fr) auto;
+            align-items: center;
+            gap: 8px;
+            color: #64748b;
+            font-size: 11px;
+        }
+
+        .task-run-history-model {
+            color: #1e3c72;
+            font-weight: 600;
+        }
+
+        .task-run-history-empty {
+            padding: 3px 0;
+            color: #94a3b8;
+            font-size: 11px;
         }
 
         .task-pagination {
@@ -1049,9 +1069,6 @@
                                     <span>{{ formatVolume(region.volumeMm3) }} mm³</span>
                                 </div>
                             </div>
-                        </div>
-                        <div class="result-note" v-if="resultAnalysisMode === '3d'">
-                            当前 3D 路线仅提供分割与定量统计，不包含分类或医学诊断。
                         </div>
                     </div>
                 </div>
@@ -1250,10 +1267,24 @@
                                 >{{ taskActionId === task.task_id ? '读取中...' : '查看结果' }}</button>
                                 <button
                                     class="task-small-btn"
+                                    v-if="taskListMode === 'active'"
+                                    @click="toggleTaskRunHistory(task)"
+                                    :disabled="taskRunHistoryLoading"
+                                >{{ taskRunHistoryLoading && taskRunHistoryTaskId === task.task_id
+                                    ? '读取中...'
+                                    : (taskRunHistoryTaskId === task.task_id ? '收起记录' : '运行记录') }}</button>
+                                <button
+                                    class="task-small-btn"
                                     v-if="taskListMode === 'active' && task.status === 'failed'"
                                     @click="retryTask(task)"
                                     :disabled="taskActionId === task.task_id"
                                 >重试</button>
+                                <button
+                                    class="task-small-btn danger"
+                                    v-if="taskListMode === 'active' && canCancelTask(task.status)"
+                                    @click="cancelTask(task)"
+                                    :disabled="taskActionId === task.task_id"
+                                >{{ taskActionId === task.task_id ? '处理中...' : '取消' }}</button>
                                 <button
                                     class="task-small-btn danger"
                                     v-if="taskListMode === 'active' && canArchiveTask(task.status)"
@@ -1266,6 +1297,26 @@
                                     @click="restoreArchivedTask(task)"
                                     :disabled="taskActionId === task.task_id"
                                 >{{ taskActionId === task.task_id ? '恢复中...' : '恢复任务' }}</button>
+                            </div>
+                            <div
+                                class="task-run-history"
+                                v-if="taskListMode === 'active' && taskRunHistoryTaskId === task.task_id"
+                            >
+                                <div class="task-run-history-empty" v-if="taskRunHistoryLoading">
+                                    读取中...
+                                </div>
+                                <div class="task-run-history-empty" v-else-if="!taskRunHistoryItems.length">
+                                    暂无运行记录
+                                </div>
+                                <div
+                                    class="task-run-history-row"
+                                    v-for="run in taskRunHistoryItems"
+                                    :key="run.run_id"
+                                >
+                                    <span class="task-run-history-model">{{ modelNameLabel(run.model) }}</span>
+                                    <span>{{ formatTaskTime(run.created_at) }}</span>
+                                    <span>{{ formatInferenceTime(run.inference_ms) }}</span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1350,6 +1401,9 @@
                     taskListMode: 'active',
                     taskHistoryLoading: false,
                     taskActionId: '',
+                    taskRunHistoryTaskId: '',
+                    taskRunHistoryItems: [],
+                    taskRunHistoryLoading: false,
                     taskMessage: '',
                     taskMessageIsError: false,
                     currentUser: null,
@@ -1421,6 +1475,16 @@
                 canArchiveTask(status) {
                     return ['created', 'partial', 'succeeded', 'failed', 'canceled'].includes(status)
                 },
+                canCancelTask(status) {
+                    return ['created', 'queued', 'running'].includes(status)
+                },
+                modelNameLabel(model) {
+                    const labels = {
+                        classification: '分类',
+                        segmentation: '分割',
+                    }
+                    return labels[model] || model
+                },
                 formatTaskTime(value) {
                     if (!value) return '未知'
                     const date = new Date(value)
@@ -1431,6 +1495,19 @@
                     return Number.isFinite(number)
                         ? number.toLocaleString('zh-CN', { maximumFractionDigits: 3 })
                         : '0'
+                },
+                formatInferenceTime(value) {
+                    if (value === null || value === undefined || value === '') return '未记录'
+                    const milliseconds = Number(value)
+                    if (!Number.isFinite(milliseconds)) return '未记录'
+                    if (milliseconds < 1000) {
+                        return `${milliseconds.toLocaleString('zh-CN', {
+                            maximumFractionDigits: 1,
+                        })} ms`
+                    }
+                    return `${(milliseconds / 1000).toLocaleString('zh-CN', {
+                        maximumFractionDigits: 2,
+                    })} s`
                 },
                 taskInputSummary(task) {
                     if (task.analysis_mode === '3d' && task.input?.files) {
@@ -1454,6 +1531,7 @@
                         : `${action}失败：HTTP ${response.status}`
                 },
                 async loadTaskHistory(clearMessage = true) {
+                    this.closeTaskRunHistory()
                     this.taskHistoryLoading = true
                     if (clearMessage) {
                         this.taskMessage = ''
@@ -1497,6 +1575,40 @@
                     if (nextOffset < 0 || nextOffset >= this.taskTotal) return
                     this.taskOffset = nextOffset
                     this.loadTaskHistory()
+                },
+                closeTaskRunHistory() {
+                    this.taskRunHistoryTaskId = ''
+                    this.taskRunHistoryItems = []
+                    this.taskRunHistoryLoading = false
+                },
+                async toggleTaskRunHistory(task) {
+                    const taskId = task.task_id
+                    if (this.taskRunHistoryTaskId === taskId) {
+                        this.closeTaskRunHistory()
+                        return
+                    }
+
+                    this.taskRunHistoryTaskId = taskId
+                    this.taskRunHistoryItems = []
+                    this.taskRunHistoryLoading = true
+                    this.taskMessage = ''
+                    try {
+                        const response = await fetch(
+                            `${this.API_BASE}/tasks/${encodeURIComponent(taskId)}/runs?limit=20&offset=0`,
+                            { headers: this.authHeaders }
+                        )
+                        if (!response.ok) {
+                            throw new Error(await this.responseError(response, '读取运行记录'))
+                        }
+                        const payload = await response.json()
+                        this.taskRunHistoryItems = Array.isArray(payload.items) ? payload.items : []
+                    } catch (error) {
+                        this.taskMessage = error.message
+                        this.taskMessageIsError = true
+                        this.closeTaskRunHistory()
+                    } finally {
+                        this.taskRunHistoryLoading = false
+                    }
                 },
                 async viewTaskResult(task) {
                     this.taskActionId = task.task_id
@@ -1584,6 +1696,33 @@
                             throw new Error(await this.responseError(response, '重试任务'))
                         }
                         this.taskMessage = `任务 ${task.task_id} 已重新进入推理队列。`
+                        this.taskMessageIsError = false
+                        await this.loadTaskHistory(false)
+                    } catch (error) {
+                        this.taskMessage = error.message
+                        this.taskMessageIsError = true
+                    } finally {
+                        this.taskActionId = ''
+                    }
+                },
+                async cancelTask(task) {
+                    if (!this.canCancelTask(task.status)) return
+                    if (!window.confirm(`确认取消任务 ${task.task_id}？`)) return
+
+                    this.taskActionId = task.task_id
+                    this.taskMessage = ''
+                    try {
+                        const response = await fetch(
+                            `${this.API_BASE}/tasks/${encodeURIComponent(task.task_id)}/cancel`,
+                            { method: 'POST', headers: this.authHeaders }
+                        )
+                        if (!response.ok) {
+                            throw new Error(await this.responseError(response, '取消任务'))
+                        }
+                        const payload = await response.json()
+                        this.taskMessage = payload.status === 'cancel_requested'
+                            ? `任务 ${task.task_id} 已请求取消。`
+                            : `任务 ${task.task_id} 已取消。`
                         this.taskMessageIsError = false
                         await this.loadTaskHistory(false)
                     } catch (error) {
