@@ -452,7 +452,7 @@ class TaskRunnerTests(unittest.TestCase):
 
         run_segmentation_model.assert_not_called()
 
-    def test_runner_dispatches_3d_task_to_volume_segmentation_only(self) -> None:
+    def test_runner_dispatches_3d_task_to_slice_classification_and_segmentation(self) -> None:
         task_dir = Path("output") / "task-runner-3d-001"
         input_dir = task_dir / "input"
         run_dir = task_dir / "runs" / "segmentation" / "run-3d-001"
@@ -460,6 +460,7 @@ class TaskRunnerTests(unittest.TestCase):
             modality: input_dir / f"{modality}.nii.gz"
             for modality in ("flair", "t1ce", "t1", "t2")
         }
+        classification_result = {"model_result_path": "classification.json"}
         segmentation_result = {"model_result_path": "segmentation.json"}
 
         with (
@@ -471,6 +472,16 @@ class TaskRunnerTests(unittest.TestCase):
                 "services.task_runner.load_task_modalities",
                 return_value=modality_paths,
             ),
+            patch(
+                "services.task_runner.classify_volume",
+                return_value={
+                    "analysis_mode": "3d",
+                    "classification": {
+                        "class": "yes",
+                        "method": "2d_slice_ensemble",
+                    },
+                },
+            ) as classify_3d,
             patch("services.task_runner.create_run_dir", return_value=run_dir),
             patch(
                 "services.task_runner.segment_volume",
@@ -481,22 +492,27 @@ class TaskRunnerTests(unittest.TestCase):
             ) as segment_3d,
             patch(
                 "services.task_runner.persist_model_result",
-                return_value=segmentation_result,
+                side_effect=[classification_result, segmentation_result],
             ) as persist_result,
             patch("services.task_runner._run_classification") as classify_2d,
             patch("services.task_runner._run_segmentation") as segment_2d,
         ):
             result = run_task_models(task_dir, 0.5)
 
-        self.assertIsNone(result.classification_result)
+        self.assertEqual(result.classification_result, classification_result)
         self.assertEqual(result.segmentation_result, segmentation_result)
         self.assertEqual(result.image_path, input_dir)
+        classify_3d.assert_called_once_with(modality_paths)
         segment_3d.assert_called_once_with(
             modality_paths=modality_paths,
             output_dir=run_dir,
         )
         self.assertEqual(
-            persist_result.call_args.kwargs["model_name"],
+            persist_result.call_args_list[0].kwargs["model_name"],
+            ModelName.CLASSIFICATION,
+        )
+        self.assertEqual(
+            persist_result.call_args_list[1].kwargs["model_name"],
             ModelName.SEGMENTATION,
         )
         classify_2d.assert_not_called()
@@ -913,6 +929,35 @@ class TaskPerformanceRecordTests(unittest.TestCase):
             result["segmentation"]["mask_file"],
             "runs/segmentation/run-3d-001/prediction.nii.gz",
         )
+
+    def test_frontend_result_supports_3d_slice_ensemble_classification(self) -> None:
+        input_dir = self.task_dir / "input"
+        result = build_frontend_result(
+            self.task_dir,
+            input_dir,
+            analysis_mode=AnalysisMode.THREE_D,
+            expected_models=[ModelName.CLASSIFICATION, ModelName.SEGMENTATION],
+            input_files={"flair": "flair.nii.gz"},
+            classification={
+                "classification": {
+                    "class": "yes",
+                    "confidence": 0.91,
+                    "method": "2d_slice_ensemble",
+                    "experimental": True,
+                    "evaluated_slices": 32,
+                },
+                "run_directory": "runs/classification/run-3d-001",
+            },
+        )
+
+        self.assertEqual(result["analysis_mode"], "3d")
+        self.assertEqual(result["status"], "partial")
+        self.assertEqual(result["completed_models"], ["classification"])
+        self.assertEqual(
+            result["classification"]["method"],
+            "2d_slice_ensemble",
+        )
+        self.assertTrue(result["classification"]["experimental"])
 
 
 class ModelPreloadTests(unittest.TestCase):

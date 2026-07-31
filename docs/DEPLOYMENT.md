@@ -92,6 +92,10 @@ BTIR_MAX_ACTIVE_TASKS_PER_USER=2
 BTIR_MAX_3D_UPLOAD_BYTES=536870912
 BTIR_MAX_3D_VOXELS=20000000
 BTIR_3D_SEGMENTER_OVERLAP=0.5
+BTIR_3D_CLASSIFIER_MODALITY=flair
+BTIR_3D_CLASSIFIER_MAX_SLICES=64
+BTIR_3D_CLASSIFIER_BATCH_SIZE=16
+BTIR_3D_CLASSIFIER_TOP_FRACTION=0.1
 ```
 
 可以生成 JWT 密钥：
@@ -222,6 +226,8 @@ python -m accelerator.install --backend cpu
 - 多张 GPU 可通过 `BTIR_DEVICE=cuda:0` 指定设备。
 - SuperLightNet 3D 路线支持 CPU 和 NVIDIA CUDA；CPU 可用于功能验证，
   正式体积推理建议使用 CUDA。
+- 3D 路线还会复用 2D ResNet50 对配置模态进行切片集成分类。默认最多处理
+  64 张有效轴向切片，并采用批量推理；该实验性结果不会跳过 3D 分割。
 - 当前实现采用 `128×128×128` 滑窗和可配置重叠率，已在 8 GB 显存的
   RTX 5070 Laptop GPU 上完成 `240×240×155` 体积验证，因此不要求把
   整个原始体积一次性放入显存。实际耗时与显卡、重叠率和输入尺寸有关。

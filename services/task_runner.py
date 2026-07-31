@@ -10,7 +10,12 @@ from typing import Any
 
 from core.task_definitions import AnalysisMode, ModelName
 from repositories.task_repository import task_repository
-from services.inference_service import classify, segment, segment_volume
+from services.inference_service import (
+    classify,
+    classify_volume,
+    segment,
+    segment_volume,
+)
 from services.task_files import (
     create_run_dir,
     load_task_image,
@@ -101,6 +106,22 @@ def _run_volume_segmentation(
     )
 
 
+def _run_volume_classification(
+    task_dir: Path,
+    modality_paths: dict[str, Path],
+) -> dict[str, Any]:
+    '''执行并持久化基于 2D 切片集成的实验性 3D 分类。'''
+    started_at = perf_counter()
+    result = classify_volume(modality_paths)
+    result["timing"] = {"inference_ms": _elapsed_ms(started_at)}
+    return persist_model_result(
+        task_dir=task_dir,
+        image_path=task_dir / "input",
+        model_name=ModelName.CLASSIFICATION,
+        result=result,
+    )
+
+
 def run_classification(task_dir: Path) -> ModelRunResult:
     '''执行单任务分类，并持久化分类结果'''
     image_path = load_task_image(task_dir)
@@ -132,9 +153,17 @@ def run_task_models(
     if task_record.analysis_mode is AnalysisMode.THREE_D:
         modality_paths = load_task_modalities(task_dir)
         if progress_callback is not None:
-            progress_callback("3D 分割推理中", 0)
+            progress_callback("3D 切片分类推理中", 0)
         if should_cancel is not None and should_cancel():
-            raise TaskCancellationRequested("任务已在 3D 分割开始前取消")
+            raise TaskCancellationRequested("任务已在 3D 分类开始前取消")
+        classification_result = _run_volume_classification(
+            task_dir,
+            modality_paths,
+        )
+        if progress_callback is not None:
+            progress_callback("3D 切片分类完成，开始 3D 分割", 30)
+        if should_cancel is not None and should_cancel():
+            raise TaskCancellationRequested("任务已在 3D 分类完成后取消")
         segmentation_result = _run_volume_segmentation(
             task_dir,
             modality_paths,
@@ -143,7 +172,7 @@ def run_task_models(
             progress_callback("3D 分割完成", 100)
         return TaskRunResult(
             image_path=task_dir / "input",
-            classification_result=None,
+            classification_result=classification_result,
             segmentation_result=segmentation_result,
             total_inference_ms=_elapsed_ms(started_at),
         )

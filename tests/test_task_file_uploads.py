@@ -128,7 +128,10 @@ class TaskFileUploadTests(unittest.TestCase):
         self.assertTrue(all(path.is_file() for path in stored.values()))
         saved_record = repository.save.call_args.args[1]
         self.assertEqual(saved_record.analysis_mode, AnalysisMode.THREE_D)
-        self.assertEqual(saved_record.expected_models, [ModelName.SEGMENTATION])
+        self.assertEqual(
+            saved_record.expected_models,
+            [ModelName.CLASSIFICATION, ModelName.SEGMENTATION],
+        )
         self.assertEqual(
             set(saved_record.input.modalities or {}),
             {"flair", "t1ce", "t1", "t2"},

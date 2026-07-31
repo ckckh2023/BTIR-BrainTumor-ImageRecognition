@@ -4,10 +4,11 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 import torch
 import torch.nn as nn
+from PIL.Image import Image
 from torchvision import models
 
 
@@ -55,25 +56,53 @@ def get_transform(config: dict[str, Any]):
     )
 
 
+def predict_images(
+    model: nn.Module,
+    images: Sequence[Image],
+    config: dict[str, Any],
+    *,
+    batch_size: int = 16,
+) -> list[dict[str, Any]]:
+    '''批量预测内存中的 RGB 图像，供单图和 3D 切片流程复用。'''
+    if not images:
+        raise ValueError("至少需要一张分类图片")
+    if batch_size <= 0:
+        raise ValueError("batch_size 必须大于 0")
+
+    device = next(model.parameters()).device
+    transform = get_transform(config)
+    predictions: list[dict[str, Any]] = []
+    with torch.no_grad(): # 不计算梯度，计算推理结果
+        for start in range(0, len(images), batch_size):
+            input_tensor = torch.stack(
+                [
+                    transform(image.convert("RGB"))
+                    for image in images[start:start + batch_size]
+                ]
+            ).to(device)
+            output = model(input_tensor)
+            probabilities = torch.nn.functional.softmax(output, dim=1)
+            class_ids = torch.argmax(probabilities, dim=1)
+            for row, class_id_tensor in zip(probabilities, class_ids):
+                class_id = int(class_id_tensor.item())
+                predictions.append(
+                    {
+                        "class": config["class_names"][class_id],
+                        "class_id": class_id,
+                        "confidence": float(row[class_id].item()),
+                        "probabilities": {
+                            config["class_names"][index]: float(row[index].item())
+                            for index in range(len(config["class_names"]))
+                        },
+                    }
+                )
+    return predictions
+
+
 def predict(model: nn.Module, image_path: str | Path, config: dict[str, Any]) -> dict[str, Any]:
     '''对单张图像进行预测'''
     image = load_rgb_image(image_path)
-    device = next(model.parameters()).device
-    input_tensor = get_transform(config)(image).unsqueeze(0).to(device)
-    with torch.no_grad(): # 不计算梯度，计算推理结果
-        output = model(input_tensor)
-        probabilities = torch.nn.functional.softmax(output, dim=1)
-        class_id = torch.argmax(probabilities, dim=1).item()
-
-    return {
-        "class": config["class_names"][class_id],
-        "class_id": class_id,
-        "confidence": probabilities[0][class_id].item(),
-        "probabilities": {
-            config["class_names"][index]: probabilities[0][index].item()
-            for index in range(len(config["class_names"]))
-        },
-    }
+    return predict_images(model, [image], config, batch_size=1)[0]
 
 
 def _print_prediction(prediction: dict[str, Any]) -> None:

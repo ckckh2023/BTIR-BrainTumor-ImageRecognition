@@ -159,8 +159,10 @@ BraTS 命名规则，模态由表单字段确定。四个文件总大小由
 }
 ```
 
-当前 3D 路线只执行 SuperLightNet 分割，不会把单张切片交给旧 2D 分类器。
-后续可在不改变四模态上传协议的前提下，为 3D 任务增加独立分类模型。
+当前 3D 路线默认从 `FLAIR` 体积中筛选有效轴向切片，批量调用现有 2D
+分类器，再聚合为患者级实验性分类结果；随后始终执行 SuperLightNet 分割。
+切片分类不会根据阴性置信度跳过分割。模态、最大切片数、批量大小和聚合比例
+可通过 `BTIR_3D_CLASSIFIER_*` 配置调整。
 
 ## 提交异步推理
 
@@ -214,10 +216,10 @@ GET /tasks/{task_id}
 ["classification", "segmentation"]
 ```
 
-3D 成功任务当前为：
+3D 成功任务同样为：
 
 ```json
-["segmentation"]
+["classification", "segmentation"]
 ```
 
 响应中的主要字段：
@@ -255,6 +257,15 @@ GET /tasks/{task_id}
 
 3D 任务的 `input.filename` 为 `null`，`input.files` 分别给出四个模态的
 文件名、大小与 SHA-256。
+`frontend_result.classification` 是切片集成结果，主要字段包括：
+
+- `method`：固定为 `2d_slice_ensemble`；
+- `experimental`：固定为 `true`，表示尚未替代患者级验证的原生 3D 分类器；
+- `modality`、`axis`：切片来源和方向；
+- `evaluated_slices`、`positive_slices`：参与聚合及判为阳性的切片数量；
+- `aggregation`、`top_fraction`、`top_k`：患者级概率聚合方式；
+- `evidence_slices`：最高肿瘤概率的少量切片索引及概率，仅供联调和审计。
+
 `frontend_result.segmentation` 提供：
 
 - `mask_file`：预测标签 NIfTI 的任务内相对路径，可通过
@@ -263,8 +274,8 @@ GET /tasks/{task_id}
 - `labels`：输出标签定义，采用 BraTS 标签 `0/1/2/4`；
 - `regions`：各标签的体素数、体积与占比。
 
-输出 `prediction.nii.gz` 保持原始 shape 和 affine。上述数据是分割及定量统计，
-不是肿瘤类型诊断、脑叶定位或临床结论。
+输出 `prediction.nii.gz` 保持原始 shape 和 affine。切片分类属于兼容性过渡
+方案，上述分类、分割及定量统计都不是肿瘤类型诊断、脑叶定位或临床结论。
 
 失败任务只公开可展示的 `error.code`、`error.message` 和
 `error.updated_at`，内部异常详情与本机路径不会通过 API 返回。

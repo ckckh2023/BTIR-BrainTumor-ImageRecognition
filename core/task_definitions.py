@@ -81,9 +81,7 @@ def expected_models_for_mode(
 ) -> frozenset[ModelName]:
     '''返回指定管线当前必须完成的模型步骤'''
 
-    mode = AnalysisMode(analysis_mode)
-    if mode is AnalysisMode.THREE_D:
-        return frozenset({ModelName.SEGMENTATION})
+    AnalysisMode(analysis_mode)
     return ALL_MODELS
 
 
