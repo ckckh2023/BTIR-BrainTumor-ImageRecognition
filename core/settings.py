@@ -107,6 +107,23 @@ def _get_overlap(name: str, default: float) -> float:
     return value
 
 
+def _get_fraction(name: str, default: float) -> float:
+    value = float(os.getenv(name, str(default)))
+    if not 0 < value <= 1:
+        raise ValueError(f"{name} 必须位于 (0, 1]")
+    return value
+
+
+def _get_volume_classifier_modality() -> str:
+    value = os.getenv("BTIR_3D_CLASSIFIER_MODALITY", "flair").strip().lower()
+    allowed = {"flair", "t1ce", "t1", "t2"}
+    if value not in allowed:
+        raise ValueError(
+            "BTIR_3D_CLASSIFIER_MODALITY 必须是 flair、t1ce、t1 或 t2"
+        )
+    return value
+
+
 @dataclass(frozen=True)
 class Settings:
     '''由环境变量和 .env 文件构建的不可变运行配置'''
@@ -122,6 +139,10 @@ class Settings:
     segmenter_3d_script: Path
     segmenter_3d_model: Path
     segmenter_3d_overlap: float
+    volume_classifier_modality: str
+    volume_classifier_max_slices: int
+    volume_classifier_batch_size: int
+    volume_classifier_top_fraction: float
     task_database_path: Path
     task_archive_dir: Path
     device: str
@@ -191,6 +212,19 @@ def _build_settings() -> Settings:
             str(segmenter_3d_dir / "model" / "model_epoch_297.pth"),
         ),
         segmenter_3d_overlap=_get_overlap("BTIR_3D_SEGMENTER_OVERLAP", 0.5),
+        volume_classifier_modality=_get_volume_classifier_modality(),
+        volume_classifier_max_slices=_get_positive_int(
+            "BTIR_3D_CLASSIFIER_MAX_SLICES",
+            64,
+        ),
+        volume_classifier_batch_size=_get_positive_int(
+            "BTIR_3D_CLASSIFIER_BATCH_SIZE",
+            16,
+        ),
+        volume_classifier_top_fraction=_get_fraction(
+            "BTIR_3D_CLASSIFIER_TOP_FRACTION",
+            0.1,
+        ),
         device=device,
         default_segment_threshold=_get_threshold(),
         max_upload_bytes=_get_positive_int(

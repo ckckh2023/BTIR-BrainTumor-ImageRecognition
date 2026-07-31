@@ -11,6 +11,10 @@ from typing import Any
 from accelerator import resolve_device
 from core.settings import SETTINGS
 from processing.postprocessing import analyze_mask, save_mask
+from processing.volume_classification import (
+    aggregate_slice_predictions,
+    prepare_volume_slices,
+)
 from functools import lru_cache
 
 
@@ -95,6 +99,44 @@ def classify(image_path: Path) -> dict[str, Any]:
         "model": "models/classification/resnet50",
         "image_path": str(image_path),
         "classification": prediction,
+    }
+
+
+def classify_volume(modality_paths: dict[str, Path]) -> dict[str, Any]:
+    '''使用现有 2D 分类器对一个 3D 模态的轴向切片进行患者级集成分类'''
+    modality = SETTINGS.volume_classifier_modality
+    try:
+        volume_path = modality_paths[modality]
+    except KeyError as exc:
+        raise ValueError(f"3D 分类缺少 {modality} 模态") from exc
+
+    prepared = prepare_volume_slices(
+        volume_path,
+        max_slices=SETTINGS.volume_classifier_max_slices,
+    )
+    namespace = _load_classifier_namespace()
+    torch = namespace["torch"]
+    device = resolve_device(torch, SETTINGS.device)
+    model, config = _load_classifier_model(str(device))
+    predictions = namespace["predict_images"](
+        model,
+        prepared.images,
+        config,
+        batch_size=SETTINGS.volume_classifier_batch_size,
+    )
+    classification = aggregate_slice_predictions(
+        prepared.indices,
+        predictions,
+        modality=modality,
+        top_fraction=SETTINGS.volume_classifier_top_fraction,
+    )
+    classification["canonical_shape"] = list(prepared.canonical_shape)
+    classification["foreground_slices"] = prepared.foreground_slice_count
+    classification["intensity_window"] = list(prepared.intensity_window)
+    return {
+        "model": "models/classification/resnet50-slice-ensemble",
+        "analysis_mode": "3d",
+        "classification": classification,
     }
 
 

@@ -14,6 +14,7 @@ from core.task_definitions import (
     TaskDirectory,
     TaskStatus,
     model_result_filename,
+    expected_models_for_mode,
     task_status_for_completed_models,
     task_status_from_job_status,
 )
@@ -54,6 +55,10 @@ class TaskDefinitionTests(unittest.TestCase):
                 [ModelName.SEGMENTATION],
             ),
             TaskStatus.SUCCEEDED,
+        )
+        self.assertEqual(
+            expected_models_for_mode(AnalysisMode.THREE_D),
+            {ModelName.CLASSIFICATION, ModelName.SEGMENTATION},
         )
         self.assertEqual(
             task_status_from_job_status(JobStatus.QUEUED),
