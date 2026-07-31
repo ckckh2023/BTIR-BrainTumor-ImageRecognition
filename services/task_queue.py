@@ -38,6 +38,17 @@ class TaskReconciliationReport:
     skipped_task_ids: list[str]
 
 
+@dataclass(frozen=True)
+class TaskQueueResetReport:
+    '''开发调试全量重置时需要清理的本项目 Redis 状态'''
+
+    queue_name: str
+    queued_job_count: int
+    registry_job_count: int
+    task_lock_count: int
+    active_worker_count: int
+
+
 PENDING_RQ_STATUSES = frozenset(
     {
         RqJobStatus.QUEUED,
@@ -82,6 +93,66 @@ def get_inference_queue_status() -> dict[str, int | float | None]:
         "failed_jobs": queue.failed_job_registry.count,
         "oldest_wait_seconds": oldest_wait_seconds,
     }
+
+
+def clear_task_queue_state(*, dry_run: bool) -> TaskQueueResetReport:
+    '''只清理 BTIR 推理队列、作业记录与任务锁，不清空整个 Redis 数据库。'''
+    try:
+        queue = get_task_queue()
+        connection = get_redis_client()
+        active_worker_count = len(get_active_inference_workers())
+        registries = (
+            queue.started_job_registry,
+            queue.failed_job_registry,
+            queue.finished_job_registry,
+            queue.deferred_job_registry,
+            queue.scheduled_job_registry,
+            queue.canceled_job_registry,
+        )
+        queued_job_ids = set(queue.get_job_ids())
+        registry_entries = [
+            (registry, registry.get_job_ids(cleanup=False))
+            for registry in registries
+        ]
+        registry_job_ids = {
+            job_id
+            for _, job_ids in registry_entries
+            for job_id in job_ids
+        }
+        task_lock_keys = list(connection.scan_iter(match="btir:task:*:write"))
+    except RedisError as exc:
+        raise TaskQueueUnavailableError(
+            "Redis 不可用，无法确认并清空 BTIR 队列状态"
+        ) from exc
+
+    report = TaskQueueResetReport(
+        queue_name=SETTINGS.task_queue_name,
+        queued_job_count=len(queued_job_ids),
+        registry_job_count=len(registry_job_ids),
+        task_lock_count=len(task_lock_keys),
+        active_worker_count=active_worker_count,
+    )
+    if dry_run:
+        return report
+    if active_worker_count:
+        raise ValueError("检测到活动推理 Worker，请先停止 API 与 Worker 后再执行 clear")
+
+    try:
+        for registry, job_ids in registry_entries:
+            for job_id in job_ids:
+                registry.remove(job_id, delete_job=False)
+        queue.delete(delete_jobs=True)
+        for job_id in registry_job_ids - queued_job_ids:
+            try:
+                Job.fetch(job_id, connection=connection).delete()
+            except NoSuchJobError:
+                pass
+        if task_lock_keys:
+            connection.delete(*task_lock_keys)
+    except RedisError as exc:
+        raise TaskQueueUnavailableError("清空 BTIR 队列状态失败") from exc
+
+    return report
 
 
 def _get_oldest_queue_wait_seconds(queue: Queue) -> float | None:

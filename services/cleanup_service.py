@@ -5,25 +5,32 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+from repositories.user_repository import SqliteUserRepository
 from repositories.task_repository_contracts import TaskRepository
 
 
 def clear_generated_files(
     project_root: Path,
     output_dir: Path,
+    archive_dir: Path,
     segmentation_dir: Path,
     *,
     dry_run: bool,
-    task_repository: TaskRepository | None = None,
-    clear_task_metadata: bool = False,
+    task_repository: TaskRepository,
+    user_repository: SqliteUserRepository,
 ) -> None:
-    '''仅用于清理缓存和结果文件'''
+    '''将开发环境的业务数据与生成文件恢复为空白状态。'''
     project_root = project_root.resolve()
     output_dir = output_dir.resolve()
-    if output_dir == output_dir.parent or output_dir == project_root:
-        raise ValueError("输出目录不能是磁盘根目录或项目根目录")
+    archive_dir = archive_dir.resolve()
+    for name, path in (
+        ("输出目录", output_dir),
+        ("归档目录", archive_dir),
+    ):
+        if path == path.parent or path == project_root:
+            raise ValueError(f"{name}不能是磁盘根目录或项目根目录")
 
-    targets = [output_dir, segmentation_dir / "output"]
+    targets = [output_dir, archive_dir, segmentation_dir / "output"]
     cache_directory_names = {"__pycache__", ".pytest_cache", ".mypy_cache"}
     targets.extend( # 寻找缓存目录
         path
@@ -42,12 +49,9 @@ def clear_generated_files(
         if not any(parent in unique_targets for parent in path.parents)
     ] # 寻找删除目标集的根目录
     existing_targets = [path for path in root_targets if path.exists()]
-    task_count = (
-        task_repository.count()
-        if clear_task_metadata and task_repository is not None
-        else 0
-    )
-    if not existing_targets and task_count == 0:
+    task_count = task_repository.count()
+    user_count = user_repository.count()
+    if not existing_targets and task_count == 0 and user_count == 0:
         print("没有可清理的缓存或结果文件")
         return
 
@@ -64,9 +68,15 @@ def clear_generated_files(
 
     if task_count:
         print(f"  SQLite 任务记录：{task_count} 条")
-        if not dry_run and task_repository is not None:
+        if not dry_run:
             deleted_count = task_repository.delete_all()
             print(f"  已删除 SQLite 任务记录：{deleted_count} 条")
+
+    if user_count:
+        print(f"  SQLite 用户账号：{user_count} 条")
+        if not dry_run:
+            deleted_count = user_repository.delete_all()
+            print(f"  已删除 SQLite 用户账号：{deleted_count} 条")
 
 
 def _display_path(path: Path, project_root: Path) -> str:

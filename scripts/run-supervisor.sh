@@ -99,7 +99,8 @@ fi
 
 if ! (
     cd "$PROJECT_ROOT"
-    "$PYTHON_EXE" -c 'import fastapi, redis, rq, uvicorn'
+    "$PYTHON_EXE" -c \
+        'import fastapi, pydantic, redis, rq, uvicorn, jose, passlib, PIL, nibabel, numpy, einops, monai, torch, torchvision, tqdm, multipart'
 ); then
     fail "project dependencies are incomplete; run: $PYTHON_EXE -m pip install -r requirements.txt"
 fi
