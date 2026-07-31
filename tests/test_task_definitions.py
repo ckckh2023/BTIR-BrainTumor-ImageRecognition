@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import unittest
 
+from core.result_contract import FRONTEND_RESULT_SCHEMA_VERSION
 from core.task_definitions import (
     ACTIVE_ASYNC_TASK_STATUSES,
     AnalysisMode,
@@ -70,6 +71,7 @@ class TaskDefinitionTests(unittest.TestCase):
         )
 
     def test_model_and_artifact_values_are_stable(self) -> None:
+        self.assertEqual(FRONTEND_RESULT_SCHEMA_VERSION, "1.0")
         self.assertEqual(model_result_filename(ModelName.CLASSIFICATION), "classification.json")
         self.assertEqual(TaskArtifact.SEGMENTATION_RESULT.value, "segmentation.json")
         self.assertEqual(TaskArtifact.FRONTEND_RESULT.value, "frontend_result.json")

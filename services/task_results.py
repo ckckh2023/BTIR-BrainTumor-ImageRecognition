@@ -7,6 +7,11 @@ import json
 from pathlib import Path
 from typing import Any
 
+from core.result_contract import (
+    FRONTEND_RESULT_SCHEMA_VERSION,
+    upgrade_frontend_result,
+    validate_frontend_result,
+)
 from core.task_definitions import (
     ALL_MODELS,
     AnalysisMode,
@@ -114,6 +119,7 @@ def build_frontend_result(
         result = json.loads(frontend_path.read_text(encoding="utf-8"))
         if not isinstance(result, dict):
             raise ValueError("前端结果文件格式无效")
+        upgrade_frontend_result(result)
         existing_image_file = result.get("image_file")
         if (
             AnalysisMode(analysis_mode) is AnalysisMode.TWO_D
@@ -123,11 +129,13 @@ def build_frontend_result(
             raise ValueError("一个任务只能包含同一张输入图像的结果")
     else:
         result = {
+            "schema_version": FRONTEND_RESULT_SCHEMA_VERSION,
             "task_id": task_dir.name,
             "created_at": datetime.now().astimezone().isoformat(),
             "result_files": {"frontend": TaskArtifact.FRONTEND_RESULT},
         }
 
+    result["schema_version"] = FRONTEND_RESULT_SCHEMA_VERSION
     result["task_id"] = task_dir.name
     result["updated_at"] = datetime.now().astimezone().isoformat()
     result.pop("image_path", None)
@@ -143,7 +151,9 @@ def build_frontend_result(
     result.setdefault("latest_runs", {})
     result["result_files"]["frontend"] = TaskArtifact.FRONTEND_RESULT
     if classification is not None:
-        result["classification"] = classification["classification"]
+        classification_payload = dict(classification["classification"])
+        classification_payload["model"] = classification["model"]
+        result["classification"] = classification_payload
         result["result_files"]["classification"] = TaskArtifact.CLASSIFICATION_RESULT
         result["latest_runs"]["classification"] = (
             f"{classification['run_directory']}/{TaskArtifact.RUN_RESULT}"
@@ -154,6 +164,7 @@ def build_frontend_result(
         if segmentation.get("analysis_mode") == AnalysisMode.THREE_D.value:
             result["segmentation"] = {
                 "model": segmentation["model"],
+                "model_metadata": segmentation.get("model_metadata", {}),
                 "spatial": segmentation["spatial"],
                 "labels": segmentation["labels"],
                 "regions": segmentation["regions"],
@@ -182,6 +193,7 @@ def build_frontend_result(
         completed_models,
         expected_models,
     ).value
+    validate_frontend_result(result)
     return result
 
 
