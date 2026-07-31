@@ -67,7 +67,7 @@ POST /tasks/{task_id}/restore 恢复所选任务
 | `GET` | `/healthz` | API 存活检查 |
 | `GET` | `/readyz` | 完整依赖就绪检查 |
 | `GET` | `/runtime` | 查询实际推理设备 |
-| `GET` | `/ops/queue` | 查询队列运行状态 |
+| `GET` | `/ops/queue` | 查询 2D、3D 独立队列及合计运行状态 |
 
 ## 认证
 

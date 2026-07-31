@@ -10,6 +10,7 @@ from typing import Any
 
 from accelerator import resolve_device
 from core.settings import SETTINGS
+from core.task_definitions import AnalysisMode
 from processing.postprocessing import analyze_mask, save_mask
 from processing.volume_classification import (
     aggregate_slice_predictions,
@@ -199,18 +200,30 @@ def segment_volume(
     }
 
 
-def preload_inference_models() -> dict[str, float | str]:
-    '''预加载模型到当前进程缓存；单个模型失败不会阻止另一个模型预热'''
-    outcomes: dict[str, float | str] = {}
-    for name, namespace_loader, model_loader in (
+def preload_inference_models(
+    analysis_mode: AnalysisMode | str | None = None,
+) -> dict[str, float | str]:
+    '''按 Worker 路线预加载模型；单个模型失败不会阻止其他模型预热。'''
+
+    mode = AnalysisMode(analysis_mode) if analysis_mode is not None else None
+    loaders = [
         ("classification", _load_classifier_namespace, _load_classifier_model),
-        ("segmentation", _load_segmentation_namespace, _load_segmentation_model),
-        (
-            "segmentation3d",
-            _load_3d_segmentation_namespace,
-            _load_3d_segmentation_model,
-        ),
-    ):
+    ]
+    if mode in {None, AnalysisMode.TWO_D}:
+        loaders.append(
+            ("segmentation", _load_segmentation_namespace, _load_segmentation_model)
+        )
+    if mode in {None, AnalysisMode.THREE_D}:
+        loaders.append(
+            (
+                "segmentation3d",
+                _load_3d_segmentation_namespace,
+                _load_3d_segmentation_model,
+            )
+        )
+
+    outcomes: dict[str, float | str] = {}
+    for name, namespace_loader, model_loader in loaders:
         started_at = perf_counter()
         try:
             namespace = namespace_loader()

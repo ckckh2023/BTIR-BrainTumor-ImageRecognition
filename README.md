@@ -10,7 +10,7 @@ BTIR 提供脑肿瘤 MRI 图像分类与分割能力。每次分析以独立
 | 模型推理 | 已完成 | 2D 图片执行分类与分割；3D 四模态 NIfTI 执行实验性切片集成分类与 SuperLightNet 分割 |
 | 任务管理 | 已完成 | 上传创建任务、异步运行、重试、取消、软删除、恢复、状态查询 |
 | 历史查询 | 已完成 | 支持任务筛选、分页和单任务运行历史 |
-| 异步调度 | 已完成 | Redis + RQ，自动重试、状态对账和安全取消 |
+| 异步调度 | 已完成 | Redis + RQ，2D/3D 队列隔离、自动重试、状态对账和安全取消 |
 | 数据持久化 | 已完成 | SQLite 保存元数据，文件系统保存图像与完整结果 |
 | 运行安全 | 已完成 | Redis 写入锁、SQLite 事务、JSON 原子写入 |
 | CPU/GPU | 已完成 | CPU、NVIDIA CUDA、Linux AMD ROCm |
@@ -89,13 +89,19 @@ docker start btir-redis
 python -m uvicorn api.app:app --reload
 ```
 
-终端 2：
+终端 2 启动 2D Worker：
 
 ```powershell
-python -m workers.run_worker
+python -m workers.run_worker --pipeline 2d
 ```
 
-Linux 已准备好项目内 `.venv` 时，也可以一条命令同时托管 API 与 Worker。
+终端 3 启动 3D Worker：
+
+```powershell
+python -m workers.run_worker --pipeline 3d
+```
+
+Linux 已准备好项目内 `.venv` 时，也可以一条命令同时托管 API 与两个 Worker。
 该脚本不会启动 Docker 或 Redis；若 Redis 运行在 Docker 中，请先启动 Docker 和 Redis 容器：
 
 ```bash

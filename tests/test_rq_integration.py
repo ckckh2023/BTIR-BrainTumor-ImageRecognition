@@ -104,7 +104,8 @@ class RqIntegrationTests(unittest.TestCase):
                 SETTINGS,
                 output_dir=root / "output",
                 task_database_path=root / "tasks.db",
-                task_queue_name=self.queue.name,
+                task_queue_2d_name=self.queue.name,
+                task_queue_3d_name=f"{self.queue.name}-3d",
             )
             repository = SqliteTaskRepository(settings.task_database_path)
             image_stream = BytesIO()

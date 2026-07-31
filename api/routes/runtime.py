@@ -5,6 +5,7 @@ from redis.exceptions import RedisError
 
 from accelerator import get_runtime_status
 from core.settings import SETTINGS
+from core.task_definitions import AnalysisMode
 from contracts.task import InferenceQueueStatusResponse, RuntimeStatusResponse
 from repositories.task_repository_contracts import (
     TaskRepositoryUnavailableError,
@@ -44,13 +45,22 @@ def get_readiness() -> dict[str, object]:
 
     if components["redis"] == "ok":
         try:
-            components["inference_worker"] = (
-                "ok" if has_active_inference_worker() else "unavailable"
+            components["inference_worker_2d"] = (
+                "ok"
+                if has_active_inference_worker(AnalysisMode.TWO_D)
+                else "unavailable"
+            )
+            components["inference_worker_3d"] = (
+                "ok"
+                if has_active_inference_worker(AnalysisMode.THREE_D)
+                else "unavailable"
             )
         except RedisError:
-            components["inference_worker"] = "unavailable"
+            components["inference_worker_2d"] = "unavailable"
+            components["inference_worker_3d"] = "unavailable"
     else:
-        components["inference_worker"] = "unavailable"
+        components["inference_worker_2d"] = "unavailable"
+        components["inference_worker_3d"] = "unavailable"
 
     model_files = (
         SETTINGS.classifier_script,

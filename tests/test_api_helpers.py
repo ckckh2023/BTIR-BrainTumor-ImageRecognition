@@ -193,7 +193,8 @@ class TaskRouteHelperTests(unittest.TestCase):
             {
                 "task_database": "ok",
                 "redis": "ok",
-                "inference_worker": "ok",
+                "inference_worker_2d": "ok",
+                "inference_worker_3d": "ok",
                 "models": "ok",
             },
         )
@@ -210,7 +211,32 @@ class TaskRouteHelperTests(unittest.TestCase):
             get_readiness()
 
         self.assertEqual(caught.exception.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
-        self.assertEqual(caught.exception.detail["components"]["inference_worker"], "unavailable")
+        self.assertEqual(
+            caught.exception.detail["components"]["inference_worker_2d"],
+            "unavailable",
+        )
+        self.assertEqual(
+            caught.exception.detail["components"]["inference_worker_3d"],
+            "unavailable",
+        )
+
+    def test_readiness_requires_both_pipeline_workers(self) -> None:
+        redis_client = Mock()
+        redis_client.ping.return_value = True
+        with (
+            patch("api.routes.runtime.task_repository.health_check"),
+            patch("api.routes.runtime.get_redis_client", return_value=redis_client),
+            patch(
+                "api.routes.runtime.has_active_inference_worker",
+                side_effect=(True, False),
+            ),
+            self.assertRaises(HTTPException) as caught,
+        ):
+            get_readiness()
+
+        components = caught.exception.detail["components"]
+        self.assertEqual(components["inference_worker_2d"], "ok")
+        self.assertEqual(components["inference_worker_3d"], "unavailable")
 
     def test_readiness_returns_503_when_redis_is_unavailable(self) -> None:
         with (
@@ -227,25 +253,44 @@ class TaskRouteHelperTests(unittest.TestCase):
         self.assertEqual(caught.exception.detail["components"]["redis"], "unavailable")
 
     def test_queue_status_summarizes_the_inference_queue(self) -> None:
-        queue = Mock()
-        queue.count = 2
-        queue.started_job_registry.count = 1
-        queue.failed_job_registry.count = 3
-        queue.get_job_ids.return_value = ["job-oldest"]
+        queue_2d = Mock(name="queue-2d")
+        queue_2d.name = "inference-2d"
+        queue_2d.count = 2
+        queue_2d.started_job_registry.count = 1
+        queue_2d.failed_job_registry.count = 3
+        queue_2d.get_job_ids.return_value = ["job-oldest"]
+        queue_3d = Mock(name="queue-3d")
+        queue_3d.name = "inference-3d"
+        queue_3d.count = 4
+        queue_3d.started_job_registry.count = 1
+        queue_3d.failed_job_registry.count = 0
+        queue_3d.get_job_ids.return_value = []
         oldest_job = Mock(enqueued_at=datetime.now().astimezone() - timedelta(seconds=4))
+        worker_2d = Mock()
+        worker_2d.queue_names.return_value = ["inference-2d"]
+        worker_3d = Mock()
+        worker_3d.queue_names.return_value = ["inference-3d"]
 
         with (
-            patch("services.task_queue.get_task_queue", return_value=queue),
-            patch("services.task_queue.get_active_inference_workers", return_value=[Mock(), Mock()]),
+            patch(
+                "services.task_queue.get_task_queue",
+                side_effect=(queue_2d, queue_3d),
+            ),
+            patch(
+                "services.task_queue.get_active_inference_workers",
+                return_value=[worker_2d, worker_3d],
+            ),
             patch("services.task_queue.Job.fetch", return_value=oldest_job),
         ):
             queue_status = get_inference_queue_status()
 
         self.assertEqual(queue_status["active_workers"], 2)
-        self.assertEqual(queue_status["queued_jobs"], 2)
-        self.assertEqual(queue_status["running_jobs"], 1)
+        self.assertEqual(queue_status["queued_jobs"], 6)
+        self.assertEqual(queue_status["running_jobs"], 2)
         self.assertEqual(queue_status["failed_jobs"], 3)
         self.assertGreaterEqual(queue_status["oldest_wait_seconds"], 4)
+        self.assertEqual(queue_status["queues"]["2d"]["active_workers"], 1)
+        self.assertEqual(queue_status["queues"]["3d"]["queued_jobs"], 4)
 
     def test_queue_status_returns_503_when_redis_is_unavailable(self) -> None:
         with (

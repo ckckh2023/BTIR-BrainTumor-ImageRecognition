@@ -24,11 +24,13 @@ GET /readyz
 
 - SQLite 任务数据库
 - Redis
-- 推理 Worker 注册状态
+- 2D、3D 推理 Worker 注册状态
 - 分类与分割模型文件
 
 全部正常时返回 `200`；任一关键组件不可用时返回 `503`，并在
-`detail.components` 标出组件状态。
+`detail.components` 的 `inference_worker_2d`、`inference_worker_3d`
+等字段标出组件状态。一个同时监听两条队列的 `--pipeline all` Worker 也会使
+两项通过，但只有两个独立 Worker 才能避免互相阻塞。
 
 ### 运行设备
 
@@ -52,6 +54,7 @@ GET /ops/queue
 - `running_jobs`
 - `failed_jobs`
 - `oldest_wait_seconds`
+- `queues.2d` 与 `queues.3d`：分别提供队列名和上述指标
 
 Redis 不可用时返回 `503`。
 
@@ -62,6 +65,10 @@ Redis 同时用于：
 - RQ 异步任务队列
 - 任务结果写回锁
 - Worker 注册和队列状态
+
+2D 任务进入 `BTIR_TASK_QUEUE_2D_NAME`，3D 任务进入
+`BTIR_TASK_QUEUE_3D_NAME`。正式部署分别启动两个 Worker，长时间 3D 推理不会
+占住 2D 队列；同一任务的去重、取消、重试和状态对账规则保持不变。
 
 同一任务已经处于 `queued` 或 `running` 时，重复提交会复用原作业，不会
 重复入队。
@@ -295,7 +302,8 @@ python Main.py clear
 - `BTIR_OUTPUT_DIR` 下的活动任务；
 - `BTIR_TASK_ARCHIVE_DIR` 下的归档任务、待清除目录和归档审计；
 - SQLite 中的全部任务记录；
-- `BTIR_TASK_QUEUE_NAME` 对应的 RQ 队列、作业注册表、作业结果及
+- `BTIR_TASK_QUEUE_2D_NAME`、`BTIR_TASK_QUEUE_3D_NAME` 对应的 RQ 队列、
+  作业注册表、作业结果及
   `btir:task:*:write` 任务锁；
 - Python 与工具缓存，以及旧分割脚本生成的临时结果。
 
@@ -351,7 +359,8 @@ python Main.py benchmark "dataset/no/1 no.jpeg" --warm-runs 3 --json
 
 1. `GET /ops/queue` 是否存在活动 Worker。
 2. Redis 是否可用。
-3. Worker 是否监听 `.env` 中的 `BTIR_TASK_QUEUE_NAME`。
+3. 根据任务的 `analysis_mode`，检查对应 Worker 是否监听 `.env` 中的
+   `BTIR_TASK_QUEUE_2D_NAME` 或 `BTIR_TASK_QUEUE_3D_NAME`。
 4. Worker 日志中是否收到对应 `task_id`。
 5. 运行时间是否超过 `BTIR_TASK_STALE_AFTER_SECONDS`。
 
