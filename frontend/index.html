@@ -706,6 +706,128 @@
             text-align: center;
         }
 
+        .volume-viewer {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            overflow: hidden;
+            background: #09111f;
+            border-radius: 8px;
+        }
+
+        .volume-viewer-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 10px;
+            color: #cbd5e1;
+            background: #111c2e;
+            border-bottom: 1px solid #26364d;
+            font-size: 12px;
+        }
+
+        .volume-viewer-toolbar-group {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .volume-viewer-button {
+            padding: 5px 9px;
+            color: #cbd5e1;
+            background: transparent;
+            border: 1px solid #3b4b63;
+            border-radius: 5px;
+            font-size: 11px;
+            cursor: pointer;
+        }
+
+        .volume-viewer-button:hover:not(:disabled) {
+            background: #23324a;
+        }
+
+        .volume-viewer-button.active {
+            color: #fff;
+            background: #315f9b;
+            border-color: #477bbd;
+        }
+
+        .volume-viewer-button:disabled {
+            opacity: 0.45;
+            cursor: wait;
+        }
+
+        .volume-viewer-mask-control {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-left: auto;
+            color: #cbd5e1;
+            font-weight: 400;
+        }
+
+        .volume-viewer-mask-control input[type="range"] {
+            width: 76px;
+            accent-color: #4c86c6;
+        }
+
+        .volume-viewer-stage {
+            position: relative;
+            flex: 1;
+            min-height: 0;
+        }
+
+        .volume-viewer-stage canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            min-height: 320px;
+            outline: none;
+        }
+
+        .volume-viewer-status {
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            color: #dbeafe;
+            background: rgba(9, 17, 31, 0.82);
+            font-size: 13px;
+            text-align: center;
+        }
+
+        .volume-viewer-status.error {
+            color: #fecaca;
+        }
+
+        .volume-viewer-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            padding: 7px 10px;
+            color: #94a3b8;
+            background: #0e1828;
+            border-top: 1px solid #26364d;
+            font-size: 10px;
+        }
+
+        .volume-viewer-legend-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .volume-viewer-legend-color {
+            width: 9px;
+            height: 9px;
+            border-radius: 2px;
+        }
+
         .task-status {
             flex-shrink: 0;
             padding: 3px 7px;
@@ -963,7 +1085,75 @@
                             @click="selectFile(f)"
                         >{{ f.label }}</div>
                     </div>
-                    <div class="image-viewer" v-if="selectedFileType === 'image' && selectedFileUrl">
+                    <div class="volume-viewer" v-if="selectedFileType === 'volume'">
+                        <div class="volume-viewer-toolbar">
+                            <div class="volume-viewer-toolbar-group" aria-label="查看模态">
+                                <button
+                                    v-for="modality in availableVolumeModalities"
+                                    :key="modality.key"
+                                    type="button"
+                                    :class="['volume-viewer-button', { active: selectedVolumeModality === modality.key }]"
+                                    :disabled="volumeViewerLoading"
+                                    @click="changeVolumeModality(modality.key)"
+                                >{{ modality.label }}</button>
+                            </div>
+                            <div class="volume-viewer-toolbar-group" aria-label="查看方式">
+                                <button
+                                    type="button"
+                                    :class="['volume-viewer-button', { active: volumeViewMode === 'multiplanar' }]"
+                                    @click="changeVolumeViewMode('multiplanar')"
+                                >三视图</button>
+                                <button
+                                    type="button"
+                                    :class="['volume-viewer-button', { active: volumeViewMode === 'render' }]"
+                                    @click="changeVolumeViewMode('render')"
+                                >体渲染</button>
+                            </div>
+                            <label class="volume-viewer-mask-control" v-if="volumeViewerSources?.mask">
+                                <input
+                                    type="checkbox"
+                                    v-model="volumeMaskVisible"
+                                    @change="updateVolumeMaskOpacity"
+                                />
+                                掩码
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="1"
+                                    step="0.05"
+                                    v-model.number="volumeMaskOpacity"
+                                    :disabled="!volumeMaskVisible"
+                                    @input="updateVolumeMaskOpacity"
+                                />
+                                {{ Math.round(volumeMaskOpacity * 100) }}%
+                            </label>
+                        </div>
+                        <div class="volume-viewer-stage">
+                            <canvas ref="volumeCanvas" tabindex="0"></canvas>
+                            <div class="volume-viewer-status" v-if="volumeViewerLoading">
+                                <span><span class="loading-spinner"></span>读取并解析 NIfTI 数据...</span>
+                            </div>
+                            <div class="volume-viewer-status error" v-else-if="volumeViewerError">
+                                {{ volumeViewerError }}
+                            </div>
+                        </div>
+                        <div class="volume-viewer-legend" v-if="volumeViewerSources?.mask">
+                            <span class="volume-viewer-legend-item">
+                                <span class="volume-viewer-legend-color" style="background: rgb(239, 68, 68);"></span>
+                                1 · NCR/NET
+                            </span>
+                            <span class="volume-viewer-legend-item">
+                                <span class="volume-viewer-legend-color" style="background: rgb(34, 197, 94);"></span>
+                                2 · ED
+                            </span>
+                            <span class="volume-viewer-legend-item">
+                                <span class="volume-viewer-legend-color" style="background: rgb(250, 204, 21);"></span>
+                                4 · ET
+                            </span>
+                            <span>滚轮切片 · 拖动调节窗宽窗位</span>
+                        </div>
+                    </div>
+                    <div class="image-viewer" v-else-if="selectedFileType === 'image' && selectedFileUrl">
                         <div class="image-viewer-error" v-if="imageLoadError">{{ imageLoadError }}</div>
                         <img
                             v-else
@@ -1100,6 +1290,7 @@
         <div class="copy-toast" :class="{ show: showToast }">已复制到剪贴板</div>
     </div>
 
+    <script src="./volume_viewer.js"></script>
     <script>
         const { createApp } = Vue
 
@@ -1141,6 +1332,14 @@
                     selectedFileLabel: '',
                     imageLoadError: '',
                     fileLoading: false,
+                    volumeViewer: null,
+                    volumeViewerSources: null,
+                    volumeViewerLoading: false,
+                    volumeViewerError: '',
+                    selectedVolumeModality: 'flair',
+                    volumeMaskVisible: true,
+                    volumeMaskOpacity: 0.55,
+                    volumeViewMode: 'multiplanar',
                     activeRightView: 'results',
                     taskItems: [],
                     taskTotal: 0,
@@ -1175,6 +1374,12 @@
                         modality => Boolean(this.volumeFiles[modality.key])
                     )
                 },
+                availableVolumeModalities() {
+                    const sources = this.volumeViewerSources?.modalities || {}
+                    return this.volumeModalities.filter(
+                        modality => Boolean(sources[modality.key])
+                    )
+                },
             },
             methods: {
                 switchAnalysisMode(mode) {
@@ -1185,7 +1390,13 @@
                 switchRightView(view) {
                     this.activeRightView = view
                     if (view === 'tasks') {
+                        this.destroyVolumeViewer()
                         this.loadTaskHistory()
+                    } else if (
+                        this.selectedFileType === 'volume'
+                        && this.volumeViewerSources
+                    ) {
+                        this.$nextTick(() => this.loadSelectedVolume())
                     }
                 },
                 switchTaskList(mode) {
@@ -1412,6 +1623,7 @@
                         .replace(/>/g, '&gt;')
                 },
                 resetState() {
+                    this.destroyVolumeViewer()
                     this.loading = true
                     this.statusText = '<span class="loading-spinner"></span>创建任务中...'
                     this.taskId = ''
@@ -1424,6 +1636,9 @@
                     this.selectedFileUrl = ''
                     this.selectedFileLabel = ''
                     this.imageLoadError = ''
+                    this.volumeViewerSources = null
+                    this.volumeViewerError = ''
+                    this.volumeViewerLoading = false
                     this.classificationLabel = ''
                     this.confidence = 0
                     this.tumorArea = null
@@ -1435,6 +1650,7 @@
                     const paths = new Set()
                     const mode = taskData?.analysis_mode || resultData.analysis_mode || '2d'
                     const is3d = mode === '3d'
+                    let maskPath = ''
                     const addFile = (label, path, type) => {
                         if (!path || paths.has(path)) return
                         paths.add(path)
@@ -1451,12 +1667,14 @@
                         addFile('frontend_result.json', rf.frontend, 'json')
                         addFile('classification.json', rf.classification, 'json')
                         addFile('segmentation.json', rf.segmentation, 'json')
+                        maskPath = rf.mask || maskPath
                         addFile(
                             is3d ? '下载3D掩码' : '分割图',
                             rf.mask,
                             is3d ? 'download' : 'image'
                         )
                     }
+                    maskPath = resultData.segmentation?.mask_file || maskPath
                     addFile(
                         is3d ? '下载3D掩码' : '分割图',
                         resultData.segmentation?.mask_file,
@@ -1476,13 +1694,39 @@
                     }
                     if (is3d) {
                         const inputs = taskData?.input?.files || resultData.input_files || {}
+                        const modalities = {}
                         for (const modality of this.volumeModalities) {
                             const entry = inputs[modality.key]
                             const filename = typeof entry === 'string' ? entry : entry?.filename
                             if (filename) {
+                                modalities[modality.key] = {
+                                    path: `input/${filename}`,
+                                    name: filename,
+                                }
+                            }
+                        }
+                        if (Object.keys(modalities).length) {
+                            files.push({
+                                label: '3D查看',
+                                path: '@volume-viewer',
+                                type: 'volume',
+                                sources: {
+                                    modalities,
+                                    mask: maskPath
+                                        ? {
+                                            path: maskPath,
+                                            name: maskPath.split('/').pop(),
+                                        }
+                                        : null,
+                                },
+                            })
+                        }
+                        for (const modality of this.volumeModalities) {
+                            const source = modalities[modality.key]
+                            if (source) {
                                 addFile(
                                     `下载 ${modality.label}`,
-                                    `input/${filename}`,
+                                    source.path,
                                     'download'
                                 )
                             }
@@ -1496,6 +1740,7 @@
                     return `${this.API_BASE}/tasks/${taskId}/files/${path}`
                 },
                 async fetchFileContent(filePath, fileType = 'json', label = '') {
+                    this.destroyVolumeViewer()
                     this.fileLoading = true
                     this.selectedFilePath = filePath
                     this.selectedFileContent = ''
@@ -1533,9 +1778,107 @@
                         this.fileLoading = false
                     }
                 },
+                async openVolumeViewer(file) {
+                    if (!file.sources?.modalities) return
+                    if (
+                        this.selectedFileType === 'volume'
+                        && this.selectedFilePath === file.path
+                        && this.volumeViewer
+                    ) {
+                        return
+                    }
+
+                    this.destroyVolumeViewer()
+                    this.selectedFilePath = file.path
+                    this.selectedFileContent = ''
+                    this.selectedFileType = 'volume'
+                    this.selectedFileUrl = ''
+                    this.selectedFileLabel = file.label
+                    this.imageLoadError = ''
+                    this.volumeViewerSources = file.sources
+                    this.volumeViewerError = ''
+
+                    const modalities = file.sources.modalities
+                    if (!modalities[this.selectedVolumeModality]) {
+                        this.selectedVolumeModality = this.volumeModalities.find(
+                            modality => modalities[modality.key]
+                        )?.key || ''
+                    }
+                    await this.$nextTick()
+                    await this.loadSelectedVolume()
+                },
+                async loadSelectedVolume() {
+                    const sources = this.volumeViewerSources
+                    const base = sources?.modalities?.[this.selectedVolumeModality]
+                    const canvas = this.$refs.volumeCanvas
+                    if (!sources || !base || !canvas) return
+
+                    this.volumeViewerLoading = true
+                    this.volumeViewerError = ''
+                    try {
+                        if (!this.volumeViewer) {
+                            this.volumeViewer = Vue.markRaw(
+                                new window.BtirVolumeViewer(canvas)
+                            )
+                        }
+                        await this.volumeViewer.load({
+                            base: {
+                                url: this.taskFileUrl(base.path),
+                                name: base.name,
+                            },
+                            mask: sources.mask
+                                ? {
+                                    url: this.taskFileUrl(sources.mask.path),
+                                    name: sources.mask.name,
+                                }
+                                : null,
+                            headers: this.authHeaders,
+                            maskOpacity: this.volumeMaskOpacity,
+                            maskVisible: this.volumeMaskVisible,
+                            viewMode: this.volumeViewMode,
+                        })
+                    } catch (error) {
+                        if (error.name !== 'AbortError') {
+                            this.volumeViewerError = `3D 数据读取失败：${error.message}`
+                        }
+                    } finally {
+                        this.volumeViewerLoading = false
+                    }
+                },
+                async changeVolumeModality(modality) {
+                    if (
+                        this.volumeViewerLoading
+                        || modality === this.selectedVolumeModality
+                        || !this.volumeViewerSources?.modalities?.[modality]
+                    ) {
+                        return
+                    }
+                    this.selectedVolumeModality = modality
+                    await this.loadSelectedVolume()
+                },
+                changeVolumeViewMode(mode) {
+                    if (!['multiplanar', 'render'].includes(mode)) return
+                    this.volumeViewMode = mode
+                    this.volumeViewer?.setViewMode(mode)
+                },
+                updateVolumeMaskOpacity() {
+                    const opacity = this.volumeMaskVisible
+                        ? this.volumeMaskOpacity
+                        : 0
+                    this.volumeViewer?.setMaskOpacity(opacity)
+                },
+                destroyVolumeViewer() {
+                    this.volumeViewer?.cleanup()
+                    this.volumeViewer = null
+                    this.volumeViewerLoading = false
+                },
                 selectFile(f) {
                     if (f.type === 'download') {
                         this.downloadTaskFile(f)
+                        return
+                    }
+                    if (f.type === 'volume') {
+                        this.openVolumeViewer(f)
                         return
                     }
                     if (this.selectedFilePath === f.path) return
@@ -1574,6 +1917,7 @@
                     this.imageLoadError = '图片读取失败，当前格式可能不受浏览器支持。'
                 },
                 presentTaskResult(taskData) {
+                    this.destroyVolumeViewer()
                     this.taskId = taskData.task_id
                     const resultData = taskData.frontend_result || {}
                     this.resultAnalysisMode = (
@@ -1639,6 +1983,8 @@
                     this.selectedFileType = ''
                     this.selectedFileUrl = ''
                     this.imageLoadError = ''
+                    this.volumeViewerSources = null
+                    this.volumeViewerError = ''
                     this.activeRightView = 'results'
                     const initialFile = this.fileList.find(file => file.type !== 'download')
                     if (initialFile) {
@@ -1832,6 +2178,9 @@
                     const userStr = localStorage.getItem('btir_user')
                     this.currentUser = userStr ? JSON.parse(userStr) : null
                 }
+            },
+            beforeUnmount() {
+                this.destroyVolumeViewer()
             },
         }).mount('#app')
     </script>
