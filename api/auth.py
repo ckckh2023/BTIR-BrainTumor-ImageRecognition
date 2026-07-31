@@ -57,4 +57,15 @@ async def get_current_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="用户已被禁用",
         )
+    token_version = payload.get("ver", 0)
+    if (
+        not isinstance(token_version, int)
+        or isinstance(token_version, bool)
+        or token_version != user.token_version
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="认证令牌已失效，请重新登录",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return user

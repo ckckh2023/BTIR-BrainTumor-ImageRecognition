@@ -131,6 +131,49 @@ class TaskStorageTests(unittest.TestCase):
         self.assertIn("已把 1 条", apply_output.getvalue())
         self.assertEqual(self.repository.count_unowned_tasks(), 0)
 
+    def test_user_management_commands_update_account_state(self) -> None:
+        with (
+            patch("Main.task_repository", self.repository),
+            patch("Main.getpass.getpass", side_effect=["safe-password", "safe-password"]),
+            patch("Main.hash_password", side_effect=lambda value: f"hash:{value}"),
+            redirect_stdout(StringIO()),
+        ):
+            self.assertEqual(main(["user", "create", "alice"]), 0)
+
+        user_repository = SqliteUserRepository(self.repository)
+        created = user_repository.get_by_username("alice")
+        self.assertIsNotNone(created)
+        self.assertEqual(created.hashed_password, "hash:safe-password")
+
+        with (
+            patch("Main.task_repository", self.repository),
+            redirect_stdout(StringIO()),
+        ):
+            self.assertEqual(main(["user", "disable", "alice"]), 0)
+        disabled = user_repository.get_by_username("alice")
+        self.assertFalse(disabled.is_active)
+        self.assertEqual(disabled.token_version, 1)
+
+        with (
+            patch("Main.task_repository", self.repository),
+            redirect_stdout(StringIO()),
+        ):
+            self.assertEqual(main(["user", "enable", "alice"]), 0)
+        enabled = user_repository.get_by_username("alice")
+        self.assertTrue(enabled.is_active)
+        self.assertEqual(enabled.token_version, 1)
+
+        with (
+            patch("Main.task_repository", self.repository),
+            patch("Main.getpass.getpass", side_effect=["new-password", "new-password"]),
+            patch("Main.hash_password", side_effect=lambda value: f"hash:{value}"),
+            redirect_stdout(StringIO()),
+        ):
+            self.assertEqual(main(["user", "reset-password", "alice"]), 0)
+        reset = user_repository.get_by_username("alice")
+        self.assertEqual(reset.hashed_password, "hash:new-password")
+        self.assertEqual(reset.token_version, 2)
+
     def test_list_tasks_supports_status_filter_and_pagination(self) -> None:
         task_ids = ["task-001", "task-002", "task-003"]
         statuses = [TaskStatus.CREATED, TaskStatus.FAILED, TaskStatus.FAILED]

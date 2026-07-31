@@ -182,6 +182,11 @@ class Settings:
     jwt_expiration_hours: int
     jwt_algorithm: str
     registration_enabled: bool
+    auth_login_user_attempts: int
+    auth_login_ip_attempts: int
+    auth_login_window_seconds: int
+    auth_registration_ip_attempts: int
+    auth_registration_window_seconds: int
     max_tasks_per_user: int
     max_active_tasks_per_user: int
 
@@ -318,6 +323,26 @@ def _build_settings() -> Settings:
         jwt_expiration_hours=_get_positive_int("BTIR_JWT_EXPIRATION_HOURS", 24),
         jwt_algorithm=os.getenv("BTIR_JWT_ALGORITHM", "HS256").strip(),
         registration_enabled=_get_bool("BTIR_REGISTRATION_ENABLED", False),
+        auth_login_user_attempts=_get_positive_int(
+            "BTIR_AUTH_LOGIN_USER_ATTEMPTS",
+            10,
+        ),
+        auth_login_ip_attempts=_get_positive_int(
+            "BTIR_AUTH_LOGIN_IP_ATTEMPTS",
+            60,
+        ),
+        auth_login_window_seconds=_get_positive_int(
+            "BTIR_AUTH_LOGIN_WINDOW_SECONDS",
+            300,
+        ),
+        auth_registration_ip_attempts=_get_positive_int(
+            "BTIR_AUTH_REGISTRATION_IP_ATTEMPTS",
+            5,
+        ),
+        auth_registration_window_seconds=_get_positive_int(
+            "BTIR_AUTH_REGISTRATION_WINDOW_SECONDS",
+            3600,
+        ),
         max_tasks_per_user=_get_positive_int("BTIR_MAX_TASKS_PER_USER", 1000),
         max_active_tasks_per_user=_get_positive_int(
             "BTIR_MAX_ACTIVE_TASKS_PER_USER",

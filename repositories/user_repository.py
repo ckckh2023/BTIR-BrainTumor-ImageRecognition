@@ -67,15 +67,17 @@ class SqliteUserRepository:
                 connection.execute(
                     """
                     INSERT INTO users (
-                        user_id, username, hashed_password, is_active, created_at, updated_at
+                        user_id, username, hashed_password, is_active,
+                        token_version, created_at, updated_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         record.user_id,
                         record.username,
                         record.hashed_password,
                         1 if record.is_active else 0,
+                        record.token_version,
                         record.created_at.isoformat(),
                         record.updated_at.isoformat(),
                     ),
@@ -115,6 +117,55 @@ class SqliteUserRepository:
             ).fetchone()
         return int(row["total"])
 
+    def list_users(self) -> list[UserRecord]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM users ORDER BY created_at ASC, username ASC"
+            ).fetchall()
+        return [self._row_to_record(row) for row in rows]
+
+    def set_active(self, username: str, is_active: bool) -> UserRecord | None:
+        now = datetime.now(timezone.utc)
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM users WHERE username = ?",
+                (username,),
+            ).fetchone()
+            if row is None:
+                return None
+
+            token_version = int(row["token_version"])
+            if not is_active and bool(row["is_active"]):
+                token_version += 1
+            connection.execute(
+                """
+                UPDATE users
+                SET is_active = ?, token_version = ?, updated_at = ?
+                WHERE username = ?
+                """,
+                (1 if is_active else 0, token_version, now.isoformat(), username),
+            )
+        return self.get_by_username(username)
+
+    def update_password(
+        self,
+        username: str,
+        hashed_password: str,
+    ) -> UserRecord | None:
+        now = datetime.now(timezone.utc)
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE users
+                SET hashed_password = ?, token_version = token_version + 1, updated_at = ?
+                WHERE username = ?
+                """,
+                (hashed_password, now.isoformat(), username),
+            )
+            if cursor.rowcount == 0:
+                return None
+        return self.get_by_username(username)
+
     def delete_all(self) -> int:
         '''删除全部用户账号，仅供开发调试的全量重置命令使用'''
         with self._connect() as connection:
@@ -128,6 +179,7 @@ class SqliteUserRepository:
             username=row["username"],
             hashed_password=row["hashed_password"],
             is_active=bool(row["is_active"]),
+            token_version=int(row["token_version"]),
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
         )

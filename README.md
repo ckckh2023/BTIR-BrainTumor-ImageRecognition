@@ -15,7 +15,7 @@ BTIR 提供脑肿瘤 MRI 图像分类与分割能力。每次分析以独立
 | 运行安全 | 已完成 | Redis 写入锁、SQLite 事务、JSON 原子写入 |
 | CPU/GPU | 已完成 | CPU、NVIDIA CUDA、Linux AMD ROCm |
 | 接口协议 | 核心流程已完成 | 2D/3D 上传、异步运行和结果展示已对接；高级任务操作界面待补充 |
-| 多用户 | 基础能力已完成 | JWT 登录、任务隔离和用户任务配额已完成；管理员查询待补充 |
+| 多用户 | 基础能力已完成 | JWT 登录、任务隔离、认证限流、账号终端管理、Token 撤销和用户任务配额已完成；管理员查询待补充 |
 
 ## 3D 结果查看
 
@@ -74,8 +74,8 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 `requirements.txt` 默认安装 CPU 版 PyTorch。需要运行测试时改用
 `python -m pip install -r requirements-dev.txt`。GPU 安装必须在基础依赖之后
 执行，完整顺序参见[安装与部署](docs/DEPLOYMENT.md)。
-把最后一条命令生成的随机值写入 `.env` 的 `BTIR_JWT_SECRET_KEY`。首次创建账号时
-临时设置 `BTIR_REGISTRATION_ENABLED=true`，账号创建完成后建议改回 `false` 并重启 API。
+把最后一条命令生成的随机值写入 `.env` 的 `BTIR_JWT_SECRET_KEY`。服务器终端可直接
+执行 `python Main.py user create <username>` 创建账号，不需要临时开放公开注册。
 
 ### 3. 启动 Redis
 
@@ -168,6 +168,19 @@ python Main.py claim-legacy-tasks <username> --apply
 ```
 
 第一条仅预览，第二条才会写入归属关系。
+
+服务器账号维护使用以下命令，密码通过终端隐藏输入，不会出现在 shell 历史中：
+
+```powershell
+python Main.py user create <username>
+python Main.py user list
+python Main.py user disable <username>
+python Main.py user enable <username>
+python Main.py user reset-password <username>
+```
+
+禁用账号或重置密码会撤销该用户已经签发的旧 Token。HTTP 仍可用于本机和内网
+联调；正式公网部署时再由反向代理提供 HTTPS。
 
 完整请求、响应和前端 `fetch` 示例参见 [API 对接说明](docs/API.md)。
 
@@ -284,7 +297,7 @@ python Main.py purge-archive
 1. 扩展浏览器端到端测试，覆盖登录、上传、任务操作与 3D 查看。
 2. 用经过患者级验证的原生体积分类模型替换 3D 路线当前的实验性切片集成分类。
 3. 在医学依据和输出协议明确后，再增加基于 3D 分割结果的高级分析或诊断路线。
-4. 补充登录限流、审计管理与管理员查询。
+4. 补充完整审计管理与管理员查询。
 
 ## 彩蛋
 

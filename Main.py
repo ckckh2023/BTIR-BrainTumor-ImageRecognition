@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
 import sys
 import traceback
@@ -10,11 +11,16 @@ from datetime import datetime
 from pathlib import Path
 
 from core.settings import SETTINGS
+from contracts.auth import RegisterRequest
 from core.task_definitions import InputStorageMode, TaskStatus
 from repositories.sqlite_task_repository import SqliteTaskRepository
 from repositories.task_repository import task_repository
-from repositories.user_repository import SqliteUserRepository
+from repositories.user_repository import (
+    SqliteUserRepository,
+    UsernameAlreadyExistsError,
+)
 from services.archive_service import archive_expired_tasks, purge_expired_archives
+from services.auth_service import hash_password
 from services.benchmark_service import benchmark_models
 from services.cleanup_service import clear_generated_files
 from services.console import ConsoleProgress, print_event
@@ -95,6 +101,10 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.command == "claim-legacy-tasks":
             _claim_legacy_tasks(args.username, apply=args.apply)
+            return 0
+
+        if args.command == "user":
+            _manage_user(args)
             return 0
 
         if args.command == "benchmark":
@@ -262,6 +272,22 @@ def _build_parser() -> argparse.ArgumentParser:
         help="实际写入；省略时仅预览数量",
     )
 
+    user = commands.add_parser(
+        "user",
+        help="在服务器终端创建、查询和维护用户账号",
+    )
+    user_commands = user.add_subparsers(dest="user_command", required=True)
+    user_create = user_commands.add_parser("create", help="创建用户账号")
+    user_create.add_argument("username", help="新用户名称")
+    user_commands.add_parser("list", help="列出用户账号，不显示密码信息")
+    for command_name, help_text in (
+        ("enable", "启用用户账号"),
+        ("disable", "禁用用户账号并撤销旧 Token"),
+        ("reset-password", "重置用户密码并撤销旧 Token"),
+    ):
+        user_command = user_commands.add_parser(command_name, help=help_text)
+        user_command.add_argument("username", help="目标用户名")
+
     benchmark = commands.add_parser(
         "benchmark",
         help="测量分类与分割模型在当前进程中的首次和连续推理耗时",
@@ -375,6 +401,10 @@ def _print_help(parser: argparse.ArgumentParser) -> None:
         "  python Main.py purge-archive\n"
         "  python Main.py reconcile-tasks\n"
         "  python Main.py claim-legacy-tasks <username> --apply\n"
+        "  python Main.py user create <username>\n"
+        "  python Main.py user list\n"
+        "  python Main.py user disable <username>\n"
+        "  python Main.py user reset-password <username>\n"
         "  python Main.py benchmark dataset/no/1.jpg --warm-runs 3\n"
         "  python Main.py evaluate-3d <BraTS数据集目录>\n"
         "  python Main.py game\n"
@@ -470,6 +500,66 @@ def _claim_legacy_tasks(username: str, *, apply: bool) -> None:
 
     changed = task_repository.assign_unowned_tasks(user.user_id)
     print(f"已把 {changed} 条无归属历史任务分配给用户：{username}")
+
+
+def _sqlite_user_repository() -> SqliteUserRepository:
+    if not isinstance(task_repository, SqliteTaskRepository):
+        raise RuntimeError("用户管理命令仅支持 SQLite 用户仓储")
+    return SqliteUserRepository(task_repository)
+
+
+def _read_new_password(username: str) -> str:
+    password = getpass.getpass("输入新密码：")
+    confirmation = getpass.getpass("再次输入新密码：")
+    if password != confirmation:
+        raise ValueError("两次输入的密码不一致")
+    return RegisterRequest(username=username, password=password).password
+
+
+def _manage_user(args: argparse.Namespace) -> None:
+    repository = _sqlite_user_repository()
+    command = args.user_command
+
+    if command == "list":
+        users = repository.list_users()
+        if not users:
+            print("暂无用户账号")
+            return
+        print(f"用户账号：{len(users)} 个")
+        for user in users:
+            status_text = "启用" if user.is_active else "禁用"
+            print(f"  {user.username}\t{status_text}\t{user.created_at.isoformat()}")
+        return
+
+    username = args.username
+    if command == "create":
+        password = _read_new_password(username)
+        try:
+            user = repository.create_user(username, hash_password(password))
+        except UsernameAlreadyExistsError:
+            raise ValueError(f"用户 '{username}' 已存在") from None
+        print(f"用户已创建：{user.username}")
+        return
+
+    existing = repository.get_by_username(username)
+    if existing is None:
+        raise ValueError(f"用户 '{username}' 不存在")
+
+    if command == "reset-password":
+        password = _read_new_password(username)
+        repository.update_password(username, hash_password(password))
+        print(f"用户密码已重置，旧 Token 已失效：{username}")
+        return
+
+    is_active = command == "enable"
+    if existing.is_active == is_active:
+        print(f"用户已经处于{'启用' if is_active else '禁用'}状态：{username}")
+        return
+    repository.set_active(username, is_active)
+    if is_active:
+        print(f"用户已启用：{username}")
+    else:
+        print(f"用户已禁用，旧 Token 已失效：{username}")
 
 
 if __name__ == "__main__":
