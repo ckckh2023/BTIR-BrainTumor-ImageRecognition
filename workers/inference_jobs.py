@@ -26,7 +26,7 @@ def run_task_job(task_id: str, threshold: float) -> dict[str, Any]:
     task_dir = get_task_dir(SETTINGS.output_dir, task_id)
     status_kwargs: dict[str, Any] = {
         "job_id": job.id,
-        "queue_name": SETTINGS.task_queue_name,
+        "queue_name": _get_job_queue_name(job),
     }
     attempt = _get_job_attempt(job)
     if attempt is not None:
@@ -153,7 +153,7 @@ def _finish_canceled_task(
         task_dir,
         JobStatus.CANCELED,
         job_id=job.id,
-        queue_name=SETTINGS.task_queue_name,
+        queue_name=_get_job_queue_name(job),
         attempt=attempt,
         execution_ms=execution_ms,
     )
@@ -169,3 +169,12 @@ def _finish_canceled_task(
         "status": task_record.status.value,
         "completed_models": [model.value for model in task_record.completed_models],
     }
+
+
+def _get_job_queue_name(job: Any) -> str:
+    '''使用 RQ 作业实际来源队列，测试替身则回退到 2D 队列'''
+
+    origin = getattr(job, "origin", None)
+    if isinstance(origin, str) and origin.strip():
+        return origin
+    return SETTINGS.task_queue_2d_name

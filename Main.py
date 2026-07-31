@@ -445,7 +445,7 @@ def _print_queue_reset_report(report, *, dry_run: bool) -> None:
     '''输出 clear 对本项目 Redis 状态的处理范围'''
     action = "将清理" if dry_run else "已清理"
     print(
-        f"{action} Redis 队列 {report.queue_name}："
+        f"{action} Redis 队列 {', '.join(report.queue_names)}："
         f"排队作业 {report.queued_job_count} 条，"
         f"注册表作业 {report.registry_job_count} 条，"
         f"任务锁 {report.task_lock_count} 个"

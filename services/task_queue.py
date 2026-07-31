@@ -14,6 +14,7 @@ from rq.job import Job, JobStatus as RqJobStatus
 from core.settings import SETTINGS
 from core.task_definitions import (
     ACTIVE_ASYNC_TASK_STATUSES,
+    AnalysisMode,
     JobStatus,
     TaskStatus,
 )
@@ -42,7 +43,7 @@ class TaskReconciliationReport:
 class TaskQueueResetReport:
     '''开发调试全量重置时需要清理的本项目 Redis 状态'''
 
-    queue_name: str
+    queue_names: tuple[str, ...]
     queued_job_count: int
     registry_job_count: int
     task_lock_count: int
@@ -58,58 +59,123 @@ PENDING_RQ_STATUSES = frozenset(
 )
 
 
-@lru_cache(maxsize=1)
-def get_task_queue() -> Queue:
-    '''获取推理任务队列'''
+def task_queue_name_for_mode(analysis_mode: AnalysisMode | str) -> str:
+    '''返回指定推理路线的独立 RQ 队列名称。'''
+
+    mode = AnalysisMode(analysis_mode)
+    return (
+        SETTINGS.task_queue_2d_name
+        if mode is AnalysisMode.TWO_D
+        else SETTINGS.task_queue_3d_name
+    )
+
+
+@lru_cache(maxsize=2)
+def get_task_queue(
+    analysis_mode: AnalysisMode = AnalysisMode.TWO_D,
+) -> Queue:
+    '''获取指定推理路线的 RQ 队列。'''
+
     return Queue(
-        SETTINGS.task_queue_name,
+        task_queue_name_for_mode(analysis_mode),
         connection=get_redis_client(),
         default_timeout=SETTINGS.task_job_timeout_seconds,
     )
 
 
-def get_active_inference_workers() -> list[Worker]:
-    '''获取当前推理队列中仍被 RQ 注册为存活的 worker'''
+def get_task_queues() -> tuple[Queue, Queue]:
+    '''获取 2D 与 3D 两条独立推理队列。'''
+
+    return (
+        get_task_queue(AnalysisMode.TWO_D),
+        get_task_queue(AnalysisMode.THREE_D),
+    )
+
+
+def get_active_inference_workers(
+    analysis_mode: AnalysisMode | str | None = None,
+) -> list[Worker]:
+    '''获取指定路线或任一路线中仍被 RQ 注册为存活的 Worker。'''
+
+    target_names = (
+        {task_queue_name_for_mode(analysis_mode)}
+        if analysis_mode is not None
+        else set(SETTINGS.task_queue_names)
+    )
     return [
         worker
         for worker in Worker.all(connection=get_redis_client())
-        if SETTINGS.task_queue_name in worker.queue_names()
+        if target_names.intersection(worker.queue_names())
     ]
 
 
-def has_active_inference_worker() -> bool:
-    '''检查当前推理队列是否有仍被 RQ 注册为存活的 worker'''
-    return bool(get_active_inference_workers())
+def has_active_inference_worker(
+    analysis_mode: AnalysisMode | str | None = None,
+) -> bool:
+    '''检查指定路线或任一路线是否有活动 Worker。'''
+
+    return bool(get_active_inference_workers(analysis_mode))
 
 
-def get_inference_queue_status() -> dict[str, int | float | None]:
-    '''汇总推理队列的只读运维状态'''
-    queue = get_task_queue()
-    oldest_wait_seconds = _get_oldest_queue_wait_seconds(queue)
+def get_inference_queue_status() -> dict[str, object]:
+    '''分别汇总 2D、3D 队列，并提供向后兼容的合计字段。'''
+
+    queues = {
+        AnalysisMode.TWO_D.value: get_task_queue(AnalysisMode.TWO_D),
+        AnalysisMode.THREE_D.value: get_task_queue(AnalysisMode.THREE_D),
+    }
+    workers = get_active_inference_workers()
+    per_queue: dict[str, dict[str, int | float | str | None]] = {}
+    for mode, queue in queues.items():
+        per_queue[mode] = {
+            "name": queue.name,
+            "active_workers": sum(
+                queue.name in worker.queue_names()
+                for worker in workers
+            ),
+            "queued_jobs": queue.count,
+            "running_jobs": queue.started_job_registry.count,
+            "failed_jobs": queue.failed_job_registry.count,
+            "oldest_wait_seconds": _get_oldest_queue_wait_seconds(queue),
+        }
+    oldest_values = [
+        status["oldest_wait_seconds"]
+        for status in per_queue.values()
+        if status["oldest_wait_seconds"] is not None
+    ]
     return {
-        "active_workers": len(get_active_inference_workers()),
-        "queued_jobs": queue.count,
-        "running_jobs": queue.started_job_registry.count,
-        "failed_jobs": queue.failed_job_registry.count,
-        "oldest_wait_seconds": oldest_wait_seconds,
+        "active_workers": len(workers),
+        "queued_jobs": sum(int(status["queued_jobs"]) for status in per_queue.values()),
+        "running_jobs": sum(int(status["running_jobs"]) for status in per_queue.values()),
+        "failed_jobs": sum(int(status["failed_jobs"]) for status in per_queue.values()),
+        "oldest_wait_seconds": max(oldest_values) if oldest_values else None,
+        "queues": per_queue,
     }
 
 
 def clear_task_queue_state(*, dry_run: bool) -> TaskQueueResetReport:
     '''只清理 BTIR 推理队列、作业记录与任务锁，不清空整个 Redis 数据库。'''
     try:
-        queue = get_task_queue()
+        queues = get_task_queues()
         connection = get_redis_client()
         active_worker_count = len(get_active_inference_workers())
-        registries = (
-            queue.started_job_registry,
-            queue.failed_job_registry,
-            queue.finished_job_registry,
-            queue.deferred_job_registry,
-            queue.scheduled_job_registry,
-            queue.canceled_job_registry,
+        registries = tuple(
+            registry
+            for queue in queues
+            for registry in (
+                queue.started_job_registry,
+                queue.failed_job_registry,
+                queue.finished_job_registry,
+                queue.deferred_job_registry,
+                queue.scheduled_job_registry,
+                queue.canceled_job_registry,
+            )
         )
-        queued_job_ids = set(queue.get_job_ids())
+        queued_job_ids = {
+            job_id
+            for queue in queues
+            for job_id in queue.get_job_ids()
+        }
         registry_entries = [
             (registry, registry.get_job_ids(cleanup=False))
             for registry in registries
@@ -126,7 +192,7 @@ def clear_task_queue_state(*, dry_run: bool) -> TaskQueueResetReport:
         ) from exc
 
     report = TaskQueueResetReport(
-        queue_name=SETTINGS.task_queue_name,
+        queue_names=SETTINGS.task_queue_names,
         queued_job_count=len(queued_job_ids),
         registry_job_count=len(registry_job_ids),
         task_lock_count=len(task_lock_keys),
@@ -141,7 +207,8 @@ def clear_task_queue_state(*, dry_run: bool) -> TaskQueueResetReport:
         for registry, job_ids in registry_entries:
             for job_id in job_ids:
                 registry.remove(job_id, delete_job=False)
-        queue.delete(delete_jobs=True)
+        for queue in queues:
+            queue.delete(delete_jobs=True)
         for job_id in registry_job_ids - queued_job_ids:
             try:
                 Job.fetch(job_id, connection=connection).delete()
@@ -198,7 +265,8 @@ def enqueue_task_run(
                 if SETTINGS.task_job_max_retries
                 else None
             )
-            job = get_task_queue().enqueue(
+            queue = get_task_queue(record.analysis_mode)
+            job = queue.enqueue(
                 "workers.inference_jobs.run_task_job",
                 task_dir.name,
                 threshold,
@@ -213,7 +281,7 @@ def enqueue_task_run(
         updated_record = mark_task_queued(
             task_dir,
             job_id=job.id,
-            queue_name=SETTINGS.task_queue_name,
+            queue_name=queue.name,
             max_retries=SETTINGS.task_job_max_retries,
             record=record,
             repository=task_repository,

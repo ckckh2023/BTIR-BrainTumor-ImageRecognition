@@ -124,6 +124,16 @@ def _get_volume_classifier_modality() -> str:
     return value
 
 
+def _get_task_queue_names() -> tuple[str, str]:
+    queue_2d = os.getenv("BTIR_TASK_QUEUE_2D_NAME", "inference-2d").strip()
+    queue_3d = os.getenv("BTIR_TASK_QUEUE_3D_NAME", "inference-3d").strip()
+    if not queue_2d or not queue_3d:
+        raise ValueError("BTIR 任务队列名称不能为空")
+    if queue_2d == queue_3d:
+        raise ValueError("BTIR_TASK_QUEUE_2D_NAME 与 BTIR_TASK_QUEUE_3D_NAME 必须不同")
+    return queue_2d, queue_3d
+
+
 @dataclass(frozen=True)
 class Settings:
     '''由环境变量和 .env 文件构建的不可变运行配置'''
@@ -155,7 +165,8 @@ class Settings:
     redis_url: str
     task_lock_timeout_seconds: int
     task_lock_wait_seconds: float
-    task_queue_name: str
+    task_queue_2d_name: str
+    task_queue_3d_name: str
     task_job_timeout_seconds: int
     task_job_result_ttl_seconds: int
     task_job_max_retries: int
@@ -174,6 +185,10 @@ class Settings:
     max_tasks_per_user: int
     max_active_tasks_per_user: int
 
+    @property
+    def task_queue_names(self) -> tuple[str, str]:
+        return (self.task_queue_2d_name, self.task_queue_3d_name)
+
 
 def _build_settings() -> Settings:
     '''构建 Settings 实例，读取 .env 文件和环境变量'''
@@ -184,6 +199,7 @@ def _build_settings() -> Settings:
     classifier_dir = models_dir / ModelName.CLASSIFICATION
     segmenter_dir = models_dir / ModelName.SEGMENTATION
     segmenter_3d_dir = models_dir / "segmentation3d"
+    task_queue_2d_name, task_queue_3d_name = _get_task_queue_names()
     return Settings(
         project_root=PROJECT_ROOT,
         output_dir=_get_path("BTIR_OUTPUT_DIR", "output"),
@@ -256,7 +272,8 @@ def _build_settings() -> Settings:
             "BTIR_TASK_LOCK_WAIT_SECONDS",
             5.0,
         ),
-        task_queue_name=os.getenv("BTIR_TASK_QUEUE_NAME", "inference").strip(),
+        task_queue_2d_name=task_queue_2d_name,
+        task_queue_3d_name=task_queue_3d_name,
         task_job_timeout_seconds=_get_positive_int(
             "BTIR_TASK_JOB_TIMEOUT_SECONDS",
             3600,

@@ -26,6 +26,7 @@ from services.task_queue import (
     enqueue_task_run,
     reconcile_active_tasks,
     reconcile_task_job,
+    task_queue_name_for_mode,
 )
 from services.task_runner import (
     run_classification,
@@ -65,6 +66,7 @@ class FakeQueue:
     '''记录入队请求并返回固定 RQ 作业 ID'''
 
     def __init__(self) -> None:
+        self.name = "inference-test"
         self.enqueue = Mock(return_value=SimpleNamespace(id="job-001"))
 
 
@@ -93,6 +95,24 @@ class AsyncQueueTests(unittest.TestCase):
     @staticmethod
     def _no_lock(_: str):
         return nullcontext()
+
+    @staticmethod
+    def _empty_queue(name: str) -> Mock:
+        queue = Mock()
+        queue.name = name
+        queue.get_job_ids.return_value = []
+        for attribute in (
+            "started_job_registry",
+            "failed_job_registry",
+            "finished_job_registry",
+            "deferred_job_registry",
+            "scheduled_job_registry",
+            "canceled_job_registry",
+        ):
+            registry = Mock()
+            registry.get_job_ids.return_value = []
+            setattr(queue, attribute, registry)
+        return queue
 
     def test_duplicate_enqueue_reuses_existing_job(self) -> None:
         repository = FakeTaskRepository(self.record)
@@ -133,6 +153,43 @@ class AsyncQueueTests(unittest.TestCase):
 
         self.assertEqual(repository.record.status, TaskStatus.CREATED)
 
+    def test_3d_task_is_enqueued_on_the_3d_queue(self) -> None:
+        record = deepcopy(self.record)
+        record.analysis_mode = AnalysisMode.THREE_D
+        repository = FakeTaskRepository(record)
+        queue = FakeQueue()
+        queue.name = "inference-3d-test"
+
+        with (
+            patch("services.task_queue.task_repository", repository),
+            patch("services.task_queue.task_write_lock", self._no_lock),
+            patch(
+                "services.task_queue.get_task_queue",
+                return_value=queue,
+            ) as get_queue,
+        ):
+            job, reused = enqueue_task_run(self.task_dir, 0.5)
+
+        self.assertFalse(reused)
+        get_queue.assert_called_once_with(AnalysisMode.THREE_D)
+        self.assertEqual(job["queue"], "inference-3d-test")
+
+    def test_each_analysis_mode_has_a_distinct_configured_queue(self) -> None:
+        settings = replace(
+            SETTINGS,
+            task_queue_2d_name="queue-2d-test",
+            task_queue_3d_name="queue-3d-test",
+        )
+        with patch("services.task_queue.SETTINGS", settings):
+            self.assertEqual(
+                task_queue_name_for_mode(AnalysisMode.TWO_D),
+                "queue-2d-test",
+            )
+            self.assertEqual(
+                task_queue_name_for_mode(AnalysisMode.THREE_D),
+                "queue-3d-test",
+            )
+
     def test_clear_queue_dry_run_only_reports_project_state(self) -> None:
         queue = Mock()
         queue.get_job_ids.return_value = ["queued-job"]
@@ -150,9 +207,13 @@ class AsyncQueueTests(unittest.TestCase):
         ) = registries
         redis_client = Mock()
         redis_client.scan_iter.return_value = [b"btir:task:task-001:write"]
+        queue_3d = self._empty_queue("inference-3d")
 
         with (
-            patch("services.task_queue.get_task_queue", return_value=queue),
+            patch(
+                "services.task_queue.get_task_queues",
+                return_value=(queue, queue_3d),
+            ),
             patch("services.task_queue.get_redis_client", return_value=redis_client),
             patch(
                 "services.task_queue.get_active_inference_workers",
@@ -186,9 +247,13 @@ class AsyncQueueTests(unittest.TestCase):
         redis_client = Mock()
         redis_client.scan_iter.return_value = [b"btir:task:task-001:write"]
         failed_job = Mock()
+        queue_3d = self._empty_queue("inference-3d")
 
         with (
-            patch("services.task_queue.get_task_queue", return_value=queue),
+            patch(
+                "services.task_queue.get_task_queues",
+                return_value=(queue, queue_3d),
+            ),
             patch("services.task_queue.get_redis_client", return_value=redis_client),
             patch(
                 "services.task_queue.get_active_inference_workers",
@@ -199,6 +264,7 @@ class AsyncQueueTests(unittest.TestCase):
             clear_task_queue_state(dry_run=False)
 
         queue.delete.assert_called_once_with(delete_jobs=True)
+        queue_3d.delete.assert_called_once_with(delete_jobs=True)
         registries[1].remove.assert_called_once_with(
             "failed-job",
             delete_job=False,
@@ -224,9 +290,13 @@ class AsyncQueueTests(unittest.TestCase):
         ) = registries
         redis_client = Mock()
         redis_client.scan_iter.return_value = []
+        queue_3d = self._empty_queue("inference-3d")
 
         with (
-            patch("services.task_queue.get_task_queue", return_value=queue),
+            patch(
+                "services.task_queue.get_task_queues",
+                return_value=(queue, queue_3d),
+            ),
             patch("services.task_queue.get_redis_client", return_value=redis_client),
             patch(
                 "services.task_queue.get_active_inference_workers",
@@ -1054,11 +1124,48 @@ class ModelPreloadTests(unittest.TestCase):
         self.assertIsInstance(outcomes["segmentation"], float)
         self.assertIsInstance(outcomes["segmentation3d"], float)
 
+    def test_3d_preload_skips_the_2d_segmenter(self) -> None:
+        classifier_model = Mock()
+        segmentation_model = Mock()
+        segmentation_3d_model = Mock()
+        with (
+            patch(
+                "services.inference_service._load_classifier_namespace",
+                return_value={"torch": Mock()},
+            ),
+            patch(
+                "services.inference_service._load_3d_segmentation_namespace",
+                return_value={"torch": Mock()},
+            ),
+            patch("services.inference_service.resolve_device", return_value="cpu"),
+            patch(
+                "services.inference_service._load_classifier_model",
+                classifier_model,
+            ),
+            patch(
+                "services.inference_service._load_segmentation_model",
+                segmentation_model,
+            ),
+            patch(
+                "services.inference_service._load_3d_segmentation_model",
+                segmentation_3d_model,
+            ),
+        ):
+            outcomes = preload_inference_models(AnalysisMode.THREE_D)
+
+        classifier_model.assert_called_once_with("cpu")
+        segmentation_3d_model.assert_called_once_with("cpu")
+        segmentation_model.assert_not_called()
+        self.assertEqual(set(outcomes), {"classification", "segmentation3d"})
+
     def test_windows_worker_preloads_before_processing_queue(self) -> None:
         worker = Mock()
         with (
             patch("workers.run_worker.os.name", "nt"),
-            patch("workers.run_worker.get_task_queue", return_value=Mock()),
+            patch(
+                "workers.run_worker.get_task_queue",
+                return_value=Mock(),
+            ) as get_queue,
             patch("workers.run_worker.get_redis_client", return_value=Mock()),
             patch("workers.run_worker.SimpleWorker", return_value=worker),
             patch(
@@ -1069,9 +1176,10 @@ class ModelPreloadTests(unittest.TestCase):
                 replace(SETTINGS, worker_preload_models=True),
             ),
         ):
-            run_worker.main()
+            run_worker.main(["--pipeline", "2d"])
 
-        preload.assert_called_once_with()
+        preload.assert_called_once_with(AnalysisMode.TWO_D)
+        get_queue.assert_called_once_with(AnalysisMode.TWO_D)
         worker.work.assert_called_once_with()
 
     def test_linux_simple_worker_preloads_without_forking(self) -> None:
@@ -1094,9 +1202,9 @@ class ModelPreloadTests(unittest.TestCase):
                 ),
             ),
         ):
-            run_worker.main()
+            run_worker.main(["--pipeline", "3d"])
 
-        preload.assert_called_once_with()
+        preload.assert_called_once_with(AnalysisMode.THREE_D)
         standard_worker.assert_not_called()
         worker.work.assert_called_once_with()
 
@@ -1118,7 +1226,7 @@ class ModelPreloadTests(unittest.TestCase):
                 ),
             ),
         ):
-            run_worker.main()
+            run_worker.main([])
 
         preload.assert_not_called()
         simple_worker.assert_not_called()
