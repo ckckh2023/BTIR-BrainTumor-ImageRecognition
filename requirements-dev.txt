@@ -1,0 +1,4 @@
+-r requirements.txt
+
+# FastAPI TestClient 的 HTTP 端到端测试依赖
+httpx2>=2.0,<3.0

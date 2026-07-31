@@ -14,15 +14,15 @@ BTIR 提供脑肿瘤 MRI 图像分类与分割能力。每次分析以独立
 | 数据持久化 | 已完成 | SQLite 保存元数据，文件系统保存图像与完整结果 |
 | 运行安全 | 已完成 | Redis 写入锁、SQLite 事务、JSON 原子写入 |
 | CPU/GPU | 已完成 | CPU、NVIDIA CUDA、Linux AMD ROCm |
-| 接口协议 | 联调中 | 核心接口稳定，前端结果字段与错误展示仍需最终确认 |
-| 多用户 | 基础能力已完成 | JWT 登录、任务归属和跨用户访问隔离；配额与管理员查询待补充 |
+| 接口协议 | 核心流程已完成 | 2D/3D 上传、异步运行和结果展示已对接；高级任务操作界面待补充 |
+| 多用户 | 基础能力已完成 | JWT 登录、任务隔离和用户任务配额已完成；管理员查询待补充 |
 
 ## 文档导航
 
 | 文档 | 内容 |
 | --- | --- |
 | [API 对接说明](docs/API.md) | 所有接口、参数、响应、错误和前端调用示例 |
-| [安装与部署](docs/DEPLOYMENT.md) | Windows/Linux、Redis、GPU、Worker、进程守护 |
+| [安装与部署](docs/DEPLOYMENT.md) | Windows 开发、Linux 部署、Redis、GPU、Worker 与进程守护 |
 | [运维与数据管理](docs/OPERATIONS.md) | 健康检查、队列、SQLite、归档、清理、测试和基准 |
 
 接口启动后还可以访问 Swagger：<http://127.0.0.1:8000/docs>
@@ -58,7 +58,9 @@ Copy-Item .env.example .env
 python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-`requirements.txt` 默认安装 CPU 版 PyTorch。GPU 安装和 Linux 环境参见[安装与部署](docs/DEPLOYMENT.md)。
+`requirements.txt` 默认安装 CPU 版 PyTorch。需要运行测试时改用
+`python -m pip install -r requirements-dev.txt`。GPU 安装必须在基础依赖之后
+执行，完整顺序参见[安装与部署](docs/DEPLOYMENT.md)。
 把最后一条命令生成的随机值写入 `.env` 的 `BTIR_JWT_SECRET_KEY`。首次创建账号时
 临时设置 `BTIR_REGISTRATION_ENABLED=true`，账号创建完成后建议改回 `false` 并重启 API。
 
@@ -152,6 +154,7 @@ python Main.py claim-legacy-tasks <username> --apply
 ## 自动化测试
 
 ```powershell
+python -m pip install -r requirements-dev.txt
 python -m unittest discover -s tests -v
 ```
 
@@ -195,7 +198,7 @@ accelerator/     # CPU、CUDA、ROCm 适配与安装
 processing/      # 通用预处理和后处理
 models/          # 分类、分割模型实现与权重
 frontend/        # 随 API 托管的前端文件
-scripts/         # Windows/Linux 进程守护
+scripts/         # Linux 进程守护
 tests/           # 自动化测试
 Main.py          # 开发调试命令入口
 ```
@@ -230,6 +233,11 @@ python Main.py purge-archive
 ```
 
 命令行模型调用仅用于开发调试；正式前端流程使用异步 API。
+`clear` 是开发环境全量重置命令：实际执行会清空用户账号、活动任务、归档、
+归档审计、全部任务记录、BTIR 推理队列/作业/任务锁和 Python 缓存，使业务数据
+回到首次启动前的空白状态；`.env`、模型权重和其他 Redis 应用的数据仍会保留。
+执行前必须先停止 API 和 Worker，并先使用 `--dry-run` 检查目标。Redis 不可用
+或仍存在活动 Worker 时，实际清理会拒绝执行。
 
 ## 开发约定
 
@@ -238,14 +246,15 @@ python Main.py purge-archive
 3. 修改公开字段时，同步检查 `contracts/task.py`、API 路由和
  [API 对接说明](docs/API.md)。
 4. 修改持久化字段时同步检查 `core/task_records.py` 和 SQLite migration。
-5. 清理和归档先使用预览模式，禁止用 Redis `FLUSHALL` 或 `FLUSHDB` 代替项目清理命令。
+5. 清理和归档先使用预览模式；`clear` 只操作 BTIR 队列、作业和任务锁，禁止
+   用 `FLUSHALL` 或 `FLUSHDB` 代替项目清理命令。
 
 ## 下一阶段
 
-1. 与前端最终确认 `frontend_result` 字段和错误展示格式。
+1. 补充前端自动化测试，并完善任务取消、再次运行和运行历史界面。
 2. 为 3D 路线接入经过验证的体积分类模型；现有 2D 分类器不会用于 3D 输入。
 3. 在医学依据和输出协议明确后，再增加基于 3D 分割结果的高级分析或诊断路线。
-4. 补充每用户任务配额、登录限流、审计与管理员查询。
+4. 补充登录限流、审计管理与管理员查询。
 
 ## 彩蛋
 

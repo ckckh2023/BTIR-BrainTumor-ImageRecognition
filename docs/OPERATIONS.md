@@ -276,27 +276,43 @@ Linux `run-supervisor.sh` 只负责 API、Worker、健康检查和
 
 ## 手动清理
 
-先预览：
+`clear` 是开发调试用的全量任务重置命令。执行前先停止 API 与 Worker，避免
+运行中的作业在清理后重新写入结果，然后预览：
 
 ```powershell
 python Main.py clear --dry-run
 ```
 
-指定其他输出目录时：
+确认后执行：
 
 ```powershell
-python Main.py clear --output-dir D:\btir-output --dry-run
+python Main.py clear
 ```
 
-`clear` 是开发期手动清理工具，与任务归档策略不同。执行前始终先使用
-`--dry-run` 确认目标；不要用 Redis 的 `FLUSHALL`、`FLUSHDB` 或类似命令替代
-项目清理流程。
+实际执行会删除：
+
+- SQLite 中的全部用户账号；
+- `BTIR_OUTPUT_DIR` 下的活动任务；
+- `BTIR_TASK_ARCHIVE_DIR` 下的归档任务、待清除目录和归档审计；
+- SQLite 中的全部任务记录；
+- `BTIR_TASK_QUEUE_NAME` 对应的 RQ 队列、作业注册表、作业结果及
+  `btir:task:*:write` 任务锁；
+- Python 与工具缓存，以及旧分割脚本生成的临时结果。
+
+清理后业务数据与首次启动前一致，需要重新注册账号；数据库表结构、`.env`、
+模型权重以及 Redis 中其他应用的数据不会被删除。`clear` 不接受临时
+`--output-dir`，只处理配置中明确指定的输出与归档目录。它与按保留期运行的
+归档策略不同，也不会调用 Redis 的 `FLUSHALL` 或 `FLUSHDB`。
+
+`--dry-run` 会显示活动 Worker 数量但不修改任何数据。实际执行要求 Redis 可用
+且不存在活动推理 Worker，以避免运行中任务在清理后重新写回。
 
 ## 自动化测试
 
 运行全量测试：
 
 ```powershell
+python -m pip install -r requirements-dev.txt
 python -m unittest discover -s tests -v
 ```
 

@@ -108,6 +108,19 @@ class SqliteUserRepository:
             return None
         return self._row_to_record(row)
 
+    def count(self) -> int:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) AS total FROM users"
+            ).fetchone()
+        return int(row["total"])
+
+    def delete_all(self) -> int:
+        '''删除全部用户账号，仅供开发调试的全量重置命令使用'''
+        with self._connect() as connection:
+            cursor = connection.execute("DELETE FROM users")
+        return cursor.rowcount
+
     @staticmethod
     def _row_to_record(row: sqlite3.Row) -> UserRecord:
         return UserRecord(

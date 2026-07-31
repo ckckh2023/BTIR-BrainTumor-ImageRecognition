@@ -32,6 +32,7 @@ class TaskStorageTests(unittest.TestCase):
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.project_root = Path(self.temporary_directory.name)
         self.output_dir = self.project_root / "output"
+        self.archive_dir = self.project_root / "archive"
         self.repository = SqliteTaskRepository(self.project_root / "tasks.db")
 
     def tearDown(self) -> None:
@@ -524,57 +525,72 @@ class TaskStorageTests(unittest.TestCase):
         task_dir.mkdir(parents=True)
         (task_dir / "result.json").write_text("{}", encoding="utf-8")
         self.repository.save(task_dir, self._record(task_dir.name))
+        archived_task_dir = self.archive_dir / "tasks" / "task-archived-dry-run"
+        archived_task_dir.mkdir(parents=True)
+        archived_record = self._record(archived_task_dir.name)
+        archived_record.archived_at = archived_record.updated_at
+        self.repository.save(archived_task_dir, archived_record)
+        user_repository = SqliteUserRepository(self.repository)
+        user_repository.create_user("dry_run_user", "password-hash")
 
         clear_generated_files(
             self.project_root,
             self.output_dir,
+            self.archive_dir,
             self.project_root / "segmenter",
             dry_run=True,
             task_repository=self.repository,
-            clear_task_metadata=True,
+            user_repository=user_repository,
         )
 
         self.assertTrue(task_dir.exists())
-        self.assertEqual(self.repository.count(), 1)
+        self.assertTrue(archived_task_dir.exists())
+        self.assertEqual(self.repository.count(), 2)
+        self.assertIsNotNone(user_repository.get_by_username("dry_run_user"))
 
-    def test_clear_default_output_deletes_files_and_database_records(self) -> None:
+    def test_clear_deletes_all_business_data_and_generated_files(self) -> None:
         task_dir = self.output_dir / "task-003"
         task_dir.mkdir(parents=True)
         (task_dir / "result.json").write_text("{}", encoding="utf-8")
         self.repository.save(task_dir, self._record(task_dir.name))
 
+        archived_task_dir = self.archive_dir / "tasks" / "task-archived"
+        archived_task_dir.mkdir(parents=True)
+        (archived_task_dir / "result.json").write_text("{}", encoding="utf-8")
+        archived_record = self._record(archived_task_dir.name)
+        archived_record.archived_at = archived_record.updated_at
+        self.repository.save(archived_task_dir, archived_record)
+        (self.archive_dir / "audit.jsonl").write_text(
+            '{"operation":"archive"}\n',
+            encoding="utf-8",
+        )
+        user_repository = SqliteUserRepository(self.repository)
+        user_repository.create_user("clear_user", "password-hash")
+
         clear_generated_files(
             self.project_root,
             self.output_dir,
+            self.archive_dir,
             self.project_root / "segmenter",
             dry_run=False,
             task_repository=self.repository,
-            clear_task_metadata=True,
+            user_repository=user_repository,
         )
 
         self.assertFalse(self.output_dir.exists())
+        self.assertFalse(self.archive_dir.exists())
         self.assertEqual(self.repository.count(), 0)
+        self.assertIsNone(user_repository.get_by_username("clear_user"))
 
-    def test_clear_custom_output_keeps_database_records(self) -> None:
-        default_task_dir = self.output_dir / "task-004"
-        default_task_dir.mkdir(parents=True)
-        self.repository.save(default_task_dir, self._record(default_task_dir.name))
+    def test_clear_command_does_not_accept_an_arbitrary_output_directory(self) -> None:
+        parser = _build_parser()
+        with (
+            redirect_stderr(StringIO()),
+            self.assertRaises(SystemExit) as raised,
+        ):
+            parser.parse_args(["clear", "--output-dir", "outside"])
 
-        custom_output_dir = self.project_root / "custom-output"
-        (custom_output_dir / "temporary.txt").parent.mkdir(parents=True)
-        (custom_output_dir / "temporary.txt").write_text("temporary", encoding="utf-8")
-
-        clear_generated_files(
-            self.project_root,
-            custom_output_dir,
-            self.project_root / "segmenter",
-            dry_run=False,
-            task_repository=self.repository,
-            clear_task_metadata=False,
-        )
-
-        self.assertFalse(custom_output_dir.exists())
-        self.assertEqual(self.repository.count(), 1)
+        self.assertEqual(raised.exception.code, 2)
 
 
 if __name__ == "__main__":

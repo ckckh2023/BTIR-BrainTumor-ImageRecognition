@@ -19,7 +19,7 @@ from services.cleanup_service import clear_generated_files
 from services.console import ConsoleProgress, print_event
 from services.presentation import print_result
 from services.terminal_game import run_game
-from services.task_queue import reconcile_active_tasks
+from services.task_queue import clear_task_queue_state, reconcile_active_tasks
 from services.task_files import (
     create_task_dir,
     get_task_dir,
@@ -58,14 +58,16 @@ def main(argv: list[str] | None = None) -> int:
         print_event(f"开始执行 {args.command}")
 
         if args.command == "clear":
-            output_dir = args.output_dir.resolve()
+            queue_report = clear_task_queue_state(dry_run=args.dry_run)
+            _print_queue_reset_report(queue_report, dry_run=args.dry_run)
             clear_generated_files(
                 PROJECT_ROOT,
-                output_dir,
+                SETTINGS.output_dir,
+                SETTINGS.task_archive_dir,
                 SEGMENTER_DIR,
                 dry_run=args.dry_run,
                 task_repository=task_repository,
-                clear_task_metadata=output_dir == SETTINGS.output_dir.resolve(),
+                user_repository=SqliteUserRepository(task_repository),
             )
             return 0
 
@@ -191,19 +193,15 @@ def _build_parser() -> argparse.ArgumentParser:
     commands.add_parser("game", help="启动终端扫瘤小游戏")
 
     # 添加clear子命令
-    clear = commands.add_parser("clear", help="清理 Python 缓存和默认生成结果")
+    clear = commands.add_parser(
+        "clear",
+        help="清空账号、任务、归档、BTIR 队列状态和 Python 缓存",
+    )
     clear.add_argument( # --dry-run 参数
         "--dry-run",
         action="store_true",
         help="仅列出将清理的文件，不实际删除",
     )
-    clear.add_argument(
-        "--output-dir",
-        type=Path,
-        default=DEFAULT_OUTPUT_DIR,
-        help=f"任务结果根目录，默认 {DEFAULT_OUTPUT_DIR}",
-    )
-
     for command_name, help_text in (
         ("archive-tasks", "将超过保留期的终态任务移入归档区"),
         ("purge-archive", "永久删除超过归档宽限期的任务"),
@@ -356,6 +354,19 @@ def _print_task_reconciliation_report(report) -> None:
         print(f"  {task_id}")
     if report.skipped_task_ids:
         print(f"正在写入而跳过：{len(report.skipped_task_ids)} 条")
+
+
+def _print_queue_reset_report(report, *, dry_run: bool) -> None:
+    '''输出 clear 对本项目 Redis 状态的处理范围'''
+    action = "将清理" if dry_run else "已清理"
+    print(
+        f"{action} Redis 队列 {report.queue_name}："
+        f"排队作业 {report.queued_job_count} 条，"
+        f"注册表作业 {report.registry_job_count} 条，"
+        f"任务锁 {report.task_lock_count} 个"
+    )
+    if report.active_worker_count:
+        print(f"检测到活动推理 Worker：{report.active_worker_count} 个")
 
 
 def _claim_legacy_tasks(username: str, *, apply: bool) -> None:

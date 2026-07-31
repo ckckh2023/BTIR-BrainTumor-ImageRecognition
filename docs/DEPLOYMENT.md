@@ -74,7 +74,7 @@ Linux：
 cp .env.example .env
 ```
 
-`.env.example` 是完整配置和默认值的权威来源。部署时重点确认：
+`.env.example` 提供常用配置、默认值和可选模型路径覆盖。部署时重点确认：
 
 ```dotenv
 BTIR_DEVICE=auto
@@ -191,6 +191,10 @@ python -m workers.run_worker
 python -m accelerator.install --backend auto
 ```
 
+GPU 安装命令应当最后执行。再次运行 `pip install -r requirements.txt` 会恢复
+默认 CPU 版 PyTorch，此时需要重新执行加速后端安装器。安装器会同时保持项目
+锁定的 NumPy 与 Pillow 版本，避免重装 Torch 时升级公共二进制依赖。
+
 先预览将执行的操作：
 
 ```powershell
@@ -256,34 +260,6 @@ BTIR_WORKER_PRELOAD_MODELS=true
 
 Worker 名称包含主机名和进程号。旧 Worker 异常退出后可以直接重新执行
 启动命令；Redis 中短暂保留的旧注册不会阻止新 Worker 启动。
-
-## Windows 进程守护
-
-启动前停止手动运行的 API 与 Worker，避免端口占用和重复注册：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/run-supervisor.ps1 -PythonExe E:\btir311\Scripts\python.exe
-```
-
-脚本会：
-
-- 同时管理 API 与 Worker，进程退出时自动重启。
-- 检查 `/healthz`、`/readyz` 和 `/ops/queue`。
-- Redis 正常、Worker 未注册且没有运行中作业时重启 Worker。
-- 默认每 60 秒运行一次 `reconcile-tasks`。
-
-任务巡检周期可通过 `-TaskReconcileSeconds` 调整。日志写入：
-
-```text
-logs/supervisor.log
-logs/api.stdout.log
-logs/api.stderr.log
-logs/worker.stdout.log
-logs/worker.stderr.log
-logs/reconcile.log
-```
-
-需要开机启动时，可将命令加入 Windows 任务计划程序，并配置失败后重启。
 
 ## Linux 进程守护
 

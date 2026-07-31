@@ -20,6 +20,10 @@ PYTORCH_PACKAGES = {
     "cuda": ["torch==2.7.1+cu128", "torchvision==0.22.1+cu128"],
     "rocm": ["torch==2.7.1+rocm6.3", "torchvision==0.22.1+rocm6.3"],
 }
+PROJECT_BINARY_DEPENDENCIES = [
+    "numpy==2.3.5",
+    "Pillow==12.3.0",
+]
 
 
 def detect_backend() -> str:
@@ -59,6 +63,7 @@ def build_install_command(backend: str) -> list[str]:
         "--extra-index-url",
         "https://pypi.org/simple",
         *PYTORCH_PACKAGES[backend],
+        *PROJECT_BINARY_DEPENDENCIES,
     ]
 
 

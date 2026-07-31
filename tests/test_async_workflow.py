@@ -22,6 +22,7 @@ from services.inference_service import preload_inference_models
 from services.task_queue import (
     TaskQueueUnavailableError,
     cancel_task_run,
+    clear_task_queue_state,
     enqueue_task_run,
     reconcile_active_tasks,
     reconcile_task_job,
@@ -131,6 +132,111 @@ class AsyncQueueTests(unittest.TestCase):
             enqueue_task_run(self.task_dir, 0.5)
 
         self.assertEqual(repository.record.status, TaskStatus.CREATED)
+
+    def test_clear_queue_dry_run_only_reports_project_state(self) -> None:
+        queue = Mock()
+        queue.get_job_ids.return_value = ["queued-job"]
+        registries = [Mock() for _ in range(6)]
+        for registry in registries:
+            registry.get_job_ids.return_value = []
+        registries[1].get_job_ids.return_value = ["failed-job"]
+        (
+            queue.started_job_registry,
+            queue.failed_job_registry,
+            queue.finished_job_registry,
+            queue.deferred_job_registry,
+            queue.scheduled_job_registry,
+            queue.canceled_job_registry,
+        ) = registries
+        redis_client = Mock()
+        redis_client.scan_iter.return_value = [b"btir:task:task-001:write"]
+
+        with (
+            patch("services.task_queue.get_task_queue", return_value=queue),
+            patch("services.task_queue.get_redis_client", return_value=redis_client),
+            patch(
+                "services.task_queue.get_active_inference_workers",
+                return_value=[Mock()],
+            ),
+        ):
+            report = clear_task_queue_state(dry_run=True)
+
+        self.assertEqual(report.queued_job_count, 1)
+        self.assertEqual(report.registry_job_count, 1)
+        self.assertEqual(report.task_lock_count, 1)
+        self.assertEqual(report.active_worker_count, 1)
+        queue.delete.assert_not_called()
+        redis_client.delete.assert_not_called()
+
+    def test_clear_queue_removes_only_queue_jobs_registries_and_task_locks(self) -> None:
+        queue = Mock()
+        queue.get_job_ids.return_value = ["queued-job"]
+        registries = [Mock() for _ in range(6)]
+        for registry in registries:
+            registry.get_job_ids.return_value = []
+        registries[1].get_job_ids.return_value = ["failed-job"]
+        (
+            queue.started_job_registry,
+            queue.failed_job_registry,
+            queue.finished_job_registry,
+            queue.deferred_job_registry,
+            queue.scheduled_job_registry,
+            queue.canceled_job_registry,
+        ) = registries
+        redis_client = Mock()
+        redis_client.scan_iter.return_value = [b"btir:task:task-001:write"]
+        failed_job = Mock()
+
+        with (
+            patch("services.task_queue.get_task_queue", return_value=queue),
+            patch("services.task_queue.get_redis_client", return_value=redis_client),
+            patch(
+                "services.task_queue.get_active_inference_workers",
+                return_value=[],
+            ),
+            patch("services.task_queue.Job.fetch", return_value=failed_job),
+        ):
+            clear_task_queue_state(dry_run=False)
+
+        queue.delete.assert_called_once_with(delete_jobs=True)
+        registries[1].remove.assert_called_once_with(
+            "failed-job",
+            delete_job=False,
+        )
+        failed_job.delete.assert_called_once_with()
+        redis_client.delete.assert_called_once_with(
+            b"btir:task:task-001:write"
+        )
+
+    def test_clear_queue_rejects_active_worker(self) -> None:
+        queue = Mock()
+        queue.get_job_ids.return_value = []
+        registries = [Mock() for _ in range(6)]
+        for registry in registries:
+            registry.get_job_ids.return_value = []
+        (
+            queue.started_job_registry,
+            queue.failed_job_registry,
+            queue.finished_job_registry,
+            queue.deferred_job_registry,
+            queue.scheduled_job_registry,
+            queue.canceled_job_registry,
+        ) = registries
+        redis_client = Mock()
+        redis_client.scan_iter.return_value = []
+
+        with (
+            patch("services.task_queue.get_task_queue", return_value=queue),
+            patch("services.task_queue.get_redis_client", return_value=redis_client),
+            patch(
+                "services.task_queue.get_active_inference_workers",
+                return_value=[Mock()],
+            ),
+            self.assertRaisesRegex(ValueError, "请先停止"),
+        ):
+            clear_task_queue_state(dry_run=False)
+
+        queue.delete.assert_not_called()
 
     def test_manual_retry_rejects_nonfailed_task(self) -> None:
         record = deepcopy(self.record)
