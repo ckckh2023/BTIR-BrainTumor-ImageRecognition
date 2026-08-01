@@ -12,7 +12,7 @@ from pathlib import Path
 
 from core.settings import SETTINGS
 from contracts.auth import RegisterRequest
-from core.task_definitions import InputStorageMode, TaskStatus
+from core.task_definitions import TaskStatus
 from repositories.sqlite_task_repository import SqliteTaskRepository
 from repositories.task_repository import task_repository
 from repositories.user_repository import (
@@ -21,30 +21,20 @@ from repositories.user_repository import (
 )
 from services.archive_service import archive_expired_tasks, purge_expired_archives
 from services.auth_service import hash_password
-from services.benchmark_service import benchmark_models
 from services.cleanup_service import clear_generated_files, purge_logs_and_data
 from services.console import ConsoleProgress, print_event
-from services.presentation import print_result
 from services.terminal_game import run_game
 from services.task_queue import clear_task_queue_state, reconcile_active_tasks
 from services.task_files import (
-    create_task_dir,
     get_task_dir,
-    initialize_task,
-    validate_image_path,
     write_json,
 )
-from services.task_runner import (
-    run_classification,
-    run_segmentation,
-    run_task_models,
-)
+from services.task_runner import run_task_models
 
 
 # 统一使用项目配置中的路径与默认阈值
 PROJECT_ROOT = SETTINGS.project_root
 DEFAULT_OUTPUT_DIR = SETTINGS.output_dir
-SEGMENTER_DIR = SETTINGS.segmenter_script.parent
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -71,7 +61,6 @@ def main(argv: list[str] | None = None) -> int:
                 PROJECT_ROOT,
                 SETTINGS.output_dir,
                 SETTINGS.task_archive_dir,
-                SEGMENTER_DIR,
                 dry_run=args.dry_run,
                 task_repository=task_repository,
                 user_repository=SqliteUserRepository(task_repository),
@@ -85,7 +74,6 @@ def main(argv: list[str] | None = None) -> int:
                 PROJECT_ROOT,
                 SETTINGS.output_dir,
                 SETTINGS.task_archive_dir,
-                SEGMENTER_DIR,
                 dry_run=args.dry_run,
                 task_repository=task_repository,
                 user_repository=SqliteUserRepository(task_repository),
@@ -122,15 +110,6 @@ def main(argv: list[str] | None = None) -> int:
             _manage_user(args)
             return 0
 
-        if args.command == "benchmark":
-            result = benchmark_models(
-                args.image_path,
-                threshold=args.threshold,
-                warm_runs=args.warm_runs,
-            )
-            print_result(result, args.json)
-            return 0
-
         if args.command == "evaluate-3d":
             from services.segmentation_evaluation import (
                 evaluate_brats_segmentation,
@@ -147,53 +126,17 @@ def main(argv: list[str] | None = None) -> int:
             _print_3d_evaluation_report(result, report_path, as_json=args.json)
             return 1 if result["failed_subjects"] else 0
 
-        output_root = args.output_dir.resolve()
-        if args.command == "create":
-            source_image = validate_image_path(args.image_path)
-            task_dir = create_task_dir(output_root)
-            image_path = initialize_task(
-                task_dir,
-                source_image,
-                args.input_mode,
-                args.name,
-            )
-            print(f"任务已创建：{task_dir.name}")
-            print(f"任务目录：{task_dir}")
-            print(f"任务图像：{image_path}")
-            return 0
-
-        if args.command in {"segment", "all"} and not 0.0 <= args.threshold <= 1.0:
-            raise ValueError("--threshold 必须位于 0 到 1 之间")
-
-        task_dir = get_task_dir(output_root, args.task_id)
-
-        if args.command == "classify":
-            progress = ConsoleProgress()
-            progress.update("分类推理中", 0)
-            model_run = run_classification(task_dir)
-            progress.update("分类完成", 100)
-            print_result(model_run.result, args.json)
-            return 0
-
-        if args.command == "segment":
-            progress = ConsoleProgress()
-            progress.update("分割推理中", 0)
-            model_run = run_segmentation(task_dir, args.threshold)
-            progress.update("分割完成", 100)
-            print_result(model_run.result, args.json)
-            return 0
-
+        task_dir = get_task_dir(args.output_dir.resolve(), args.task_id)
         progress = ConsoleProgress()
         run_result = run_task_models(
             task_dir,
-            args.threshold,
             progress_callback=progress.update,
         )
-        image_path = run_result.image_path
+        input_dir = run_result.input_dir
         classification = run_result.classification_result
         segmentation = run_result.segmentation_result
         result = {
-            "image_path": str(image_path),
+            "input_dir": str(input_dir),
             "classification": classification,
             "segmentation": segmentation,
             "task_dir": str(task_dir),
@@ -203,7 +146,14 @@ def main(argv: list[str] | None = None) -> int:
             "segmentation_history_path": segmentation["history_result_path"],
             "combined_result_path": segmentation["frontend_result_path"],
         }
-        print_result(result, args.json)
+        if args.json:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+        else:
+            print("3D 推理完成")
+            print(f"任务目录：{task_dir}")
+            print(f"分类结果：{result['classification_result_path']}")
+            print(f"分割结果：{result['segmentation_result_path']}")
+            print(f"汇总结果：{result['combined_result_path']}")
         return 0
     except Exception as exc:
         if task_dir is not None:
@@ -314,25 +264,6 @@ def _build_parser() -> argparse.ArgumentParser:
         user_command = user_commands.add_parser(command_name, help=help_text)
         user_command.add_argument("username", help="目标用户名")
 
-    benchmark = commands.add_parser(
-        "benchmark",
-        help="测量分类与分割模型在当前进程中的首次和连续推理耗时",
-    )
-    benchmark.add_argument("image_path", type=Path, help="用于基准测试的输入图像")
-    benchmark.add_argument(
-        "--warm-runs",
-        type=int,
-        default=3,
-        help="首次调用后连续测量次数，默认 3",
-    )
-    benchmark.add_argument(
-        "--threshold",
-        type=float,
-        default=SETTINGS.default_segment_threshold,
-        help=f"分割阈值，默认 {SETTINGS.default_segment_threshold}",
-    )
-    benchmark.add_argument("--json", action="store_true", help="输出完整 JSON 结果")
-
     evaluate_3d = commands.add_parser(
         "evaluate-3d",
         help="用带 seg 标签的 BraTS 数据集评测 3D 分割 Dice、耗时和显存",
@@ -366,50 +297,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="除保存报告外，同时在控制台输出完整 JSON",
     )
 
-    # 添加create子命令
-    create = commands.add_parser("create", help="创建任务并保存一次输入图片")
-    create.add_argument("image_path", type=Path, help="输入 MRI 图像路径") # image_path 参数
-    create.add_argument("--name", help="任务显示名称，并非task任务id") # --name 参数
-    create.add_argument( # --input-mode 参数
-        "--input-mode",
-        choices=tuple(mode.value for mode in InputStorageMode),
-        default=InputStorageMode.AUTO.value,
-        help="输入保存方式：auto 优先硬链接，失败时复制",
-    )
-    create.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR) # --output-dir 参数
-
-    # 添加classify子命令
-    classify_command = commands.add_parser("classify", help="运行 yes/no 分类模型")
-    _add_model_arguments(classify_command, with_threshold=False)
-
-    for command_name, help_text in (
-        ("segment", "运行 U-Net 分割模型"),
-        ("all", "依次运行 分类 和 分割 模型"),
-    ):
-        command = commands.add_parser(command_name, help=help_text)
-        _add_model_arguments(command, with_threshold=True)
+    run = commands.add_parser("run", help="运行已有 3D 任务的分类与分割流程")
+    run.add_argument("--json", action="store_true", help="输出完整 JSON 结果")
+    run.add_argument("--task-id", required=True, help="要运行的已有 3D 任务 ID")
+    run.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     return parser
-
-
-def _add_model_arguments(
-    command: argparse.ArgumentParser, *, with_threshold: bool
-) -> None:
-    '''为模型运行命令添加通用参数'''
-    if with_threshold:
-        command.add_argument(
-            "--threshold",
-            type=float,
-            default=SETTINGS.default_segment_threshold,
-            help=f"分割阈值，默认 {SETTINGS.default_segment_threshold}",
-        ) # --threshold 参数
-    command.add_argument("--json", action="store_true", help="输出完整 JSON 结果") # --json 参数
-    command.add_argument("--task-id", required=True, help="要运行的已有任务 ID") # --task-id 参数
-    command.add_argument( # --output-dir 参数
-        "--output-dir",
-        type=Path,
-        default=DEFAULT_OUTPUT_DIR,
-        help=f"任务结果根目录，默认 {DEFAULT_OUTPUT_DIR}",
-    )
 
 
 def _print_help(parser: argparse.ArgumentParser) -> None:
@@ -417,11 +309,7 @@ def _print_help(parser: argparse.ArgumentParser) -> None:
     parser.print_help()
     print(
         "\n示例：\n"
-        "  python Main.py create dataset/yes/Y101.jpg\n"
-        "  python Main.py classify --task-id <task_id>\n"
-        "  python Main.py segment --task-id <task_id>\n"
-        "  python Main.py all --task-id <task_id>\n"
-        "  python Main.py create dataset/yes/Y101.jpg --input-mode copy\n"
+        "  python Main.py run --task-id <3d_task_id>\n"
         "  python Main.py clear --dry-run\n"
         "  python Main.py purge --dry-run\n"
         "  python Main.py archive-tasks\n"
@@ -432,7 +320,6 @@ def _print_help(parser: argparse.ArgumentParser) -> None:
         "  python Main.py user list\n"
         "  python Main.py user disable <username>\n"
         "  python Main.py user reset-password <username>\n"
-        "  python Main.py benchmark dataset/no/1.jpg --warm-runs 3\n"
         "  python Main.py evaluate-3d <BraTS数据集目录>\n"
         "  python Main.py game\n"
     )

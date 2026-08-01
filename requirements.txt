@@ -26,4 +26,3 @@ safetensors>=0.5,<1.0
 # 支持 GPU 加速请在安装本文件后执行：python -m accelerator.install --backend auto
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.7.1+cpu
-torchvision==0.22.1+cpu

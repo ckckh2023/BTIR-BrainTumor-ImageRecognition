@@ -14,7 +14,6 @@ from rq.job import Job, JobStatus as RqJobStatus
 from core.settings import SETTINGS
 from core.task_definitions import (
     ACTIVE_ASYNC_TASK_STATUSES,
-    AnalysisMode,
     JobStatus,
     TaskStatus,
 )
@@ -59,49 +58,21 @@ PENDING_RQ_STATUSES = frozenset(
 )
 
 
-def task_queue_name_for_mode(analysis_mode: AnalysisMode | str) -> str:
-    '''返回指定推理路线的独立 RQ 队列名称。'''
-
-    mode = AnalysisMode(analysis_mode)
-    return (
-        SETTINGS.task_queue_2d_name
-        if mode is AnalysisMode.TWO_D
-        else SETTINGS.task_queue_3d_name
-    )
-
-
-@lru_cache(maxsize=2)
-def get_task_queue(
-    analysis_mode: AnalysisMode = AnalysisMode.TWO_D,
-) -> Queue:
-    '''获取指定推理路线的 RQ 队列。'''
+@lru_cache(maxsize=1)
+def get_task_queue() -> Queue:
+    '''获取 3D 推理路线的 RQ 队列。'''
 
     return Queue(
-        task_queue_name_for_mode(analysis_mode),
+        SETTINGS.task_queue_name,
         connection=get_redis_client(),
         default_timeout=SETTINGS.task_job_timeout_seconds,
     )
 
 
-def get_task_queues() -> tuple[Queue, Queue]:
-    '''获取 2D 与 3D 两条独立推理队列。'''
+def get_active_inference_workers() -> list[Worker]:
+    '''获取仍监听 3D 推理队列的 Worker。'''
 
-    return (
-        get_task_queue(AnalysisMode.TWO_D),
-        get_task_queue(AnalysisMode.THREE_D),
-    )
-
-
-def get_active_inference_workers(
-    analysis_mode: AnalysisMode | str | None = None,
-) -> list[Worker]:
-    '''获取指定路线或任一路线中仍被 RQ 注册为存活的 Worker。'''
-
-    target_names = (
-        {task_queue_name_for_mode(analysis_mode)}
-        if analysis_mode is not None
-        else set(SETTINGS.task_queue_names)
-    )
+    target_names = {SETTINGS.task_queue_name}
     return [
         worker
         for worker in Worker.all(connection=get_redis_client())
@@ -109,21 +80,16 @@ def get_active_inference_workers(
     ]
 
 
-def has_active_inference_worker(
-    analysis_mode: AnalysisMode | str | None = None,
-) -> bool:
-    '''检查指定路线或任一路线是否有活动 Worker。'''
+def has_active_inference_worker() -> bool:
+    '''检查 3D 推理队列是否有活动 Worker。'''
 
-    return bool(get_active_inference_workers(analysis_mode))
+    return bool(get_active_inference_workers())
 
 
 def get_inference_queue_status() -> dict[str, object]:
-    '''分别汇总 2D、3D 队列，并提供向后兼容的合计字段。'''
+    '''汇总 3D 推理队列状态。'''
 
-    queues = {
-        AnalysisMode.TWO_D.value: get_task_queue(AnalysisMode.TWO_D),
-        AnalysisMode.THREE_D.value: get_task_queue(AnalysisMode.THREE_D),
-    }
+    queues = {"3d": get_task_queue()}
     workers = get_active_inference_workers()
     per_queue: dict[str, dict[str, int | float | str | None]] = {}
     for mode, queue in queues.items():
@@ -156,7 +122,7 @@ def get_inference_queue_status() -> dict[str, object]:
 def clear_task_queue_state(*, dry_run: bool) -> TaskQueueResetReport:
     '''只清理 BTIR 推理队列、作业记录与任务锁，不清空整个 Redis 数据库。'''
     try:
-        queues = get_task_queues()
+        queues = (get_task_queue(),)
         connection = get_redis_client()
         active_worker_count = len(get_active_inference_workers())
         registries = tuple(
@@ -240,7 +206,6 @@ def _get_oldest_queue_wait_seconds(queue: Queue) -> float | None:
 
 def enqueue_task_run(
     task_dir: Path,
-    threshold: float,
     *,
     retry_failed_only: bool = False,
 ) -> tuple[dict[str, object], bool]:
@@ -265,11 +230,10 @@ def enqueue_task_run(
                 if SETTINGS.task_job_max_retries
                 else None
             )
-            queue = get_task_queue(record.analysis_mode)
+            queue = get_task_queue()
             job = queue.enqueue(
                 "workers.inference_jobs.run_task_job",
                 task_dir.name,
-                threshold,
                 job_timeout=SETTINGS.task_job_timeout_seconds,
                 result_ttl=SETTINGS.task_job_result_ttl_seconds,
                 failure_ttl=SETTINGS.task_job_result_ttl_seconds,

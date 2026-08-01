@@ -7,15 +7,20 @@ BTIR 提供脑肿瘤 MRI 图像分类与分割能力。每次分析以独立
 
 | 模块 | 状态 | 说明 |
 | --- | --- | --- |
-| 模型推理 | 已完成 | 2D 图片执行分类与分割；3D 四模态 NIfTI 使用本地 ViT 患者级分类与 SuperLightNet 分割 |
+| 模型推理 | 已完成 | 3D 四模态 NIfTI 使用本地 ViT 患者级分类与 SuperLightNet 分割 |
 | 任务管理 | 已完成 | 上传创建任务、异步运行、重试、取消、软删除、恢复、状态查询 |
 | 历史查询 | 已完成 | 支持任务筛选、分页和单任务运行历史 |
-| 异步调度 | 已完成 | Redis + RQ，2D/3D 队列隔离、自动重试、状态对账和安全取消 |
+| 异步调度 | 已完成 | Redis + RQ 单一 3D 推理队列、自动重试、状态对账和安全取消 |
 | 数据持久化 | 已完成 | SQLite 保存元数据，文件系统保存图像与完整结果 |
 | 运行安全 | 已完成 | Redis 写入锁、SQLite 事务、JSON 原子写入 |
 | CPU/GPU | 已完成 | CPU、NVIDIA CUDA、Linux AMD ROCm |
-| 接口协议 | 核心流程已完成 | 2D/3D 上传、异步运行和结果展示已对接；高级任务操作界面待补充 |
+| 接口协议 | 核心流程已完成 | 3D 四模态上传、异步运行和结果展示已对接；高级任务操作界面待补充 |
 | 多用户 | 基础能力已完成 | JWT 登录、任务隔离、认证限流、账号终端管理、Token 撤销和用户任务配额已完成；管理员查询待补充 |
+
+> 升级注意：当前版本已删除 2D 创建与推理能力，只接受四模态 3D 任务。升级已有
+> 部署前先备份 `data/btir.db`、活动输出与归档目录；旧 2D 任务不会被自动迁移或
+> 删除。开发环境确认无需保留旧数据后，可停止 API 与 Worker，再使用
+> `python Main.py clear --dry-run` 和 `python Main.py clear` 重置业务数据。
 
 ## 3D 结果查看
 
@@ -55,9 +60,7 @@ git lfs status
 确认以下文件是实际模型权重，不是 Git LFS 指针：
 
 ```text
-models/classification/model/pytorch_model.pth
 models/classification/vit-binary/model.safetensors
-models/segmentation/model/best_unet_model.pth
 models/segmentation3d/model/model_epoch_297.pth
 ```
 
@@ -108,19 +111,13 @@ docker start btir-redis
 python -m uvicorn api.app:app --reload
 ```
 
-终端 2 启动 2D Worker：
+终端 2 启动 3D Worker：
 
 ```powershell
-python -m workers.run_worker --pipeline 2d
+python -m workers.run_worker
 ```
 
-终端 3 启动 3D Worker：
-
-```powershell
-python -m workers.run_worker --pipeline 3d
-```
-
-Linux 已准备好项目内 `.venv` 时，也可以一条命令同时托管 API 与两个 Worker。
+Linux 已准备好项目内 `.venv` 时，也可以一条命令同时托管 API 与 Worker。
 该脚本不会启动 Docker 或 Redis；若 Redis 运行在 Docker 中，请先启动 Docker 和 Redis 容器：
 
 ```bash
@@ -153,14 +150,10 @@ service 中使用 `Environment=` 或 `EnvironmentFile=` 注入，
 
 1. 调用 `POST /auth/register` 创建账号，或通过 `POST /auth/login` 登录。
 2. 后续任务请求携带 `Authorization: Bearer <access_token>`。
-3. 选择输入路线并保存返回的 `task_id`：
-
-   - 2D：`POST /tasks` 上传 `.jpg`、`.jpeg` 或 `.png`。
-   - 3D：`POST /tasks/3d` 同时上传 `flair`、`t1ce`、`t1`、`t2`
-     四个 `.nii` 或 `.nii.gz` 文件。
-
-4. `POST /tasks/{task_id}/run-async` 提交任务。2D 任务执行单图分类与分割；
-   3D 任务固定执行本地 ViT 多切片分类，再执行 SuperLightNet 分割。
+3. 调用 `POST /tasks/3d`，同时上传 `flair`、`t1ce`、`t1`、`t2` 四个
+   `.nii` 或 `.nii.gz` 文件，并保存返回的 `task_id`。
+4. `POST /tasks/{task_id}/run-async` 提交任务。任务固定执行本地 ViT
+   多切片分类，再执行 SuperLightNet 分割。
 5. 轮询 `GET /tasks/{task_id}`，直到状态变为 `succeeded`。
 6. 历史和归档接口只返回当前用户自己的任务。
 
@@ -204,7 +197,10 @@ python -m unittest discover -s tests -v
 output/
 └── 20260715_120000_001/
     ├── input/
-    │   └── image.jpg
+    │   ├── flair.nii.gz
+    │   ├── t1ce.nii.gz
+    │   ├── t1.nii.gz
+    │   └── t2.nii.gz
     ├── classification.json
     ├── segmentation.json
     ├── runs/
@@ -234,7 +230,6 @@ repositories/    # 任务仓储契约与 SQLite 实现
 services/        # 任务、推理、队列、锁、归档等业务逻辑
 workers/         # RQ 推理作业与 Worker 入口
 accelerator/     # CPU、CUDA、ROCm 适配与安装
-processing/      # 通用预处理和后处理
 models/          # 分类、分割模型实现与权重
 frontend/        # 随 API 托管的前端文件
 scripts/         # Linux 进程守护
@@ -260,11 +255,7 @@ python Main.py help
 常用命令：
 
 ```powershell
-python Main.py create <image_path> --name demo
-python Main.py classify --task-id <task_id>
-python Main.py segment --task-id <task_id>
-python Main.py all --task-id <task_id>
-python Main.py benchmark <image_path> --warm-runs 3 --json
+python Main.py run --task-id <task_id>
 python Main.py evaluate-3d <BraTS数据集目录>
 python Main.py reconcile-tasks
 python Main.py clear --dry-run

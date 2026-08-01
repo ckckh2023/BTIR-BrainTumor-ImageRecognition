@@ -5,23 +5,14 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from datetime import datetime
 
-from core.settings import SETTINGS
 from core.task_definitions import AnalysisMode, JobStatus, ModelName, TaskStatus
 
 
 # 响应模型
-class TaskCreatedResponse(BaseModel):
-    schema_version: Literal["0.1"] = "0.1"
-    task_id: str
-    status: TaskStatus = TaskStatus.CREATED
-    analysis_mode: Literal["2d"] = "2d"
-    input_file: str
-
-
 class VolumeTaskCreatedResponse(BaseModel):
     schema_version: Literal["0.1"] = "0.1"
     task_id: str
@@ -37,11 +28,10 @@ class TaskInputFileData(BaseModel):
 
 # 任务输入数据模型
 class TaskInputData(BaseModel):
-    filename: str | None
     storage_mode: str
     size_bytes: int
     sha256: str
-    files: dict[str, TaskInputFileData] | None = None
+    files: dict[str, TaskInputFileData]
 
 
 class TaskJobData(BaseModel):
@@ -149,7 +139,7 @@ class RuntimeStatusResponse(BaseModel):
 
 
 class InferenceQueueDetail(BaseModel):
-    '''单条推理路线的队列状态'''
+    '''3D 推理队列状态'''
 
     name: str
     active_workers: int
@@ -172,14 +162,6 @@ class InferenceQueueStatusResponse(BaseModel):
 
 
 # 任务运行请求模型
-class RunTaskRequest(BaseModel):
-    threshold: float = Field(
-        default=SETTINGS.default_segment_threshold,
-        ge=0.0,
-        le=1.0,
-    )
-
-
 class TaskEnqueuedResponse(BaseModel):
     schema_version: Literal["0.1"] = "0.1"
     task_id: str

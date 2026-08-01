@@ -7,39 +7,25 @@ import hashlib
 import json
 import math
 import os
-import shutil
 import tempfile
 import uuid
-import warnings
 from pathlib import Path
 from typing import Any, BinaryIO
 from collections.abc import Mapping
-
-from PIL import Image, UnidentifiedImageError
 
 from core.settings import SETTINGS
 from core.task_records import StoredTaskInput, StoredTaskModality, TaskRecord
 from repositories.task_repository import task_repository
 from core.task_definitions import (
     AnalysisMode,
-    InputStorageMode,
     TaskDirectory,
     TaskStatus,
     expected_models_for_mode,
 )
 
 
-ALLOWED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png"}
 VOLUME_MODALITIES = ("flair", "t1ce", "t1", "t2")
 UPLOAD_COPY_CHUNK_BYTES = 1024 * 1024
-
-
-def validate_image_path(path: Path) -> Path:
-    '''验证输入图片存在且可读取，返回绝对路径'''
-    resolved = path.expanduser().resolve()
-    if not resolved.is_file():
-        raise ValueError("输入图像不存在或不可读取")
-    return resolved
 
 
 def task_relative_path(task_dir: Path, path: Path) -> str:
@@ -92,7 +78,6 @@ def _save_created_task(
     name: str | None,
     input_record: StoredTaskInput,
     user_id: str | None = None,
-    analysis_mode: AnalysisMode = AnalysisMode.TWO_D,
 ) -> None:
     '''以统一结构写入新建任务的元数据'''
     now = datetime.now().astimezone()
@@ -104,115 +89,15 @@ def _save_created_task(
             status=TaskStatus.CREATED,
             created_at=now,
             updated_at=now,
-            analysis_mode=analysis_mode,
+            analysis_mode=AnalysisMode.THREE_D,
             expected_models=sorted(
-                expected_models_for_mode(analysis_mode),
+                expected_models_for_mode(AnalysisMode.THREE_D),
                 key=lambda model: model.value,
             ),
             input=input_record,
         ),
         user_id=user_id,
     )
-
-
-def initialize_task(
-    task_dir: Path,
-    source_image: Path,
-    input_mode: InputStorageMode | str,
-    name: str | None = None,
-    user_id: str | None = None,
-) -> Path:
-    '''保存本机图片引用或副本，并创建任务元数据'''
-    source_image = source_image.resolve()
-    input_dir = task_dir / TaskDirectory.INPUT
-    input_dir.mkdir(exist_ok=True)
-    stored_image = input_dir / f"image{source_image.suffix.lower()}"
-
-    try:
-        storage_mode = InputStorageMode(input_mode)
-    except ValueError as exc:
-        allowed = ", ".join(item.value for item in InputStorageMode)
-        raise ValueError(f"不支持的输入保存方式：{input_mode}；仅支持 {allowed}") from exc
-
-    actual_mode = storage_mode.value
-    if storage_mode is InputStorageMode.COPY:
-        shutil.copy2(source_image, stored_image)
-        task_image = stored_image
-    else:
-        try:
-            os.link(source_image, stored_image)
-            actual_mode = "hardlink"
-            task_image = stored_image
-        except OSError as exc:
-            if storage_mode is InputStorageMode.HARDLINK:
-                raise ValueError(f"无法创建硬链接：{exc}") from exc
-            shutil.copy2(source_image, stored_image)
-            actual_mode = "copy"
-            task_image = stored_image
-
-    task_image = task_image.resolve()
-    _save_created_task(
-        task_dir,
-        name,
-        StoredTaskInput(
-            path=str(task_image.relative_to(task_dir)),
-            original_filename=source_image.name,
-            storage_mode=actual_mode,
-            size_bytes=task_image.stat().st_size,
-            sha256=sha256(task_image),
-        ),
-        user_id=user_id,
-    )
-    return task_image
-
-
-def initialize_uploaded_task(
-    task_dir: Path,
-    upload: BinaryIO,
-    filename: str | None,
-    name: str | None = None,
-    user_id: str | None = None,
-) -> Path:
-    '''保存浏览器上传的图片，并创建任务元数据'''
-    original_filename = Path(filename or "").name
-    suffix = Path(original_filename).suffix.lower()
-    if suffix not in ALLOWED_IMAGE_SUFFIXES:
-        allowed = ", ".join(sorted(ALLOWED_IMAGE_SUFFIXES))
-        raise ValueError(f"仅支持以下图片格式：{allowed}")
-
-    input_dir = task_dir / TaskDirectory.INPUT
-    input_dir.mkdir(exist_ok=True)
-    task_image = input_dir / f"image{suffix}"
-    try:
-        with task_image.open("wb") as destination:
-            _copy_upload_with_limit(
-                upload,
-                destination,
-                SETTINGS.max_upload_bytes,
-            )
-
-        _verify_uploaded_image(task_image, SETTINGS.max_image_pixels)
-    except ValueError:
-        task_image.unlink(missing_ok=True)
-        raise
-    except (OSError, UnidentifiedImageError, Image.DecompressionBombError) as exc:
-        task_image.unlink(missing_ok=True)
-        raise ValueError("上传文件不是可读取的图片") from exc
-
-    task_image = task_image.resolve()
-    _save_created_task(
-        task_dir,
-        name,
-        StoredTaskInput(
-            path=str(task_image.relative_to(task_dir)),
-            original_filename=original_filename,
-            storage_mode="uploaded",
-            size_bytes=task_image.stat().st_size,
-            sha256=sha256(task_image),
-        ),
-        user_id=user_id,
-    )
-    return task_image
 
 
 def initialize_uploaded_volume_task(
@@ -283,7 +168,6 @@ def initialize_uploaded_volume_task(
             modalities=modality_records,
         ),
         user_id=user_id,
-        analysis_mode=AnalysisMode.THREE_D,
     )
     return stored_paths
 
@@ -413,38 +297,6 @@ def _copy_upload_with_limit(
 
     if written_bytes == 0:
         raise ValueError("上传文件为空")
-
-
-def _verify_uploaded_image(image_path: Path, max_image_pixels: int) -> None:
-    '''验证上传文件可解码，且解码后的像素数量不超过限制'''
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", Image.DecompressionBombWarning)
-        with Image.open(image_path) as image:
-            width, height = image.size
-            if width * height > max_image_pixels:
-                raise ValueError(
-                    f"图像像素超过限制（最大 {max_image_pixels} 像素）"
-                )
-            image.verify()
-
-
-def load_task_image(task_dir: Path) -> Path:
-    '''读取任务输入图片，并校验其未在创建后被修改'''
-    record = task_repository.load(task_dir)
-    input_record = record.input
-    stored_path = input_record.path
-    if not stored_path:
-        raise ValueError("任务输入缺失")
-
-    image_path = Path(stored_path)
-    if not image_path.is_absolute():
-        image_path = task_dir / image_path
-    image_path = validate_image_path(image_path)
-
-    expected_hash = input_record.sha256
-    if expected_hash and sha256(image_path) != expected_hash:
-        raise ValueError("任务创建后输入图像已发生变化")
-    return image_path
 
 
 def write_json(path: Path, data: dict[str, Any]) -> Path:

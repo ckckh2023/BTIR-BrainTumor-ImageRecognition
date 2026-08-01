@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import datetime, timezone
-from io import BytesIO
 import json
 import os
 from pathlib import Path
@@ -15,7 +14,8 @@ from unittest.mock import patch
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
-from PIL import Image
+import nibabel as nib
+import numpy as np
 from redis import Redis
 from redis.exceptions import RedisError
 from rq import Queue, Retry, SimpleWorker
@@ -104,16 +104,17 @@ class RqIntegrationTests(unittest.TestCase):
                 SETTINGS,
                 output_dir=root / "output",
                 task_database_path=root / "tasks.db",
-                task_queue_2d_name=self.queue.name,
-                task_queue_3d_name=f"{self.queue.name}-3d",
+                task_queue_name=self.queue.name,
             )
             repository = SqliteTaskRepository(settings.task_database_path)
-            image_stream = BytesIO()
-            Image.new("RGB", (2, 2), color="white").save(image_stream, format="PNG")
+            nifti_uploads = {}
+            for modality in ("flair", "t1ce", "t1", "t2"):
+                path = root / f"{modality}.nii.gz"
+                nib.save(nib.Nifti1Image(np.ones((2, 2, 2)), np.eye(4)), path)
+                nifti_uploads[modality] = path.read_bytes()
 
             def fake_run_models(
                 task_dir: Path,
-                _: float,
                 *,
                 should_cancel=None,
                 progress_callback=None,
@@ -122,7 +123,11 @@ class RqIntegrationTests(unittest.TestCase):
                     json.dumps(
                         {
                             "task_id": task_dir.name,
-                            "image_file": "image.png",
+                            "analysis_mode": "3d",
+                            "input_files": {
+                                modality: f"{modality}.nii.gz"
+                                for modality in nifti_uploads
+                            },
                             "classification": {"class": "no"},
                         }
                     ),
@@ -148,8 +153,15 @@ class RqIntegrationTests(unittest.TestCase):
                 TestClient(app) as client,
             ):
                 created = client.post(
-                    "/tasks",
-                    files={"file": ("image.png", image_stream.getvalue(), "image/png")},
+                    "/tasks/3d",
+                    files={
+                        modality: (
+                            f"{modality}.nii.gz",
+                            content,
+                            "application/octet-stream",
+                        )
+                        for modality, content in nifti_uploads.items()
+                    },
                 )
                 self.assertEqual(created.status_code, 201)
                 task_id = created.json()["task_id"]

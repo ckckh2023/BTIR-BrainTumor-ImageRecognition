@@ -24,9 +24,7 @@ git lfs status
 确认以下文件是实际二进制权重，而不是 Git LFS 指针文本：
 
 ```text
-models/classification/model/pytorch_model.pth
 models/classification/vit-binary/model.safetensors
-models/segmentation/model/best_unet_model.pth
 models/segmentation3d/model/model_epoch_297.pth
 ```
 
@@ -87,8 +85,7 @@ BTIR_OUTPUT_DIR=output
 BTIR_REDIS_URL=redis://127.0.0.1:6379/0
 BTIR_CORS_ORIGINS=http://127.0.0.1:8000,http://localhost:8000
 BTIR_TASK_DATABASE_PATH=data/btir.db
-BTIR_TASK_QUEUE_2D_NAME=inference-2d
-BTIR_TASK_QUEUE_3D_NAME=inference-3d
+BTIR_TASK_QUEUE_NAME=inference-3d
 BTIR_WORKER_PRELOAD_MODELS=true
 BTIR_LINUX_WORKER_MODE=standard
 BTIR_JWT_SECRET_KEY=至少32字节的随机字符串
@@ -169,16 +166,10 @@ Linux 可以使用系统 Redis、容器 Redis 或独立 Redis 服务，但连接
 python -m uvicorn api.app:app --reload
 ```
 
-终端 2 使用同一虚拟环境启动 2D Worker：
+终端 2 使用同一虚拟环境启动 3D Worker：
 
 ```powershell
-python -m workers.run_worker --pipeline 2d
-```
-
-终端 3 启动 3D Worker：
-
-```powershell
-python -m workers.run_worker --pipeline 3d
+python -m workers.run_worker
 ```
 
 常用地址：
@@ -199,19 +190,16 @@ python -m workers.run_worker --pipeline 3d
 python -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 ```
 
-分别使用两个受控进程启动 Worker：
+使用受控进程启动 Worker：
 
 ```bash
-python -m workers.run_worker --pipeline 2d
-python -m workers.run_worker --pipeline 3d
+python -m workers.run_worker
 ```
 
 建议：
 
-- 使用一个 API 进程、一个 2D Worker 和一个 3D Worker，避免长时间 3D
-  作业阻塞轻量 2D 作业。
-- 两个 Worker 可能同时使用同一张 GPU，部署前必须用实际模型验证合计显存。
-  显存不足时可临时使用一个 `--pipeline all` Worker，但这会失去队列并行隔离。
+- 使用一个 API 进程和一个 3D Worker；需要增加吞吐时再根据显存实测扩容 Worker。
+- 多个 Worker 可能同时使用同一张 GPU，扩容前必须用实际模型验证合计显存。
 - 3D 四模态任务会占用更多显存与执行时间，任务超时应保留默认的 3600 秒
   或根据服务器实测调高。
 - 使用 Nginx 等反向代理提供 HTTPS。
@@ -284,9 +272,8 @@ python -c "import torch; print(torch.__version__); print(torch.cuda.is_available
 
 ## Worker 预热模式
 
-Windows 使用单进程 `SimpleWorker`，默认在启动阶段按 Worker 路线预加载模型：
-2D Worker 加载 ResNet50 与 2D 分割，3D Worker 加载本地 ViT 与 SuperLightNet，把第一次
-任务的模型冷启动移到 Worker 启动阶段。
+Windows 使用单进程 `SimpleWorker`，默认在启动阶段预加载本地 ViT 与
+SuperLightNet，把第一次任务的模型冷启动移到 Worker 启动阶段。
 
 Linux 默认使用标准 RQ Worker：
 
@@ -303,9 +290,9 @@ BTIR_WORKER_PRELOAD_MODELS=true
 ```
 
 `simple` 不 fork，一次执行一个任务，应由 systemd 或项目守护脚本在进程
-异常退出时重新拉起。每个路线 Worker 会复用自身的模型缓存；标准 Worker
-每项作业使用子进程，模型会在该作业中按需加载。无参数命令会同时监听两个
-队列，主要用于本地兼容和资源受限环境，不提供 2D/3D 并行隔离。
+异常退出时重新拉起。Worker 会复用自身的模型缓存；标准 Worker 每项作业使用
+子进程，模型会在该作业中按需加载。Worker 只监听 `BTIR_TASK_QUEUE_NAME`
+指定的 3D 推理队列。
 
 Worker 名称包含主机名和进程号。旧 Worker 异常退出后可以直接重新执行
 启动命令；Redis 中短暂保留的旧注册不会阻止新 Worker 启动。
@@ -344,15 +331,15 @@ Python 查找顺序：
 
 运行期间会：
 
-- 同时启动并监控 API、2D Worker 与 3D Worker。
+- 同时启动并监控 API 与 3D Worker。
 - 进程退出后按退避时间重新启动。
 - 连续健康检查失败后重启 API。
-- Redis 正常但某条路线 Worker 未注册时，单独重启对应 Worker。
+- Redis 正常但 Worker 未注册时，单独重启 Worker。
 - 默认每 60 秒执行 `reconcile-tasks`。
 - 将标准输出、错误和巡检结果写入 `logs/`。
 - 收到 `SIGINT` 或 `SIGTERM` 时先请求子进程正常退出，超过宽限期才强制停止。
 
-按 `Ctrl+C` 可以停止 supervisor、API 和两个 Worker。该脚本不会执行任务归档或
+按 `Ctrl+C` 可以停止 supervisor、API 和 Worker。该脚本不会执行任务归档或
 永久删除。
 
 项目根目录的 `.env` 可以由系统环境变量替代，但 API 必须获得
@@ -431,7 +418,7 @@ systemd timer 或 cron，不加入 supervisor 主循环。
 2. `GET /healthz` 返回 `200`。
 3. `GET /readyz` 的 SQLite、Redis、Worker 和模型检查均为 `ok`。
 4. `GET /runtime` 显示预期的 CPU、CUDA 或 ROCm 后端。
-5. 上传测试图片，调用 `POST /tasks/{task_id}/run-async`。
+5. 上传一组四模态 NIfTI，调用 `POST /tasks/{task_id}/run-async`。
 6. 轮询任务直到 `succeeded`，确认分类与分割结果均存在。
 7. 有带 `seg` 标签的 BraTS 验证集时，执行
    `python Main.py evaluate-3d <数据集目录>`，记录 WT/TC/ET Dice、耗时和

@@ -17,6 +17,13 @@ class FrontendContractTests(unittest.TestCase):
         self.assertNotIn("当前 3D 路线仅提供分割与定量统计", self.html)
         self.assertNotIn('class="result-note"', self.html)
 
+    def test_upload_flow_is_3d_only(self) -> None:
+        self.assertIn("/tasks/3d", self.html)
+        self.assertNotIn("analysisMode", self.html)
+        self.assertNotIn("switchAnalysisMode", self.html)
+        self.assertNotIn("image-viewer", self.html)
+        self.assertNotIn(".jpg", self.html)
+
     def test_task_manager_exposes_cancel_action(self) -> None:
         self.assertIn("canCancelTask(task.status)", self.html)
         self.assertIn("@click=\"cancelTask(task)\"", self.html)

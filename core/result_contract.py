@@ -56,12 +56,9 @@ def validate_frontend_result(payload: dict[str, Any]) -> None:
     if not isinstance(payload["latest_runs"], dict):
         raise ValueError("latest_runs 必须是对象")
 
-    if mode is AnalysisMode.TWO_D:
-        _require_nonempty_string(payload, "image_file", "2D 结果")
-    else:
-        input_files = payload.get("input_files")
-        if not isinstance(input_files, dict):
-            raise ValueError("3D 结果的 input_files 必须是对象")
+    input_files = payload.get("input_files")
+    if not isinstance(input_files, dict):
+        raise ValueError("3D 结果的 input_files 必须是对象")
 
     classification = payload.get("classification")
     if classification is not None:
@@ -86,11 +83,7 @@ def validate_frontend_result(payload: dict[str, Any]) -> None:
             raise ValueError("segmentation 必须是对象")
         for key in ("model", "mask_file"):
             _require_nonempty_string(segmentation, key, "segmentation")
-        mode_fields = (
-            ("threshold", "tumor_pixels", "image_pixels", "tumor_area_ratio")
-            if mode is AnalysisMode.TWO_D
-            else ("spatial", "labels", "regions")
-        )
+        mode_fields = ("spatial", "labels", "regions")
         missing_mode_fields = [
             key for key in mode_fields if key not in segmentation
         ]

@@ -17,7 +17,7 @@ from services.task_state import update_task_execution_status
 logger = logging.getLogger(__name__)
 
 
-def run_task_job(task_id: str, threshold: float) -> dict[str, Any]:
+def run_task_job(task_id: str) -> dict[str, Any]:
     '''顺序执行一个任务的分类和分割推理'''
     job = get_current_job()
     if job is None:
@@ -43,7 +43,6 @@ def run_task_job(task_id: str, threshold: float) -> dict[str, Any]:
     try:
         run_result = run_task_models(
             task_dir,
-            threshold,
             should_cancel=lambda: _is_cancellation_requested(job),
             progress_callback=lambda stage, percentage: _record_job_progress(
                 job,
@@ -97,10 +96,9 @@ def run_task_job(task_id: str, threshold: float) -> dict[str, Any]:
             "model_result_path"
         ],
     }
-    if run_result.classification_result is not None:
-        result_payload["classification_result_file"] = (
-            run_result.classification_result["model_result_path"]
-        )
+    result_payload["classification_result_file"] = (
+        run_result.classification_result["model_result_path"]
+    )
     return result_payload
 
 
@@ -172,9 +170,9 @@ def _finish_canceled_task(
 
 
 def _get_job_queue_name(job: Any) -> str:
-    '''使用 RQ 作业实际来源队列，测试替身则回退到 2D 队列'''
+    '''使用 RQ 作业实际来源队列，测试替身则回退到项目推理队列'''
 
     origin = getattr(job, "origin", None)
     if isinstance(origin, str) and origin.strip():
         return origin
-    return SETTINGS.task_queue_2d_name
+    return SETTINGS.task_queue_name
