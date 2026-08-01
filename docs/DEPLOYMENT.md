@@ -13,7 +13,7 @@ Worker 的启动方式。所有命令默认在项目根目录执行。
 
 ## 模型权重
 
-`.pth` 模型权重由 Git LFS 管理。首次克隆项目或模型加载异常时执行：
+`.pth` 和 `.safetensors` 模型权重由 Git LFS 管理。首次克隆项目或模型加载异常时执行：
 
 ```bash
 git lfs install
@@ -25,12 +25,17 @@ git lfs status
 
 ```text
 models/classification/model/pytorch_model.pth
+models/classification/vit-binary/model.safetensors
 models/segmentation/model/best_unet_model.pth
 models/segmentation3d/model/model_epoch_297.pth
 ```
 
-3D 路线还依赖 `nibabel`、`einops`、`MONAI 1.3` 与 `tqdm`，均已写入
-`requirements.txt`，不需要单独复制原模型的训练环境。
+3D 路线还依赖 `nibabel`、`einops`、`MONAI 1.3`、`transformers` 与
+`safetensors`，均已写入 `requirements.txt`，不需要单独复制原模型的训练环境。
+默认 ViT 模型完整保存在 `models/classification/vit-binary/`，运行时强制离线
+加载。目录必须保留 `config.json`、`model.safetensors` 与
+`preprocessor_config.json`；缺少任一文件时 3D 分类任务会重试一次，仍失败则返回
+`failed`，不会切换到其他分类模型。
 
 ## Windows 开发环境
 
@@ -98,10 +103,11 @@ BTIR_MAX_ACTIVE_TASKS_PER_USER=2
 BTIR_MAX_3D_UPLOAD_BYTES=536870912
 BTIR_MAX_3D_VOXELS=20000000
 BTIR_3D_SEGMENTER_OVERLAP=0.5
+BTIR_VIT_CLASSIFIER_MODEL_DIR=models/classification/vit-binary
+BTIR_VIT_CLASSIFIER_MAX_SLICES=25
+BTIR_VIT_CLASSIFIER_BATCH_SIZE=16
+BTIR_VIT_CLASSIFIER_THRESHOLD=0.5
 BTIR_3D_CLASSIFIER_MODALITY=flair
-BTIR_3D_CLASSIFIER_MAX_SLICES=64
-BTIR_3D_CLASSIFIER_BATCH_SIZE=16
-BTIR_3D_CLASSIFIER_TOP_FRACTION=0.1
 ```
 
 可以生成 JWT 密钥：
@@ -260,8 +266,9 @@ python -m accelerator.install --backend cpu
 - 多张 GPU 可通过 `BTIR_DEVICE=cuda:0` 指定设备。
 - SuperLightNet 3D 路线支持 CPU 和 NVIDIA CUDA；CPU 可用于功能验证，
   正式体积推理建议使用 CUDA。
-- 3D 路线还会复用 2D ResNet50 对配置模态进行切片集成分类。默认最多处理
-  64 张有效轴向切片，并采用批量推理；该实验性结果不会跳过 3D 分割。
+- 3D 路线固定使用本地 ViT 对 FLAIR 轴向切片分类，并对全部切片概率取均值。
+  权重缺失、加载失败或推理异常时由 RQ 自动重试一次，仍失败则任务失败，不切换
+  其他分类模型。分类成功后继续执行 3D 分割。
 - 当前实现采用 `128×128×128` 滑窗和可配置重叠率，已在 8 GB 显存的
   RTX 5070 Laptop GPU 上完成 `240×240×155` 体积验证，因此不要求把
   整个原始体积一次性放入显存。实际耗时与显卡、重叠率和输入尺寸有关。
@@ -278,7 +285,7 @@ python -c "import torch; print(torch.__version__); print(torch.cuda.is_available
 ## Worker 预热模式
 
 Windows 使用单进程 `SimpleWorker`，默认在启动阶段按 Worker 路线预加载模型：
-2D Worker 加载分类与 2D 分割，3D Worker 加载分类与 SuperLightNet，把第一次
+2D Worker 加载 ResNet50 与 2D 分割，3D Worker 加载本地 ViT 与 SuperLightNet，把第一次
 任务的模型冷启动移到 Worker 启动阶段。
 
 Linux 默认使用标准 RQ Worker：

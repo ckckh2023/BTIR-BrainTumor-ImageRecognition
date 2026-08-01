@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
 import runpy
 import sys
 from pathlib import Path
@@ -13,10 +14,9 @@ from core.settings import SETTINGS
 from core.task_definitions import AnalysisMode
 from processing.postprocessing import analyze_mask, save_mask
 from processing.volume_classification import (
-    aggregate_slice_predictions,
+    aggregate_mean_slice_predictions,
     prepare_volume_slices,
 )
-from functools import lru_cache
 
 
 @lru_cache(maxsize=1)
@@ -35,6 +35,30 @@ def _load_classifier_model(device_name: str):
     return namespace["load_model"](
         SETTINGS.classifier_model,
         SETTINGS.classifier_config,
+        device=device_name,
+    )
+
+
+@lru_cache(maxsize=1)
+def _load_vit_classifier_namespace() -> dict[str, Any]:
+    '''缓存本地二分类 ViT 推理模块'''
+
+    from models.classification import vit_binary
+
+    return {
+        "torch": vit_binary.torch,
+        "load_model": vit_binary.load_model,
+        "predict_images": vit_binary.predict_images,
+    }
+
+
+@lru_cache(maxsize=2)
+def _load_vit_classifier_model(device_name: str):
+    '''按设备缓存本地 ViT 权重；加载过程禁止联网'''
+
+    namespace = _load_vit_classifier_namespace()
+    return namespace["load_model"](
+        SETTINGS.vit_classifier_model_dir,
         device=device_name,
     )
 
@@ -104,7 +128,14 @@ def classify(image_path: Path) -> dict[str, Any]:
 
 
 def classify_volume(modality_paths: dict[str, Path]) -> dict[str, Any]:
-    '''使用现有 2D 分类器对一个 3D 模态的轴向切片进行患者级集成分类'''
+    '''仅使用本地 ViT 执行患者级分类；异常交由任务重试机制处理'''
+
+    return _classify_volume_vit(modality_paths)
+
+
+def _classify_volume_vit(modality_paths: dict[str, Path]) -> dict[str, Any]:
+    '''使用本地二分类 ViT 对轴向切片执行患者级均值聚合'''
+
     modality = SETTINGS.volume_classifier_modality
     try:
         volume_path = modality_paths[modality]
@@ -113,29 +144,34 @@ def classify_volume(modality_paths: dict[str, Path]) -> dict[str, Any]:
 
     prepared = prepare_volume_slices(
         volume_path,
-        max_slices=SETTINGS.volume_classifier_max_slices,
+        max_slices=SETTINGS.vit_classifier_max_slices,
     )
-    namespace = _load_classifier_namespace()
+    namespace = _load_vit_classifier_namespace()
     torch = namespace["torch"]
     device = resolve_device(torch, SETTINGS.device)
-    model, config = _load_classifier_model(str(device))
+    loaded = _load_vit_classifier_model(str(device))
     predictions = namespace["predict_images"](
-        model,
+        loaded,
         prepared.images,
-        config,
-        batch_size=SETTINGS.volume_classifier_batch_size,
+        batch_size=SETTINGS.vit_classifier_batch_size,
     )
-    classification = aggregate_slice_predictions(
+    classification = aggregate_mean_slice_predictions(
         prepared.indices,
         predictions,
         modality=modality,
-        top_fraction=SETTINGS.volume_classifier_top_fraction,
+        threshold=SETTINGS.vit_classifier_threshold,
     )
-    classification["canonical_shape"] = list(prepared.canonical_shape)
-    classification["foreground_slices"] = prepared.foreground_slice_count
-    classification["intensity_window"] = list(prepared.intensity_window)
+    classification.update(
+        {
+            "device": str(device),
+            "checkpoint": loaded.checkpoint_name,
+            "canonical_shape": list(prepared.canonical_shape),
+            "foreground_slices": prepared.foreground_slice_count,
+            "intensity_window": list(prepared.intensity_window),
+        }
+    )
     return {
-        "model": "models/classification/resnet50-slice-ensemble",
+        "model": "models/classification/vit-binary",
         "analysis_mode": "3d",
         "classification": classification,
     }
@@ -203,17 +239,25 @@ def segment_volume(
 def preload_inference_models(
     analysis_mode: AnalysisMode | str | None = None,
 ) -> dict[str, float | str]:
-    '''按 Worker 路线预加载模型；单个模型失败不会阻止其他模型预热。'''
+    '''按 Worker 路线预加载模型；单个模型失败不会阻止其他模型预热'''
 
     mode = AnalysisMode(analysis_mode) if analysis_mode is not None else None
-    loaders = [
-        ("classification", _load_classifier_namespace, _load_classifier_model),
-    ]
+    loaders = []
     if mode in {None, AnalysisMode.TWO_D}:
+        loaders.append(
+            ("classification", _load_classifier_namespace, _load_classifier_model)
+        )
         loaders.append(
             ("segmentation", _load_segmentation_namespace, _load_segmentation_model)
         )
     if mode in {None, AnalysisMode.THREE_D}:
+        loaders.append(
+            (
+                "classification3d",
+                _load_vit_classifier_namespace,
+                _load_vit_classifier_model,
+            )
+        )
         loaders.append(
             (
                 "segmentation3d",

@@ -150,9 +150,10 @@ class Settings:
     segmenter_3d_model: Path
     segmenter_3d_overlap: float
     volume_classifier_modality: str
-    volume_classifier_max_slices: int
-    volume_classifier_batch_size: int
-    volume_classifier_top_fraction: float
+    vit_classifier_model_dir: Path
+    vit_classifier_max_slices: int
+    vit_classifier_batch_size: int
+    vit_classifier_threshold: float
     task_database_path: Path
     task_archive_dir: Path
     device: str
@@ -234,17 +235,21 @@ def _build_settings() -> Settings:
         ),
         segmenter_3d_overlap=_get_overlap("BTIR_3D_SEGMENTER_OVERLAP", 0.5),
         volume_classifier_modality=_get_volume_classifier_modality(),
-        volume_classifier_max_slices=_get_positive_int(
-            "BTIR_3D_CLASSIFIER_MAX_SLICES",
-            64,
+        vit_classifier_model_dir=_get_path(
+            "BTIR_VIT_CLASSIFIER_MODEL_DIR",
+            str(classifier_dir / "vit-binary"),
         ),
-        volume_classifier_batch_size=_get_positive_int(
-            "BTIR_3D_CLASSIFIER_BATCH_SIZE",
+        vit_classifier_max_slices=_get_positive_int(
+            "BTIR_VIT_CLASSIFIER_MAX_SLICES",
+            25,
+        ),
+        vit_classifier_batch_size=_get_positive_int(
+            "BTIR_VIT_CLASSIFIER_BATCH_SIZE",
             16,
         ),
-        volume_classifier_top_fraction=_get_fraction(
-            "BTIR_3D_CLASSIFIER_TOP_FRACTION",
-            0.1,
+        vit_classifier_threshold=_get_fraction(
+            "BTIR_VIT_CLASSIFIER_THRESHOLD",
+            0.5,
         ),
         device=device,
         default_segment_threshold=_get_threshold(),

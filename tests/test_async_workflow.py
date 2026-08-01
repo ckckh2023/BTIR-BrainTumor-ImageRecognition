@@ -522,7 +522,7 @@ class TaskRunnerTests(unittest.TestCase):
 
         run_segmentation_model.assert_not_called()
 
-    def test_runner_dispatches_3d_task_to_slice_classification_and_segmentation(self) -> None:
+    def test_runner_dispatches_3d_task_to_volume_classification_and_segmentation(self) -> None:
         task_dir = Path("output") / "task-runner-3d-001"
         input_dir = task_dir / "input"
         run_dir = task_dir / "runs" / "segmentation" / "run-3d-001"
@@ -548,7 +548,7 @@ class TaskRunnerTests(unittest.TestCase):
                     "analysis_mode": "3d",
                     "classification": {
                         "class": "yes",
-                        "method": "2d_slice_ensemble",
+                        "method": "vit_binary_multislice_mean",
                     },
                 },
             ) as classify_3d,
@@ -1008,7 +1008,7 @@ class TaskPerformanceRecordTests(unittest.TestCase):
         )
         self.assertIn("model_metadata", result["segmentation"])
 
-    def test_frontend_result_supports_3d_slice_ensemble_classification(self) -> None:
+    def test_frontend_result_supports_local_vit_classification(self) -> None:
         input_dir = self.task_dir / "input"
         result = build_frontend_result(
             self.task_dir,
@@ -1017,11 +1017,11 @@ class TaskPerformanceRecordTests(unittest.TestCase):
             expected_models=[ModelName.CLASSIFICATION, ModelName.SEGMENTATION],
             input_files={"flair": "flair.nii.gz"},
             classification={
-                "model": "models/classification/resnet50-slice-ensemble",
+                "model": "models/classification/vit-binary",
                 "classification": {
                     "class": "yes",
                     "confidence": 0.91,
-                    "method": "2d_slice_ensemble",
+                    "method": "vit_binary_multislice_mean",
                     "experimental": True,
                     "evaluated_slices": 32,
                 },
@@ -1034,25 +1034,59 @@ class TaskPerformanceRecordTests(unittest.TestCase):
         self.assertEqual(result["completed_models"], ["classification"])
         self.assertEqual(
             result["classification"]["method"],
-            "2d_slice_ensemble",
+            "vit_binary_multislice_mean",
         )
         self.assertTrue(result["classification"]["experimental"])
         self.assertEqual(
             result["classification"]["model"],
-            "models/classification/resnet50-slice-ensemble",
+            "models/classification/vit-binary",
+        )
+
+    def test_frontend_result_preserves_local_vit_threshold(self) -> None:
+        input_dir = self.task_dir / "input"
+        result = build_frontend_result(
+            self.task_dir,
+            input_dir,
+            analysis_mode=AnalysisMode.THREE_D,
+            expected_models=[ModelName.CLASSIFICATION, ModelName.SEGMENTATION],
+            input_files={"flair": "flair.nii.gz"},
+            classification={
+                "model": "models/classification/vit-binary",
+                "classification": {
+                    "class": "no",
+                    "confidence": 0.72,
+                    "method": "vit_binary_multislice_mean",
+                    "experimental": True,
+                    "threshold": 0.5,
+                },
+                "run_directory": "runs/classification/run-native-3d-001",
+            },
+        )
+
+        classification = result["classification"]
+        self.assertEqual(classification["method"], "vit_binary_multislice_mean")
+        self.assertEqual(classification["threshold"], 0.5)
+        self.assertEqual(
+            classification["model"],
+            "models/classification/vit-binary",
         )
 
 
 class ModelPreloadTests(unittest.TestCase):
     '''验证模型预热会填充现有缓存，并且不会因单模型失败阻断 worker。'''
 
-    def test_preload_loads_both_models(self) -> None:
+    def test_preload_loads_all_route_models(self) -> None:
         classifier_model = Mock()
+        vit_classifier_model = Mock()
         segmentation_model = Mock()
         segmentation_3d_model = Mock()
         with (
             patch(
                 "services.inference_service._load_classifier_namespace",
+                return_value={"torch": Mock()},
+            ),
+            patch(
+                "services.inference_service._load_vit_classifier_namespace",
                 return_value={"torch": Mock()},
             ),
             patch(
@@ -1069,6 +1103,10 @@ class ModelPreloadTests(unittest.TestCase):
                 classifier_model,
             ),
             patch(
+                "services.inference_service._load_vit_classifier_model",
+                vit_classifier_model,
+            ),
+            patch(
                 "services.inference_service._load_segmentation_model",
                 segmentation_model,
             ),
@@ -1080,18 +1118,25 @@ class ModelPreloadTests(unittest.TestCase):
             outcomes = preload_inference_models()
 
         classifier_model.assert_called_once_with("cpu")
+        vit_classifier_model.assert_called_once_with("cpu")
         segmentation_model.assert_called_once_with("cpu")
         segmentation_3d_model.assert_called_once_with("cpu")
         self.assertIsInstance(outcomes["classification"], float)
+        self.assertIsInstance(outcomes["classification3d"], float)
         self.assertIsInstance(outcomes["segmentation"], float)
         self.assertIsInstance(outcomes["segmentation3d"], float)
 
     def test_preload_continues_when_one_model_fails(self) -> None:
+        vit_classifier_model = Mock()
         segmentation_model = Mock()
         segmentation_3d_model = Mock()
         with (
             patch(
                 "services.inference_service._load_classifier_namespace",
+                return_value={"torch": Mock()},
+            ),
+            patch(
+                "services.inference_service._load_vit_classifier_namespace",
                 return_value={"torch": Mock()},
             ),
             patch(
@@ -1108,6 +1153,10 @@ class ModelPreloadTests(unittest.TestCase):
                 side_effect=RuntimeError("classifier unavailable"),
             ),
             patch(
+                "services.inference_service._load_vit_classifier_model",
+                vit_classifier_model,
+            ),
+            patch(
                 "services.inference_service._load_segmentation_model",
                 segmentation_model,
             ),
@@ -1119,18 +1168,21 @@ class ModelPreloadTests(unittest.TestCase):
             outcomes = preload_inference_models()
 
         self.assertIn("failed: RuntimeError", outcomes["classification"])
+        vit_classifier_model.assert_called_once_with("cpu")
         segmentation_model.assert_called_once_with("cpu")
         segmentation_3d_model.assert_called_once_with("cpu")
+        self.assertIsInstance(outcomes["classification3d"], float)
         self.assertIsInstance(outcomes["segmentation"], float)
         self.assertIsInstance(outcomes["segmentation3d"], float)
 
     def test_3d_preload_skips_the_2d_segmenter(self) -> None:
         classifier_model = Mock()
+        vit_classifier_model = Mock()
         segmentation_model = Mock()
         segmentation_3d_model = Mock()
         with (
             patch(
-                "services.inference_service._load_classifier_namespace",
+                "services.inference_service._load_vit_classifier_namespace",
                 return_value={"torch": Mock()},
             ),
             patch(
@@ -1143,6 +1195,10 @@ class ModelPreloadTests(unittest.TestCase):
                 classifier_model,
             ),
             patch(
+                "services.inference_service._load_vit_classifier_model",
+                vit_classifier_model,
+            ),
+            patch(
                 "services.inference_service._load_segmentation_model",
                 segmentation_model,
             ),
@@ -1153,10 +1209,11 @@ class ModelPreloadTests(unittest.TestCase):
         ):
             outcomes = preload_inference_models(AnalysisMode.THREE_D)
 
-        classifier_model.assert_called_once_with("cpu")
+        classifier_model.assert_not_called()
+        vit_classifier_model.assert_called_once_with("cpu")
         segmentation_3d_model.assert_called_once_with("cpu")
         segmentation_model.assert_not_called()
-        self.assertEqual(set(outcomes), {"classification", "segmentation3d"})
+        self.assertEqual(set(outcomes), {"classification3d", "segmentation3d"})
 
     def test_windows_worker_preloads_before_processing_queue(self) -> None:
         worker = Mock()
