@@ -163,10 +163,10 @@ BraTS 命名规则，模态由表单字段确定。四个文件总大小由
 }
 ```
 
-当前 3D 路线默认从 `FLAIR` 体积中筛选有效轴向切片，批量调用现有 2D
-分类器，再聚合为患者级实验性分类结果；随后始终执行 SuperLightNet 分割。
-切片分类不会根据阴性置信度跳过分割。模态、最大切片数、批量大小和聚合比例
-可通过 `BTIR_3D_CLASSIFIER_*` 配置调整。
+当前 3D 路线固定使用本地 ViT 分析 `FLAIR` 轴向切片，再执行 SuperLightNet
+分割。分类概率按全部有效切片取均值；模型权重缺失、加载失败或推理异常时由任务
+队列自动重试一次，仍失败则任务返回 `failed`，不会切换其他分类模型。模态可通过
+`BTIR_3D_CLASSIFIER_MODALITY` 调整。
 
 ## 提交异步推理
 
@@ -276,11 +276,16 @@ GET /tasks/{task_id}
     "t2": "t2.nii.gz"
   },
   "classification": {
-    "model": "models/classification/resnet50-slice-ensemble",
+    "model": "models/classification/vit-binary",
     "class": "yes",
-    "confidence": 0.91,
-    "method": "2d_slice_ensemble",
-    "experimental": true
+    "confidence": 0.977611,
+    "probabilities": {"no": 0.022389, "yes": 0.977611},
+    "threshold": 0.5,
+    "method": "vit_binary_multislice_mean",
+    "experimental": true,
+    "modality": "flair",
+    "evaluated_slices": 25,
+    "aggregation": "mean_probability"
   },
   "segmentation": {
     "model": "models/segmentation3d/superlightnet",
@@ -312,15 +317,16 @@ GET /tasks/{task_id}
 
 3D 任务的 `input.filename` 为 `null`，`input.files` 分别给出四个模态的
 文件名、大小与 SHA-256。
-`frontend_result.classification` 是切片集成结果，主要字段包括：
+`frontend_result.classification` 是患者级分类结果，主要字段包括：
 
-- `model`：当前分类适配器的稳定标识；
-- `method`：固定为 `2d_slice_ensemble`；
-- `experimental`：固定为 `true`，表示尚未替代患者级验证的原生 3D 分类器；
-- `modality`、`axis`：切片来源和方向；
-- `evaluated_slices`、`positive_slices`：参与聚合及判为阳性的切片数量；
-- `aggregation`、`top_fraction`、`top_k`：患者级概率聚合方式；
-- `evidence_slices`：最高肿瘤概率的少量切片索引及概率，仅供联调和审计。
+- `model`：固定为 `models/classification/vit-binary`；
+- `method`：固定为 `vit_binary_multislice_mean`；
+- `class`、`confidence`、`probabilities`：兼容前端的二分类结果及概率；
+- `threshold`：病例级阳性判定阈值；
+- `experimental`：当前固定为 `true`，表示不能作为临床诊断依据；
+- `modality`、`axis`：体积来源模态与切片方向；
+- `evaluated_slices`、`aggregation`、`evidence_slices`：参与聚合的切片数量、
+  聚合方法及最高阳性概率切片摘要。
 
 `frontend_result.segmentation` 提供：
 
@@ -331,8 +337,8 @@ GET /tasks/{task_id}
 - `labels`：输出标签定义，采用 BraTS 标签 `0/1/2/4`；
 - `regions`：各标签的体素数、体积与占比。
 
-输出 `prediction.nii.gz` 保持原始 shape 和 affine。切片分类属于兼容性过渡
-方案，上述分类、分割及定量统计都不是肿瘤类型诊断、脑叶定位或临床结论。
+输出 `prediction.nii.gz` 保持原始 shape 和 affine。本地 ViT 患者级分类按实验性
+模型返回；上述分类、分割及定量统计都不是肿瘤类型诊断、脑叶定位或临床结论。
 
 失败任务只公开可展示的 `error.code`、`error.message` 和
 `error.updated_at`，内部异常详情与本机路径不会通过 API 返回。

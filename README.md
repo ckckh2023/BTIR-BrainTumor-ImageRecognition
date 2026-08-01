@@ -7,7 +7,7 @@ BTIR 提供脑肿瘤 MRI 图像分类与分割能力。每次分析以独立
 
 | 模块 | 状态 | 说明 |
 | --- | --- | --- |
-| 模型推理 | 已完成 | 2D 图片执行分类与分割；3D 四模态 NIfTI 执行实验性切片集成分类与 SuperLightNet 分割 |
+| 模型推理 | 已完成 | 2D 图片执行分类与分割；3D 四模态 NIfTI 使用本地 ViT 患者级分类与 SuperLightNet 分割 |
 | 任务管理 | 已完成 | 上传创建任务、异步运行、重试、取消、软删除、恢复、状态查询 |
 | 历史查询 | 已完成 | 支持任务筛选、分页和单任务运行历史 |
 | 异步调度 | 已完成 | Redis + RQ，2D/3D 队列隔离、自动重试、状态对账和安全取消 |
@@ -56,6 +56,7 @@ git lfs status
 
 ```text
 models/classification/model/pytorch_model.pth
+models/classification/vit-binary/model.safetensors
 models/segmentation/model/best_unet_model.pth
 models/segmentation3d/model/model_epoch_297.pth
 ```
@@ -76,6 +77,11 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 执行，完整顺序参见[安装与部署](docs/DEPLOYMENT.md)。
 把最后一条命令生成的随机值写入 `.env` 的 `BTIR_JWT_SECRET_KEY`。服务器终端可直接
 执行 `python Main.py user create <username>` 创建账号，不需要临时开放公开注册。
+
+3D 任务默认使用仓库内的本地二分类 ViT。它从配置模态提取 25 张轴向切片，
+离线完成 `no/yes` 分类并生成病例级平均概率。分类加载或推理失败时不会切换其他
+模型，而是由异步任务自动重试一次；仍失败则任务明确标记为 `failed`。该分类流程
+不会改变 SuperLightNet 分割输入或结果。
 
 ### 3. 启动 Redis
 
@@ -154,8 +160,7 @@ service 中使用 `Environment=` 或 `EnvironmentFile=` 注入，
      四个 `.nii` 或 `.nii.gz` 文件。
 
 4. `POST /tasks/{task_id}/run-async` 提交任务。2D 任务执行单图分类与分割；
-   3D 任务先执行实验性 2D 切片集成分类，再执行 SuperLightNet 分割。当前
-   分类结果不会跳过分割。
+   3D 任务固定执行本地 ViT 多切片分类，再执行 SuperLightNet 分割。
 5. 轮询 `GET /tasks/{task_id}`，直到状态变为 `succeeded`。
 6. 历史和归档接口只返回当前用户自己的任务。
 
@@ -213,7 +218,8 @@ data/
 - SQLite 保存任务元数据、状态、作业信息和运行记录。
 - 文件系统保存输入图像、掩码和完整结果。
 - 同一模型重复运行时追加 `runs/<model>/` 历史，并更新最新结果。
-- `output/`、`data/*.db*`、模型权重、缓存和本地数据集不提交到版本库。
+- `output/`、`data/*.db*`、缓存和本地数据集不提交到版本库；正式 `.pth`
+  和 `.safetensors` 权重统一通过 Git LFS 管理。
 
 归档、永久删除和数据库迁移规则参见
 [运维与数据管理](docs/OPERATIONS.md)。
@@ -300,7 +306,8 @@ python Main.py purge-archive
 ## 下一阶段
 
 1. 扩展浏览器端到端测试，覆盖登录、上传、任务操作与 3D 查看。
-2. 用经过患者级验证的原生体积分类模型替换 3D 路线当前的实验性切片集成分类。
+2. 用患者级、按来源隔离的数据继续校准本地 ViT，优先评估肿瘤召回率、假阴性和
+   阈值稳定性；验证前不允许分类结果跳过分割。
 3. 在医学依据和输出协议明确后，再增加基于 3D 分割结果的高级分析或诊断路线。
 4. 补充完整审计管理与管理员查询。
 

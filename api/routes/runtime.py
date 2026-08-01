@@ -68,6 +68,9 @@ def get_readiness() -> dict[str, object]:
         SETTINGS.classifier_config,
         SETTINGS.segmenter_script,
         SETTINGS.segmenter_model,
+        SETTINGS.vit_classifier_model_dir / "config.json",
+        SETTINGS.vit_classifier_model_dir / "preprocessor_config.json",
+        SETTINGS.vit_classifier_model_dir / "model.safetensors",
         SETTINGS.segmenter_3d_script,
         SETTINGS.segmenter_3d_model,
     )

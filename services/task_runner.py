@@ -110,7 +110,7 @@ def _run_volume_classification(
     task_dir: Path,
     modality_paths: dict[str, Path],
 ) -> dict[str, Any]:
-    '''执行并持久化基于 2D 切片集成的实验性 3D 分类。'''
+    '''执行并持久化本地 ViT 患者级分类'''
     started_at = perf_counter()
     result = classify_volume(modality_paths)
     result["timing"] = {"inference_ms": _elapsed_ms(started_at)}
@@ -153,7 +153,7 @@ def run_task_models(
     if task_record.analysis_mode is AnalysisMode.THREE_D:
         modality_paths = load_task_modalities(task_dir)
         if progress_callback is not None:
-            progress_callback("3D 切片分类推理中", 0)
+            progress_callback("3D 分类推理中", 0)
         if should_cancel is not None and should_cancel():
             raise TaskCancellationRequested("任务已在 3D 分类开始前取消")
         classification_result = _run_volume_classification(
@@ -161,7 +161,7 @@ def run_task_models(
             modality_paths,
         )
         if progress_callback is not None:
-            progress_callback("3D 切片分类完成，开始 3D 分割", 30)
+            progress_callback("3D 分类完成，开始 3D 分割", 30)
         if should_cancel is not None and should_cancel():
             raise TaskCancellationRequested("任务已在 3D 分类完成后取消")
         segmentation_result = _run_volume_segmentation(

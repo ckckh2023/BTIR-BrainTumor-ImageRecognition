@@ -1,11 +1,10 @@
-'''把三维 NIfTI 转换为二维切片，并聚合切片分类结果'''
+"""Prepare 3D NIfTI slices and aggregate the local ViT predictions."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import ceil
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 import nibabel as nib
 import numpy as np
@@ -15,7 +14,7 @@ from PIL.Image import Image as PilImage
 
 @dataclass(frozen=True)
 class PreparedVolumeSlices:
-    '''一次体积分类使用的标准化轴向切片'''
+    """Canonical axial slices used for one patient-level classification."""
 
     images: tuple[PilImage, ...]
     indices: tuple[int, ...]
@@ -29,7 +28,8 @@ def prepare_volume_slices(
     *,
     max_slices: int,
 ) -> PreparedVolumeSlices:
-    '''读取 NIfTI，转为 RAS+ 后均匀抽取包含脑组织的轴向切片'''
+    """Load NIfTI as RAS+ and evenly sample informative axial slices."""
+
     if max_slices <= 0:
         raise ValueError("max_slices 必须大于 0")
     path = Path(volume_path)
@@ -72,81 +72,56 @@ def prepare_volume_slices(
     )
 
 
-def aggregate_slice_predictions(
+def aggregate_mean_slice_predictions(
     slice_indices: Sequence[int],
     predictions: Sequence[dict[str, Any]],
     *,
     modality: str,
-    top_fraction: float,
+    threshold: float,
 ) -> dict[str, Any]:
-    '''以肿瘤概率最高的一组切片生成患者级实验性分类结果'''
+    """Average all slice probabilities into one patient-level prediction."""
+
     if len(slice_indices) != len(predictions) or not predictions:
         raise ValueError("切片索引和分类结果数量必须一致且不能为空")
-    if not 0 < top_fraction <= 1:
-        raise ValueError("top_fraction 必须位于 (0, 1]")
+    if not 0 < threshold < 1:
+        raise ValueError("分类阈值必须位于 (0, 1)")
 
-    yes_scores: list[float] = []
-    probability_rows: list[dict[str, float]] = []
-    for prediction in predictions:
-        probabilities = prediction.get("probabilities")
-        if not isinstance(probabilities, dict) or not {"yes", "no"} <= set(
-            probabilities
-        ):
-            raise ValueError("3D 切片分类要求模型提供 yes/no 概率")
-        row = {
-            name: float(value)
-            for name, value in probabilities.items()
-        }
-        if any(not 0 <= value <= 1 for value in row.values()):
-            raise ValueError("分类概率必须位于 0 到 1 之间")
-        probability_rows.append(row)
-        yes_scores.append(row["yes"])
-
-    top_k = max(1, ceil(len(predictions) * top_fraction))
+    yes_scores = [_yes_probability(prediction) for prediction in predictions]
+    yes_probability = sum(yes_scores) / len(yes_scores)
+    no_probability = 1.0 - yes_probability
+    predicted_tumor = yes_probability >= threshold
     ranked_positions = sorted(
         range(len(predictions)),
         key=yes_scores.__getitem__,
         reverse=True,
     )
-    top_positions = ranked_positions[:top_k]
-    class_names = list(probability_rows[0])
-    aggregated_probabilities = {
-        class_name: round(
-            sum(probability_rows[position][class_name] for position in top_positions)
-            / top_k,
-            6,
-        )
-        for class_name in class_names
-    }
-    predicted_class = max(
-        aggregated_probabilities,
-        key=aggregated_probabilities.__getitem__,
-    )
-    evidence = [
-        {
-            "slice_index": int(slice_indices[position]),
-            "yes_probability": round(yes_scores[position], 6),
-        }
-        for position in top_positions[:5]
-    ]
     return {
-        "class": predicted_class,
-        "class_id": class_names.index(predicted_class),
-        "confidence": aggregated_probabilities[predicted_class],
-        "probabilities": aggregated_probabilities,
-        "method": "2d_slice_ensemble",
+        "class": "yes" if predicted_tumor else "no",
+        "class_id": 1 if predicted_tumor else 0,
+        "label": "tumor" if predicted_tumor else "healthy",
+        "confidence": round(
+            yes_probability if predicted_tumor else no_probability,
+            6,
+        ),
+        "probabilities": {
+            "no": round(no_probability, 6),
+            "yes": round(yes_probability, 6),
+        },
+        "threshold": round(threshold, 6),
+        "method": "vit_binary_multislice_mean",
         "experimental": True,
         "modality": modality,
         "axis": "axial",
         "evaluated_slices": len(predictions),
-        "positive_slices": sum(
-            row["yes"] >= row["no"]
-            for row in probability_rows
-        ),
-        "aggregation": "top_fraction_mean",
-        "top_fraction": top_fraction,
-        "top_k": top_k,
-        "evidence_slices": evidence,
+        "positive_slices": sum(score >= 0.5 for score in yes_scores),
+        "aggregation": "mean_probability",
+        "evidence_slices": [
+            {
+                "slice_index": int(slice_indices[position]),
+                "yes_probability": round(yes_scores[position], 6),
+            }
+            for position in ranked_positions[:5]
+        ],
     }
 
 
@@ -155,6 +130,16 @@ def _sample_evenly(indices: np.ndarray, limit: int) -> np.ndarray:
         return indices
     positions = np.linspace(0, indices.size - 1, num=limit)
     return indices[np.rint(positions).astype(np.int64)]
+
+
+def _yes_probability(prediction: Mapping[str, Any]) -> float:
+    probabilities = prediction.get("probabilities")
+    if not isinstance(probabilities, Mapping) or "yes" not in probabilities:
+        raise ValueError("切片分类结果缺少 yes 概率")
+    score = float(probabilities["yes"])
+    if not 0 <= score <= 1:
+        raise ValueError("切片分类概率必须位于 0 到 1 之间")
+    return score
 
 
 def _slice_to_rgb(

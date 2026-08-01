@@ -1,5 +1,18 @@
 # 第三方软件说明
 
+## Brain Tumor Detection ViT
+
+- 模型：`dima806/brain_tumor_detection`
+- 模型页面：https://huggingface.co/dima806/brain_tumor_detection
+- 固定 revision：`d33cfd06151ffbc5aad051534137a00961134b46`
+- 基础模型：`google/vit-base-patch16-224-in21k`
+- 本项目用途：对 3D MRI 提取的轴向切片执行本地 `no/yes` 二分类。
+- 本地适配器：`models/classification/vit_binary.py`
+- 许可证：Apache-2.0
+
+模型权重及其配置按上游模型页声明的 Apache License 2.0 条款使用。许可证全文：
+https://www.apache.org/licenses/LICENSE-2.0
+
 ## NiiVue
 
 - 项目：NiiVue
