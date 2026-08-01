@@ -15,9 +15,7 @@ from api.auth import get_current_user
 from contracts.task import (
     ArchivedTaskListResponse,
     ArchivedTaskSummaryResponse,
-    RunTaskRequest,
     TaskArchivedResponse,
-    TaskCreatedResponse,
     TaskCancellationResponse,
     TaskEnqueuedResponse,
     TaskErrorData,
@@ -32,7 +30,7 @@ from contracts.task import (
     VolumeTaskCreatedResponse,
 )
 from core.settings import SETTINGS
-from core.task_definitions import AnalysisMode, ModelName, TaskArtifact, TaskStatus
+from core.task_definitions import ModelName, TaskArtifact, TaskStatus
 from core.user_records import UserRecord
 from repositories.task_repository import task_repository
 from repositories.task_repository_contracts import TaskNotFoundError
@@ -40,7 +38,6 @@ from services.archive_service import archive_task, restore_task
 from services.task_files import (
     create_task_dir,
     get_task_dir,
-    initialize_uploaded_task,
     initialize_uploaded_volume_task,
 )
 from services.task_queue import cancel_task_run, enqueue_task_run, reconcile_task_job
@@ -121,15 +118,6 @@ def enforce_active_task_limit(task_id: str, user: UserRecord) -> None:
         )
 
 
-def resolve_run_threshold(request: RunTaskRequest | None) -> float:
-    '''读取请求阈值；省略请求体时使用项目默认值'''
-    return (
-        request.threshold
-        if request is not None
-        else SETTINGS.default_segment_threshold
-    )
-
-
 def bad_request_http_error(exc: ValueError) -> HTTPException:
     '''将预期的业务校验错误转换为 HTTP 400'''
     return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
@@ -146,20 +134,15 @@ def normalize_query_datetime(value: datetime | None) -> datetime | None:
 
 def task_input_data(task_data) -> TaskInputData:
     input_data = task_data.input
-    modality_files = (
-        {
-            modality: TaskInputFileData(
-                filename=Path(file_data.path).name,
-                size_bytes=file_data.size_bytes,
-                sha256=file_data.sha256,
-            )
-            for modality, file_data in input_data.modalities.items()
-        }
-        if input_data.modalities
-        else None
-    )
+    modality_files = {
+        modality: TaskInputFileData(
+            filename=Path(file_data.path).name,
+            size_bytes=file_data.size_bytes,
+            sha256=file_data.sha256,
+        )
+        for modality, file_data in (input_data.modalities or {}).items()
+    }
     return TaskInputData(
-        filename=None if modality_files else Path(input_data.path).name,
         storage_mode=input_data.storage_mode,
         size_bytes=input_data.size_bytes,
         sha256=input_data.sha256,
@@ -208,39 +191,6 @@ def archived_task_summary_data(task_data) -> ArchivedTaskSummaryResponse:
         purge_eligible_at=archived_at
         + timedelta(days=SETTINGS.task_archive_grace_days),
     )
-
-
-@router.post(
-    "",
-    response_model=TaskCreatedResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-def create_task_from_upload(
-    file: UploadFile = File(...),
-    name: str | None = Form(default=None),
-    current_user: UserRecord = Depends(get_current_user),
-) -> TaskCreatedResponse:
-    '''上传图片并创建任务'''
-    enforce_task_storage_limit(current_user)
-    task_dir: Path | None = None
-    try:
-        task_dir = create_task_dir(SETTINGS.output_dir)
-        task_image = initialize_uploaded_task(
-            task_dir=task_dir,
-            upload=file.file,
-            filename=file.filename,
-            name=name,
-            user_id=current_user.user_id,
-        )
-    except ValueError as exc:
-        if task_dir is not None:
-            shutil.rmtree(task_dir, ignore_errors=True)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
-        ) from exc
-
-    return TaskCreatedResponse(task_id=task_dir.name, input_file=task_image.name)
 
 
 @router.post(
@@ -380,11 +330,6 @@ def get_task(
     )
     if frontend_result is not None:
         frontend_result = sanitize_public_payload(frontend_result)
-        if task_data.analysis_mode is AnalysisMode.TWO_D:
-            frontend_result.setdefault(
-                "image_file",
-                Path(task_data.input.path).name,
-            )
 
     return TaskStatusResponse(
         **task_common_data(task_data),
@@ -519,16 +464,14 @@ def get_task_file(
 )
 def enqueue_task(
     task_id: str,
-    request: RunTaskRequest | None = None,
     current_user: UserRecord = Depends(get_current_user),
 ) -> TaskEnqueuedResponse:
     '''将完整推理提交到 RQ 队列，并立即返回作业信息'''
     verify_task_owner(task_id, current_user)
     task_dir = require_task_dir(task_id)
     enforce_active_task_limit(task_id, current_user)
-    threshold = resolve_run_threshold(request)
     try:
-        job, reused = enqueue_task_run(task_dir, threshold)
+        job, reused = enqueue_task_run(task_dir)
     except ValueError as exc:
         raise bad_request_http_error(exc) from exc
 
@@ -569,18 +512,15 @@ def cancel_task(
 )
 def retry_failed_task(
     task_id: str,
-    request: RunTaskRequest | None = None,
     current_user: UserRecord = Depends(get_current_user),
 ) -> TaskEnqueuedResponse:
     '''手动重新提交一项最终失败的推理任务'''
     verify_task_owner(task_id, current_user)
     task_dir = require_task_dir(task_id)
     enforce_active_task_limit(task_id, current_user)
-    threshold = resolve_run_threshold(request)
     try:
         job, reused = enqueue_task_run(
             task_dir,
-            threshold,
             retry_failed_only=True,
         )
     except ValueError as exc:

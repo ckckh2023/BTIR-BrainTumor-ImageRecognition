@@ -14,7 +14,6 @@ from core.result_contract import (
 )
 from core.task_definitions import (
     ALL_MODELS,
-    AnalysisMode,
     ModelName,
     TaskArtifact,
     model_result_filename,
@@ -28,7 +27,6 @@ from services.task_state import mark_models_completed, record_task_run
 
 def persist_model_result(
     task_dir: Path,
-    image_path: Path,
     model_name: ModelName | str,
     result: dict[str, Any],
     run_dir: Path | None = None,
@@ -37,7 +35,6 @@ def persist_model_result(
     with task_write_lock(task_dir.name):
         return _persist_model_result_unlocked(
             task_dir=task_dir,
-            image_path=image_path,
             model_name=model_name,
             result=result,
             run_dir=run_dir,
@@ -46,7 +43,6 @@ def persist_model_result(
 
 def _persist_model_result_unlocked(
     task_dir: Path,
-    image_path: Path,
     model_name: ModelName | str,
     result: dict[str, Any],
     run_dir: Path | None = None,
@@ -84,8 +80,6 @@ def _persist_model_result_unlocked(
     )
     frontend_data = build_frontend_result(
         task_dir,
-        image_path,
-        analysis_mode=task_record.analysis_mode,
         expected_models=task_record.expected_models,
         input_files=input_files,
         **{model.value: result},
@@ -105,9 +99,7 @@ def _persist_model_result_unlocked(
 
 def build_frontend_result(
     task_dir: Path,
-    image_path: Path,
     *,
-    analysis_mode: AnalysisMode | str = AnalysisMode.TWO_D,
     expected_models: list[ModelName] | frozenset[ModelName] = ALL_MODELS,
     input_files: dict[str, str] | None = None,
     classification: dict[str, Any] | None = None,
@@ -120,13 +112,6 @@ def build_frontend_result(
         if not isinstance(result, dict):
             raise ValueError("前端结果文件格式无效")
         upgrade_frontend_result(result)
-        existing_image_file = result.get("image_file")
-        if (
-            AnalysisMode(analysis_mode) is AnalysisMode.TWO_D
-            and existing_image_file
-            and existing_image_file != image_path.name
-        ):
-            raise ValueError("一个任务只能包含同一张输入图像的结果")
     else:
         result = {
             "schema_version": FRONTEND_RESULT_SCHEMA_VERSION,
@@ -139,14 +124,9 @@ def build_frontend_result(
     result["task_id"] = task_dir.name
     result["updated_at"] = datetime.now().astimezone().isoformat()
     result.pop("image_path", None)
-    mode = AnalysisMode(analysis_mode)
-    result["analysis_mode"] = mode.value
-    if mode is AnalysisMode.TWO_D:
-        result["image_file"] = image_path.name
-        result.pop("input_files", None)
-    else:
-        result.pop("image_file", None)
-        result["input_files"] = input_files or {}
+    result["analysis_mode"] = "3d"
+    result.pop("image_file", None)
+    result["input_files"] = input_files or {}
     result.setdefault("result_files", {})
     result.setdefault("latest_runs", {})
     result["result_files"]["frontend"] = TaskArtifact.FRONTEND_RESULT
@@ -161,24 +141,14 @@ def build_frontend_result(
         _set_model_timing(result, "classification", classification)
     if segmentation is not None:
         mask_file = task_relative_path(task_dir, Path(segmentation["mask_path"]))
-        if segmentation.get("analysis_mode") == AnalysisMode.THREE_D.value:
-            result["segmentation"] = {
-                "model": segmentation["model"],
-                "model_metadata": segmentation.get("model_metadata", {}),
-                "spatial": segmentation["spatial"],
-                "labels": segmentation["labels"],
-                "regions": segmentation["regions"],
-                "mask_file": mask_file,
-            }
-        else:
-            result["segmentation"] = {
-                "model": segmentation["model"],
-                "threshold": segmentation["threshold"],
-                "tumor_pixels": segmentation["tumor_pixels"],
-                "image_pixels": segmentation["image_pixels"],
-                "tumor_area_ratio": segmentation["tumor_area_ratio"],
-                "mask_file": mask_file,
-            }
+        result["segmentation"] = {
+            "model": segmentation["model"],
+            "model_metadata": segmentation.get("model_metadata", {}),
+            "spatial": segmentation["spatial"],
+            "labels": segmentation["labels"],
+            "regions": segmentation["regions"],
+            "mask_file": mask_file,
+        }
         result["result_files"]["segmentation"] = TaskArtifact.SEGMENTATION_RESULT
         result["result_files"]["mask"] = mask_file
         result["latest_runs"]["segmentation"] = (

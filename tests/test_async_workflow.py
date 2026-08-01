@@ -26,11 +26,8 @@ from services.task_queue import (
     enqueue_task_run,
     reconcile_active_tasks,
     reconcile_task_job,
-    task_queue_name_for_mode,
 )
 from services.task_runner import (
-    run_classification,
-    run_segmentation,
     TaskCancellationRequested,
     run_task_models,
 )
@@ -127,8 +124,8 @@ class AsyncQueueTests(unittest.TestCase):
                 replace(SETTINGS, task_job_max_retries=1),
             ),
         ):
-            first_job, first_reused = enqueue_task_run(self.task_dir, 0.5)
-            second_job, second_reused = enqueue_task_run(self.task_dir, 0.5)
+            first_job, first_reused = enqueue_task_run(self.task_dir)
+            second_job, second_reused = enqueue_task_run(self.task_dir)
 
         self.assertFalse(first_reused)
         self.assertTrue(second_reused)
@@ -149,7 +146,7 @@ class AsyncQueueTests(unittest.TestCase):
             patch("services.task_queue.get_task_queue", return_value=queue),
             self.assertRaises(TaskQueueUnavailableError),
         ):
-            enqueue_task_run(self.task_dir, 0.5)
+            enqueue_task_run(self.task_dir)
 
         self.assertEqual(repository.record.status, TaskStatus.CREATED)
 
@@ -168,27 +165,11 @@ class AsyncQueueTests(unittest.TestCase):
                 return_value=queue,
             ) as get_queue,
         ):
-            job, reused = enqueue_task_run(self.task_dir, 0.5)
+            job, reused = enqueue_task_run(self.task_dir)
 
         self.assertFalse(reused)
-        get_queue.assert_called_once_with(AnalysisMode.THREE_D)
+        get_queue.assert_called_once_with()
         self.assertEqual(job["queue"], "inference-3d-test")
-
-    def test_each_analysis_mode_has_a_distinct_configured_queue(self) -> None:
-        settings = replace(
-            SETTINGS,
-            task_queue_2d_name="queue-2d-test",
-            task_queue_3d_name="queue-3d-test",
-        )
-        with patch("services.task_queue.SETTINGS", settings):
-            self.assertEqual(
-                task_queue_name_for_mode(AnalysisMode.TWO_D),
-                "queue-2d-test",
-            )
-            self.assertEqual(
-                task_queue_name_for_mode(AnalysisMode.THREE_D),
-                "queue-3d-test",
-            )
 
     def test_clear_queue_dry_run_only_reports_project_state(self) -> None:
         queue = Mock()
@@ -207,12 +188,10 @@ class AsyncQueueTests(unittest.TestCase):
         ) = registries
         redis_client = Mock()
         redis_client.scan_iter.return_value = [b"btir:task:task-001:write"]
-        queue_3d = self._empty_queue("inference-3d")
-
         with (
             patch(
-                "services.task_queue.get_task_queues",
-                return_value=(queue, queue_3d),
+                "services.task_queue.get_task_queue",
+                return_value=queue,
             ),
             patch("services.task_queue.get_redis_client", return_value=redis_client),
             patch(
@@ -247,12 +226,10 @@ class AsyncQueueTests(unittest.TestCase):
         redis_client = Mock()
         redis_client.scan_iter.return_value = [b"btir:task:task-001:write"]
         failed_job = Mock()
-        queue_3d = self._empty_queue("inference-3d")
-
         with (
             patch(
-                "services.task_queue.get_task_queues",
-                return_value=(queue, queue_3d),
+                "services.task_queue.get_task_queue",
+                return_value=queue,
             ),
             patch("services.task_queue.get_redis_client", return_value=redis_client),
             patch(
@@ -264,7 +241,6 @@ class AsyncQueueTests(unittest.TestCase):
             clear_task_queue_state(dry_run=False)
 
         queue.delete.assert_called_once_with(delete_jobs=True)
-        queue_3d.delete.assert_called_once_with(delete_jobs=True)
         registries[1].remove.assert_called_once_with(
             "failed-job",
             delete_job=False,
@@ -290,12 +266,10 @@ class AsyncQueueTests(unittest.TestCase):
         ) = registries
         redis_client = Mock()
         redis_client.scan_iter.return_value = []
-        queue_3d = self._empty_queue("inference-3d")
-
         with (
             patch(
-                "services.task_queue.get_task_queues",
-                return_value=(queue, queue_3d),
+                "services.task_queue.get_task_queue",
+                return_value=queue,
             ),
             patch("services.task_queue.get_redis_client", return_value=redis_client),
             patch(
@@ -318,7 +292,7 @@ class AsyncQueueTests(unittest.TestCase):
             patch("services.task_queue.task_write_lock", self._no_lock),
             self.assertRaisesRegex(ValueError, "仅失败任务"),
         ):
-            enqueue_task_run(self.task_dir, 0.5, retry_failed_only=True)
+            enqueue_task_run(self.task_dir, retry_failed_only=True)
 
     def test_manual_retry_enqueues_failed_task(self) -> None:
         record = deepcopy(self.record)
@@ -333,7 +307,6 @@ class AsyncQueueTests(unittest.TestCase):
         ):
             job, reused = enqueue_task_run(
                 self.task_dir,
-                0.5,
                 retry_failed_only=True,
             )
 
@@ -416,112 +389,6 @@ class AsyncQueueTests(unittest.TestCase):
 class TaskRunnerTests(unittest.TestCase):
     '''验证完整推理统一入口的调用顺序与返回结果'''
 
-    def test_single_model_runners_share_the_same_input_loading(self) -> None:
-        task_dir = Path("output") / "task-runner-single-001"
-        image_path = task_dir / "input" / "image.png"
-        classification_result = {"model_result_path": "classification.json"}
-        segmentation_result = {"model_result_path": "segmentation.json"}
-
-        with (
-            patch(
-                "services.task_runner.load_task_image",
-                return_value=image_path,
-            ) as load_image,
-            patch(
-                "services.task_runner._run_classification",
-                return_value=classification_result,
-            ) as run_classification_model,
-            patch(
-                "services.task_runner._run_segmentation",
-                return_value=segmentation_result,
-            ) as run_segmentation_model,
-        ):
-            classification_run = run_classification(task_dir)
-            segmentation_run = run_segmentation(task_dir, 0.5)
-
-        self.assertEqual(classification_run.result, classification_result)
-        self.assertEqual(segmentation_run.result, segmentation_result)
-        self.assertEqual(load_image.call_count, 2)
-        run_classification_model.assert_called_once_with(task_dir, image_path)
-        run_segmentation_model.assert_called_once_with(task_dir, image_path, 0.5)
-
-    def test_runner_executes_and_persists_both_models(self) -> None:
-        task_dir = Path("output") / "task-runner-001"
-        image_path = task_dir / "input" / "image.png"
-        run_dir = task_dir / "runs" / "segmentation" / "run-001"
-        classification_result = {"model_result_path": "classification.json"}
-        segmentation_result = {"model_result_path": "segmentation.json"}
-
-        with (
-            patch(
-                "services.task_runner.task_repository.load",
-                return_value=SimpleNamespace(analysis_mode=AnalysisMode.TWO_D),
-            ),
-            patch("services.task_runner.load_task_image", return_value=image_path),
-            patch(
-                "services.task_runner.classify",
-                return_value={"class": "yes"},
-            ) as classify,
-            patch("services.task_runner.create_run_dir", return_value=run_dir),
-            patch(
-                "services.task_runner.segment",
-                return_value={"tumor_pixels": 1},
-            ) as segment,
-            patch(
-                "services.task_runner.persist_model_result",
-                side_effect=[classification_result, segmentation_result],
-            ) as persist_result,
-        ):
-            result = run_task_models(task_dir, 0.5)
-
-        self.assertEqual(result.image_path, image_path)
-        self.assertEqual(result.classification_result, classification_result)
-        self.assertEqual(result.segmentation_result, segmentation_result)
-        classify.assert_called_once_with(image_path)
-        segment.assert_called_once_with(
-            image_path=image_path,
-            threshold=0.5,
-            output_dir=run_dir,
-        )
-        self.assertEqual(persist_result.call_count, 2)
-        self.assertEqual(
-            persist_result.call_args_list[0].kwargs["model_name"],
-            ModelName.CLASSIFICATION,
-        )
-        self.assertEqual(
-            persist_result.call_args_list[0].kwargs["result"]["class"], "yes"
-        )
-        self.assertIsInstance(
-            persist_result.call_args_list[0].kwargs["result"]["timing"]["inference_ms"],
-            float,
-        )
-        self.assertEqual(
-            persist_result.call_args_list[1].kwargs["model_name"],
-            ModelName.SEGMENTATION,
-        )
-        self.assertEqual(
-            persist_result.call_args_list[1].kwargs["result"]["tumor_pixels"], 1
-        )
-        self.assertEqual(persist_result.call_args_list[1].kwargs["run_dir"], run_dir)
-        self.assertGreaterEqual(result.total_inference_ms, 0)
-
-    def test_runner_stops_between_models_when_cancellation_is_requested(self) -> None:
-        task_dir = Path("output") / "task-runner-cancel-001"
-        image_path = task_dir / "input" / "image.png"
-        with (
-            patch(
-                "services.task_runner.task_repository.load",
-                return_value=SimpleNamespace(analysis_mode=AnalysisMode.TWO_D),
-            ),
-            patch("services.task_runner.load_task_image", return_value=image_path),
-            patch("services.task_runner._run_classification", return_value={}),
-            patch("services.task_runner._run_segmentation") as run_segmentation_model,
-            self.assertRaises(TaskCancellationRequested),
-        ):
-            run_task_models(task_dir, 0.5, should_cancel=lambda: True)
-
-        run_segmentation_model.assert_not_called()
-
     def test_runner_dispatches_3d_task_to_volume_classification_and_segmentation(self) -> None:
         task_dir = Path("output") / "task-runner-3d-001"
         input_dir = task_dir / "input"
@@ -534,10 +401,6 @@ class TaskRunnerTests(unittest.TestCase):
         segmentation_result = {"model_result_path": "segmentation.json"}
 
         with (
-            patch(
-                "services.task_runner.task_repository.load",
-                return_value=SimpleNamespace(analysis_mode=AnalysisMode.THREE_D),
-            ),
             patch(
                 "services.task_runner.load_task_modalities",
                 return_value=modality_paths,
@@ -564,14 +427,12 @@ class TaskRunnerTests(unittest.TestCase):
                 "services.task_runner.persist_model_result",
                 side_effect=[classification_result, segmentation_result],
             ) as persist_result,
-            patch("services.task_runner._run_classification") as classify_2d,
-            patch("services.task_runner._run_segmentation") as segment_2d,
         ):
-            result = run_task_models(task_dir, 0.5)
+            result = run_task_models(task_dir)
 
         self.assertEqual(result.classification_result, classification_result)
         self.assertEqual(result.segmentation_result, segmentation_result)
-        self.assertEqual(result.image_path, input_dir)
+        self.assertEqual(result.input_dir, input_dir)
         classify_3d.assert_called_once_with(modality_paths)
         segment_3d.assert_called_once_with(
             modality_paths=modality_paths,
@@ -585,8 +446,6 @@ class TaskRunnerTests(unittest.TestCase):
             persist_result.call_args_list[1].kwargs["model_name"],
             ModelName.SEGMENTATION,
         )
-        classify_2d.assert_not_called()
-        segment_2d.assert_not_called()
 
 
 class InferenceWorkerTests(unittest.TestCase):
@@ -634,7 +493,7 @@ class InferenceWorkerTests(unittest.TestCase):
                 ),
             ) as run_models,
         ):
-            result = run_task_job(self.task_id, 0.5)
+            result = run_task_job(self.task_id)
 
         self.assertEqual(result["status"], "succeeded")
         self.assertEqual(result["completed_models"], ["classification", "segmentation"])
@@ -642,7 +501,6 @@ class InferenceWorkerTests(unittest.TestCase):
         self.assertEqual(result["segmentation_result_file"], "segmentation.json")
         run_models.assert_called_once_with(
             self.task_dir,
-            0.5,
             should_cancel=ANY,
             progress_callback=ANY,
         )
@@ -677,7 +535,7 @@ class InferenceWorkerTests(unittest.TestCase):
             ),
             self.assertRaisesRegex(RuntimeError, "simulated inference failure"),
         ):
-            run_task_job(self.task_id, 0.5)
+            run_task_job(self.task_id)
 
         self.assertEqual(update_status.call_args_list[0].args[1], "running")
         self.assertEqual(update_status.call_args_list[1].args[1], "failed")
@@ -711,7 +569,7 @@ class InferenceWorkerTests(unittest.TestCase):
                 side_effect=TaskCancellationRequested("canceled"),
             ),
         ):
-            result = run_task_job(self.task_id, 0.5)
+            result = run_task_job(self.task_id)
 
         self.assertEqual(result["status"], "canceled")
         self.assertEqual(result["completed_models"], ["classification"])
@@ -735,7 +593,7 @@ class InferenceWorkerTests(unittest.TestCase):
             ),
             self.assertRaisesRegex(RuntimeError, "transient inference failure"),
         ):
-            run_task_job(self.task_id, 0.5)
+            run_task_job(self.task_id)
 
         self.assertEqual(update_status.call_args_list[0].args[1], "running")
         self.assertEqual(update_status.call_args_list[1].args[1], "queued")
@@ -930,10 +788,9 @@ class TaskPerformanceRecordTests(unittest.TestCase):
         self.assertEqual(repository.record.job.id, "job-performance-002")
 
     def test_frontend_result_includes_model_timings(self) -> None:
-        image_path = self.task_dir / "input" / "image.png"
         result = build_frontend_result(
             self.task_dir,
-            image_path,
+            input_files={"flair": "flair.nii.gz"},
             classification={
                 "model": "classification",
                 "classification": {
@@ -945,11 +802,11 @@ class TaskPerformanceRecordTests(unittest.TestCase):
             },
             segmentation={
                 "model": "segmentation",
-                "threshold": 0.5,
-                "tumor_pixels": 1,
-                "image_pixels": 4,
-                "tumor_area_ratio": 0.25,
-                "mask_path": self.task_dir / "runs" / "segmentation" / "run-001" / "mask.png",
+                "analysis_mode": "3d",
+                "spatial": {"shape": [1, 1, 1]},
+                "labels": {"scheme": "BraTS"},
+                "regions": {},
+                "mask_path": self.task_dir / "runs" / "segmentation" / "run-001" / "mask.nii.gz",
                 "run_directory": "runs/segmentation/run-001",
                 "timing": {"inference_ms": 34.5},
             },
@@ -974,8 +831,6 @@ class TaskPerformanceRecordTests(unittest.TestCase):
         )
         result = build_frontend_result(
             self.task_dir,
-            input_dir,
-            analysis_mode=AnalysisMode.THREE_D,
             expected_models=[ModelName.SEGMENTATION],
             input_files={
                 "flair": "flair.nii.gz",
@@ -1012,8 +867,6 @@ class TaskPerformanceRecordTests(unittest.TestCase):
         input_dir = self.task_dir / "input"
         result = build_frontend_result(
             self.task_dir,
-            input_dir,
-            analysis_mode=AnalysisMode.THREE_D,
             expected_models=[ModelName.CLASSIFICATION, ModelName.SEGMENTATION],
             input_files={"flair": "flair.nii.gz"},
             classification={
@@ -1046,8 +899,6 @@ class TaskPerformanceRecordTests(unittest.TestCase):
         input_dir = self.task_dir / "input"
         result = build_frontend_result(
             self.task_dir,
-            input_dir,
-            analysis_mode=AnalysisMode.THREE_D,
             expected_models=[ModelName.CLASSIFICATION, ModelName.SEGMENTATION],
             input_files={"flair": "flair.nii.gz"},
             classification={
@@ -1076,21 +927,11 @@ class ModelPreloadTests(unittest.TestCase):
     '''验证模型预热会填充现有缓存，并且不会因单模型失败阻断 worker。'''
 
     def test_preload_loads_all_route_models(self) -> None:
-        classifier_model = Mock()
         vit_classifier_model = Mock()
-        segmentation_model = Mock()
         segmentation_3d_model = Mock()
         with (
             patch(
-                "services.inference_service._load_classifier_namespace",
-                return_value={"torch": Mock()},
-            ),
-            patch(
                 "services.inference_service._load_vit_classifier_namespace",
-                return_value={"torch": Mock()},
-            ),
-            patch(
-                "services.inference_service._load_segmentation_namespace",
                 return_value={"torch": Mock()},
             ),
             patch(
@@ -1099,16 +940,8 @@ class ModelPreloadTests(unittest.TestCase):
             ),
             patch("services.inference_service.resolve_device", return_value="cpu"),
             patch(
-                "services.inference_service._load_classifier_model",
-                classifier_model,
-            ),
-            patch(
                 "services.inference_service._load_vit_classifier_model",
                 vit_classifier_model,
-            ),
-            patch(
-                "services.inference_service._load_segmentation_model",
-                segmentation_model,
             ),
             patch(
                 "services.inference_service._load_3d_segmentation_model",
@@ -1117,30 +950,16 @@ class ModelPreloadTests(unittest.TestCase):
         ):
             outcomes = preload_inference_models()
 
-        classifier_model.assert_called_once_with("cpu")
         vit_classifier_model.assert_called_once_with("cpu")
-        segmentation_model.assert_called_once_with("cpu")
         segmentation_3d_model.assert_called_once_with("cpu")
         self.assertIsInstance(outcomes["classification"], float)
-        self.assertIsInstance(outcomes["classification3d"], float)
         self.assertIsInstance(outcomes["segmentation"], float)
-        self.assertIsInstance(outcomes["segmentation3d"], float)
 
     def test_preload_continues_when_one_model_fails(self) -> None:
-        vit_classifier_model = Mock()
-        segmentation_model = Mock()
         segmentation_3d_model = Mock()
         with (
             patch(
-                "services.inference_service._load_classifier_namespace",
-                return_value={"torch": Mock()},
-            ),
-            patch(
                 "services.inference_service._load_vit_classifier_namespace",
-                return_value={"torch": Mock()},
-            ),
-            patch(
-                "services.inference_service._load_segmentation_namespace",
                 return_value={"torch": Mock()},
             ),
             patch(
@@ -1149,16 +968,8 @@ class ModelPreloadTests(unittest.TestCase):
             ),
             patch("services.inference_service.resolve_device", return_value="cpu"),
             patch(
-                "services.inference_service._load_classifier_model",
-                side_effect=RuntimeError("classifier unavailable"),
-            ),
-            patch(
                 "services.inference_service._load_vit_classifier_model",
-                vit_classifier_model,
-            ),
-            patch(
-                "services.inference_service._load_segmentation_model",
-                segmentation_model,
+                side_effect=RuntimeError("classifier unavailable"),
             ),
             patch(
                 "services.inference_service._load_3d_segmentation_model",
@@ -1168,52 +979,8 @@ class ModelPreloadTests(unittest.TestCase):
             outcomes = preload_inference_models()
 
         self.assertIn("failed: RuntimeError", outcomes["classification"])
-        vit_classifier_model.assert_called_once_with("cpu")
-        segmentation_model.assert_called_once_with("cpu")
         segmentation_3d_model.assert_called_once_with("cpu")
-        self.assertIsInstance(outcomes["classification3d"], float)
         self.assertIsInstance(outcomes["segmentation"], float)
-        self.assertIsInstance(outcomes["segmentation3d"], float)
-
-    def test_3d_preload_skips_the_2d_segmenter(self) -> None:
-        classifier_model = Mock()
-        vit_classifier_model = Mock()
-        segmentation_model = Mock()
-        segmentation_3d_model = Mock()
-        with (
-            patch(
-                "services.inference_service._load_vit_classifier_namespace",
-                return_value={"torch": Mock()},
-            ),
-            patch(
-                "services.inference_service._load_3d_segmentation_namespace",
-                return_value={"torch": Mock()},
-            ),
-            patch("services.inference_service.resolve_device", return_value="cpu"),
-            patch(
-                "services.inference_service._load_classifier_model",
-                classifier_model,
-            ),
-            patch(
-                "services.inference_service._load_vit_classifier_model",
-                vit_classifier_model,
-            ),
-            patch(
-                "services.inference_service._load_segmentation_model",
-                segmentation_model,
-            ),
-            patch(
-                "services.inference_service._load_3d_segmentation_model",
-                segmentation_3d_model,
-            ),
-        ):
-            outcomes = preload_inference_models(AnalysisMode.THREE_D)
-
-        classifier_model.assert_not_called()
-        vit_classifier_model.assert_called_once_with("cpu")
-        segmentation_3d_model.assert_called_once_with("cpu")
-        segmentation_model.assert_not_called()
-        self.assertEqual(set(outcomes), {"classification3d", "segmentation3d"})
 
     def test_windows_worker_preloads_before_processing_queue(self) -> None:
         worker = Mock()
@@ -1233,10 +1000,10 @@ class ModelPreloadTests(unittest.TestCase):
                 replace(SETTINGS, worker_preload_models=True),
             ),
         ):
-            run_worker.main(["--pipeline", "2d"])
+            run_worker.main([])
 
-        preload.assert_called_once_with(AnalysisMode.TWO_D)
-        get_queue.assert_called_once_with(AnalysisMode.TWO_D)
+        preload.assert_called_once_with()
+        get_queue.assert_called_once_with()
         worker.work.assert_called_once_with()
 
     def test_linux_simple_worker_preloads_without_forking(self) -> None:
@@ -1259,9 +1026,9 @@ class ModelPreloadTests(unittest.TestCase):
                 ),
             ),
         ):
-            run_worker.main(["--pipeline", "3d"])
+            run_worker.main([])
 
-        preload.assert_called_once_with(AnalysisMode.THREE_D)
+        preload.assert_called_once_with()
         standard_worker.assert_not_called()
         worker.work.assert_called_once_with()
 

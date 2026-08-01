@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from accelerator import validate_device
-from core.task_definitions import ModelName
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -40,14 +39,6 @@ def _get_path(name: str, default: str) -> Path:
     '''获取环境变量指定的路径，若未指定则使用默认值；相对路径会被解析为相对于项目根目录的绝对路径'''
     value = Path(os.getenv(name, default)).expanduser()
     return (PROJECT_ROOT / value).resolve() if not value.is_absolute() else value.resolve()
-
-
-def _get_threshold() -> float:
-    '''获取默认分割阈值，确保其在 0 到 1 之间'''
-    value = float(os.getenv("BTIR_DEFAULT_SEGMENT_THRESHOLD", "0.5"))
-    if not 0.0 <= value <= 1.0:
-        raise ValueError("BTIR_DEFAULT_SEGMENT_THRESHOLD 必须在 0 到 1 之间")
-    return value
 
 
 def _get_origins() -> list[str]:
@@ -124,14 +115,11 @@ def _get_volume_classifier_modality() -> str:
     return value
 
 
-def _get_task_queue_names() -> tuple[str, str]:
-    queue_2d = os.getenv("BTIR_TASK_QUEUE_2D_NAME", "inference-2d").strip()
-    queue_3d = os.getenv("BTIR_TASK_QUEUE_3D_NAME", "inference-3d").strip()
-    if not queue_2d or not queue_3d:
-        raise ValueError("BTIR 任务队列名称不能为空")
-    if queue_2d == queue_3d:
-        raise ValueError("BTIR_TASK_QUEUE_2D_NAME 与 BTIR_TASK_QUEUE_3D_NAME 必须不同")
-    return queue_2d, queue_3d
+def _get_task_queue_name() -> str:
+    queue_name = os.getenv("BTIR_TASK_QUEUE_NAME", "inference-3d").strip()
+    if not queue_name:
+        raise ValueError("BTIR_TASK_QUEUE_NAME 不能为空")
+    return queue_name
 
 
 @dataclass(frozen=True)
@@ -141,11 +129,6 @@ class Settings:
     project_root: Path
     output_dir: Path
     frontend_dir: Path
-    classifier_script: Path
-    classifier_model: Path
-    classifier_config: Path
-    segmenter_script: Path
-    segmenter_model: Path
     segmenter_3d_script: Path
     segmenter_3d_model: Path
     segmenter_3d_overlap: float
@@ -157,17 +140,13 @@ class Settings:
     task_database_path: Path
     task_archive_dir: Path
     device: str
-    default_segment_threshold: float
-    max_upload_bytes: int
     max_3d_upload_bytes: int
     max_3d_voxels: int
-    max_image_pixels: int
     cors_origins: list[str]
     redis_url: str
     task_lock_timeout_seconds: int
     task_lock_wait_seconds: float
-    task_queue_2d_name: str
-    task_queue_3d_name: str
+    task_queue_name: str
     task_job_timeout_seconds: int
     task_job_result_ttl_seconds: int
     task_job_max_retries: int
@@ -192,8 +171,8 @@ class Settings:
     max_active_tasks_per_user: int
 
     @property
-    def task_queue_names(self) -> tuple[str, str]:
-        return (self.task_queue_2d_name, self.task_queue_3d_name)
+    def task_queue_names(self) -> tuple[str]:
+        return (self.task_queue_name,)
 
 
 def _build_settings() -> Settings:
@@ -202,29 +181,13 @@ def _build_settings() -> Settings:
     models_dir = _get_path("BTIR_MODELS_DIR", "models")
     device = validate_device(os.getenv("BTIR_DEVICE", "auto"))
 
-    classifier_dir = models_dir / ModelName.CLASSIFICATION
-    segmenter_dir = models_dir / ModelName.SEGMENTATION
+    classifier_dir = models_dir / "classification"
     segmenter_3d_dir = models_dir / "segmentation3d"
-    task_queue_2d_name, task_queue_3d_name = _get_task_queue_names()
+    task_queue_name = _get_task_queue_name()
     return Settings(
         project_root=PROJECT_ROOT,
         output_dir=_get_path("BTIR_OUTPUT_DIR", "output"),
         frontend_dir=_get_path("BTIR_FRONTEND_DIR", "frontend"),
-        classifier_script=_get_path(
-            "BTIR_CLASSIFIER_SCRIPT", str(classifier_dir / "inference.py")
-        ),
-        classifier_model=_get_path(
-            "BTIR_CLASSIFIER_MODEL", str(classifier_dir / "model" / "pytorch_model.pth")
-        ),
-        classifier_config=_get_path(
-            "BTIR_CLASSIFIER_CONFIG", str(classifier_dir / "model" / "config.json")
-        ),
-        segmenter_script=_get_path(
-            "BTIR_SEGMENTER_SCRIPT", str(segmenter_dir / "inference.py")
-        ),
-        segmenter_model=_get_path(
-            "BTIR_SEGMENTER_MODEL", str(segmenter_dir / "model" / "best_unet_model.pth")
-        ),
         segmenter_3d_script=_get_path(
             "BTIR_3D_SEGMENTER_SCRIPT",
             str(segmenter_3d_dir / "inference.py"),
@@ -252,11 +215,6 @@ def _build_settings() -> Settings:
             0.5,
         ),
         device=device,
-        default_segment_threshold=_get_threshold(),
-        max_upload_bytes=_get_positive_int(
-            "BTIR_MAX_UPLOAD_BYTES",
-            20 * 1024 * 1024,
-        ),
         max_3d_upload_bytes=_get_positive_int(
             "BTIR_MAX_3D_UPLOAD_BYTES",
             512 * 1024 * 1024,
@@ -264,10 +222,6 @@ def _build_settings() -> Settings:
         max_3d_voxels=_get_positive_int(
             "BTIR_MAX_3D_VOXELS",
             20_000_000,
-        ),
-        max_image_pixels=_get_positive_int(
-            "BTIR_MAX_IMAGE_PIXELS",
-            40_000_000,
         ),
         cors_origins=_get_origins(),
         redis_url=os.getenv(
@@ -282,8 +236,7 @@ def _build_settings() -> Settings:
             "BTIR_TASK_LOCK_WAIT_SECONDS",
             5.0,
         ),
-        task_queue_2d_name=task_queue_2d_name,
-        task_queue_3d_name=task_queue_3d_name,
+        task_queue_name=task_queue_name,
         task_job_timeout_seconds=_get_positive_int(
             "BTIR_TASK_JOB_TIMEOUT_SECONDS",
             3600,

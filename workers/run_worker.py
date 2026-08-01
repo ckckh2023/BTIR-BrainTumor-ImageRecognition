@@ -10,7 +10,6 @@ import socket
 from rq import SimpleWorker, Worker
 
 from core.settings import SETTINGS
-from core.task_definitions import AnalysisMode
 from services.inference_service import preload_inference_models
 from services.console import print_event
 from services.redis_client import get_redis_client
@@ -20,17 +19,11 @@ logger = logging.getLogger(__name__)
 
 
 def main(argv: list[str] | None = None) -> None:
-    args = _build_parser().parse_args(argv)
-    modes = (
-        (AnalysisMode.TWO_D, AnalysisMode.THREE_D)
-        if args.pipeline == "all"
-        else (AnalysisMode(args.pipeline),)
-    )
-    queues = [get_task_queue(mode) for mode in modes]
+    _build_parser().parse_args(argv)
+    queues = [get_task_queue()]
     worker_class = _get_worker_class()
     if worker_class is SimpleWorker and SETTINGS.worker_preload_models:
-        preload_mode = modes[0] if len(modes) == 1 else None
-        outcomes = preload_inference_models(preload_mode)
+        outcomes = preload_inference_models()
         if any(isinstance(value, str) and value.startswith("failed:") for value in outcomes.values()):
             logger.warning("worker model preload partially failed outcomes=%s", outcomes)
         else:
@@ -40,7 +33,7 @@ def main(argv: list[str] | None = None) -> None:
     # 使用主机名和进程号保证每次启动的 worker 名称唯一；异常退出后遗留的
     # Redis 注册记录不会再阻止新的 worker 启动
     worker_name = (
-        f"btir-inference-{args.pipeline}-{socket.gethostname()}-{os.getpid()}"
+        f"btir-inference-3d-{socket.gethostname()}-{os.getpid()}"
     )
     worker = worker_class(
         queues,
@@ -54,12 +47,6 @@ def main(argv: list[str] | None = None) -> None:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="启动 BTIR RQ 推理 Worker")
-    parser.add_argument(
-        "--pipeline",
-        choices=("2d", "3d", "all"),
-        default="all",
-        help="监听的推理路线；正式部署建议分别启动 2d 和 3d",
-    )
     return parser
 
 

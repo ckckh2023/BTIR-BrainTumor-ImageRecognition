@@ -13,7 +13,6 @@ def clear_generated_files(
     project_root: Path,
     output_dir: Path,
     archive_dir: Path,
-    segmentation_dir: Path,
     *,
     dry_run: bool,
     task_repository: TaskRepository,
@@ -30,7 +29,7 @@ def clear_generated_files(
         if path == path.parent or path == project_root:
             raise ValueError(f"{name}不能是磁盘根目录或项目根目录")
 
-    targets = [output_dir, archive_dir, segmentation_dir / "output"]
+    targets = [output_dir, archive_dir]
     cache_directory_names = {"__pycache__", ".pytest_cache", ".mypy_cache"}
     targets.extend( # 寻找缓存目录
         path
@@ -39,7 +38,6 @@ def clear_generated_files(
     )
     targets.extend(path for path in project_root.rglob("*.pyc") if path.is_file()) # 寻找缓存文件
     targets.extend(path for path in project_root.rglob("*.pyo") if path.is_file()) # 寻找缓存文件
-    targets.extend(segmentation_dir.glob("*_segmented.png")) # 寻找结果文件
 
     # 去重并过滤掉子目录
     unique_targets = list(dict.fromkeys(path.resolve() for path in targets))

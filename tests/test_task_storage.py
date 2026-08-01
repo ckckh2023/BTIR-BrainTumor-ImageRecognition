@@ -337,19 +337,12 @@ class TaskStorageTests(unittest.TestCase):
 
     def test_model_commands_require_an_existing_task_id(self) -> None:
         parser = _build_parser()
-        for command in ("classify", "segment", "all"):
-            with (
-                self.subTest(command=command),
-                redirect_stderr(StringIO()),
-                self.assertRaises(SystemExit) as raised,
-            ):
-                parser.parse_args([command, "legacy-image.png"])
+        with redirect_stderr(StringIO()), self.assertRaises(SystemExit) as raised:
+            parser.parse_args(["run"])
 
-            self.assertEqual(raised.exception.code, 2)
-            parsed = parser.parse_args([command, "--task-id", "task-001"])
-            self.assertEqual(parsed.task_id, "task-001")
-            self.assertFalse(hasattr(parsed, "image_path"))
-            self.assertFalse(hasattr(parsed, "input_mode"))
+        self.assertEqual(raised.exception.code, 2)
+        parsed = parser.parse_args(["run", "--task-id", "task-001"])
+        self.assertEqual(parsed.task_id, "task-001")
 
     def test_unavailable_database_raises_storage_error(self) -> None:
         blocked_parent = self.project_root / "not-a-directory"
@@ -580,7 +573,6 @@ class TaskStorageTests(unittest.TestCase):
             self.project_root,
             self.output_dir,
             self.archive_dir,
-            self.project_root / "segmenter",
             dry_run=True,
             task_repository=self.repository,
             user_repository=user_repository,
@@ -614,7 +606,6 @@ class TaskStorageTests(unittest.TestCase):
             self.project_root,
             self.output_dir,
             self.archive_dir,
-            self.project_root / "segmenter",
             dry_run=False,
             task_repository=self.repository,
             user_repository=user_repository,

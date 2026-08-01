@@ -27,7 +27,7 @@ class StoredTaskModality(BaseModel):
 
 
 class StoredTaskInput(BaseModel):
-    '''任务创建后保存的输入图片信息'''
+    '''任务创建后保存的四模态体数据摘要'''
 
     model_config = ConfigDict(extra="allow")
 
@@ -90,7 +90,7 @@ class TaskRecord(BaseModel):
     created_at: datetime
     updated_at: datetime
     archived_at: datetime | None = None
-    analysis_mode: AnalysisMode = AnalysisMode.TWO_D
+    analysis_mode: AnalysisMode = AnalysisMode.THREE_D
     expected_models: list[ModelName] = Field(
         default_factory=lambda: sorted(ALL_MODELS, key=lambda model: model.value)
     )

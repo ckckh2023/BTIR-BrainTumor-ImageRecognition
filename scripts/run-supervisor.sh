@@ -100,7 +100,7 @@ fi
 if ! (
     cd "$PROJECT_ROOT"
     "$PYTHON_EXE" -c \
-        'import fastapi, pydantic, redis, rq, uvicorn, jose, passlib, PIL, nibabel, numpy, einops, monai, torch, torchvision, tqdm, multipart'
+        'import fastapi, pydantic, redis, rq, uvicorn, jose, passlib, PIL, nibabel, numpy, einops, monai, torch, transformers, tqdm, multipart'
 ); then
     fail "project dependencies are incomplete; run: $PYTHON_EXE -m pip install -r requirements.txt"
 fi
@@ -124,10 +124,8 @@ fi
 printf '%s\n' "$$" >"$PID_FILE"
 
 api_pid=0
-worker_2d_pid=0
-worker_3d_pid=0
-worker_2d_started_at=0
-worker_3d_started_at=0
+worker_pid=0
+worker_started_at=0
 api_health_failures=0
 
 process_is_running() {
@@ -146,21 +144,15 @@ start_api() {
 }
 
 start_worker() {
-    local pipeline="$1"
-    log "starting ${pipeline} inference worker"
+    log "starting 3D inference worker"
     (
         cd "$PROJECT_ROOT"
         exec 9>&-
-        exec "$PYTHON_EXE" -m workers.run_worker --pipeline "$pipeline"
-    ) >>"$LOG_DIRECTORY/worker-${pipeline}.stdout.log" \
-      2>>"$LOG_DIRECTORY/worker-${pipeline}.stderr.log" &
-    if [[ "$pipeline" == '2d' ]]; then
-        worker_2d_pid=$!
-        worker_2d_started_at="$(date +%s)"
-    else
-        worker_3d_pid=$!
-        worker_3d_started_at="$(date +%s)"
-    fi
+        exec "$PYTHON_EXE" -m workers.run_worker
+    ) >>"$LOG_DIRECTORY/worker.stdout.log" \
+      2>>"$LOG_DIRECTORY/worker.stderr.log" &
+    worker_pid=$!
+    worker_started_at="$(date +%s)"
 }
 
 stop_process() {
@@ -191,14 +183,9 @@ restart_api() {
 }
 
 restart_worker() {
-    local pipeline="$1"
-    if [[ "$pipeline" == '2d' ]]; then
-        stop_process "$worker_2d_pid" '2D worker'
-    else
-        stop_process "$worker_3d_pid" '3D worker'
-    fi
+    stop_process "$worker_pid" '3D worker'
     sleep "$RESTART_DELAY_SECONDS"
-    start_worker "$pipeline"
+    start_worker
 }
 
 http_status() {
@@ -226,8 +213,7 @@ run_task_reconciliation() {
 
 cleanup() {
     trap - EXIT INT TERM
-    stop_process "$worker_3d_pid" '3D worker'
-    stop_process "$worker_2d_pid" '2D worker'
+    stop_process "$worker_pid" '3D worker'
     stop_process "$api_pid" 'API'
     if [[ -f "$PID_FILE" && "$(cat "$PID_FILE" 2>/dev/null || true)" == "$$" ]]; then
         rm -f "$PID_FILE"
@@ -249,8 +235,7 @@ log "Python: $PYTHON_EXE"
 log "logs: $LOG_DIRECTORY"
 
 start_api
-start_worker '2d'
-start_worker '3d'
+start_worker
 
 now="$(date +%s)"
 next_health_check="$now"
@@ -266,20 +251,12 @@ while true; do
         api_health_failures=0
     fi
 
-    if ! process_is_running "$worker_2d_pid"; then
+    if ! process_is_running "$worker_pid"; then
         exit_code=0
-        wait "$worker_2d_pid" 2>/dev/null || exit_code=$?
-        log "2D worker exited with code $exit_code; restarting in ${RESTART_DELAY_SECONDS}s"
-        sleep "$RESTART_DELAY_SECONDS"
-        start_worker '2d'
-    fi
-
-    if ! process_is_running "$worker_3d_pid"; then
-        exit_code=0
-        wait "$worker_3d_pid" 2>/dev/null || exit_code=$?
+        wait "$worker_pid" 2>/dev/null || exit_code=$?
         log "3D worker exited with code $exit_code; restarting in ${RESTART_DELAY_SECONDS}s"
         sleep "$RESTART_DELAY_SECONDS"
-        start_worker '3d'
+        start_worker
     fi
 
     now="$(date +%s)"
@@ -298,17 +275,10 @@ while true; do
         readiness_body="$(http_body "$HEALTH_BASE_URL/readyz")"
         if
             grep -qE '"redis"[[:space:]]*:[[:space:]]*"ok"' <<<"$readiness_body" &&
-            grep -qE '"inference_worker_2d"[[:space:]]*:[[:space:]]*"unavailable"' <<<"$readiness_body" &&
-            (( now - worker_2d_started_at >= WORKER_STARTUP_GRACE_SECONDS )); then
-            log '2D worker is not registered; restarting worker'
-            restart_worker '2d'
-        fi
-        if
-            grep -qE '"redis"[[:space:]]*:[[:space:]]*"ok"' <<<"$readiness_body" &&
-            grep -qE '"inference_worker_3d"[[:space:]]*:[[:space:]]*"unavailable"' <<<"$readiness_body" &&
-            (( now - worker_3d_started_at >= WORKER_STARTUP_GRACE_SECONDS )); then
+            grep -qE '"inference_worker"[[:space:]]*:[[:space:]]*"unavailable"' <<<"$readiness_body" &&
+            (( now - worker_started_at >= WORKER_STARTUP_GRACE_SECONDS )); then
             log '3D worker is not registered; restarting worker'
-            restart_worker '3d'
+            restart_worker
         fi
     fi
 

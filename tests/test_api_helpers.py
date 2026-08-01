@@ -21,12 +21,10 @@ from api.auth import get_current_user
 from api.routes import tasks
 from api.routes.tasks import (
     bad_request_http_error,
-    resolve_run_threshold,
     task_input_data,
     task_summary_data,
 )
 from api.routes.runtime import get_liveness, get_queue_status, get_readiness
-from contracts.task import RunTaskRequest
 from core.task_definitions import AnalysisMode, JobStatus, ModelName, TaskStatus
 from core.task_records import (
     StoredTaskInput,
@@ -55,10 +53,6 @@ TEST_USER = UserRecord(
 
 class TaskRouteHelperTests(unittest.TestCase):
     '''验证默认阈值和预期异常的 HTTP 转换规则'''
-
-    def test_resolve_run_threshold_prefers_request_value(self) -> None:
-        self.assertEqual(resolve_run_threshold(RunTaskRequest(threshold=0.7)), 0.7)
-        self.assertEqual(resolve_run_threshold(None), SETTINGS.default_segment_threshold)
 
     def test_service_exceptions_are_registered_globally(self) -> None:
         cases = [
@@ -105,40 +99,6 @@ class TaskRouteHelperTests(unittest.TestCase):
         self.assertEqual(summary["error"]["code"], "inference_failed")
         self.assertNotIn("detail", summary["error"])
 
-    def test_get_task_falls_back_to_recorded_input_filename(self) -> None:
-        task_dir = Path("output") / "task-result-image-001"
-        now = datetime.fromisoformat("2026-01-01T00:00:00+00:00")
-        record = TaskRecord(
-            task_id=task_dir.name,
-            name="结果图片回退测试",
-            status=TaskStatus.SUCCEEDED,
-            created_at=now,
-            updated_at=now,
-            input=StoredTaskInput(
-                path="input/uploaded-image.png",
-                storage_mode="uploaded",
-                size_bytes=1,
-                sha256="a" * 64,
-            ),
-        )
-
-        with (
-            patch(
-                "api.routes.tasks.task_repository.get_task_user_id",
-                return_value=TEST_USER.user_id,
-            ),
-            patch("api.routes.tasks.require_task_dir", return_value=task_dir),
-            patch("api.routes.tasks.reconcile_task_job", return_value=record),
-            patch("api.routes.tasks.Path.is_file", return_value=True),
-            patch(
-                "api.routes.tasks.Path.read_text",
-                return_value='{"task_id": "task-result-image-001"}',
-            ),
-        ):
-            response = tasks.get_task(task_dir.name, current_user=TEST_USER)
-
-        self.assertEqual(response.frontend_result["image_file"], "uploaded-image.png")
-
     def test_3d_task_input_exposes_named_files_without_fake_filename(self) -> None:
         now = datetime.fromisoformat("2026-01-01T00:00:00+00:00")
         modalities = {
@@ -168,7 +128,7 @@ class TaskRouteHelperTests(unittest.TestCase):
 
         public_input = task_input_data(record).model_dump(mode="json")
 
-        self.assertIsNone(public_input["filename"])
+        self.assertNotIn("filename", public_input)
         self.assertEqual(
             set(public_input["files"]),
             {"flair", "t1ce", "t1", "t2"},
@@ -193,8 +153,7 @@ class TaskRouteHelperTests(unittest.TestCase):
             {
                 "task_database": "ok",
                 "redis": "ok",
-                "inference_worker_2d": "ok",
-                "inference_worker_3d": "ok",
+                "inference_worker": "ok",
                 "models": "ok",
             },
         )
@@ -212,31 +171,9 @@ class TaskRouteHelperTests(unittest.TestCase):
 
         self.assertEqual(caught.exception.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
         self.assertEqual(
-            caught.exception.detail["components"]["inference_worker_2d"],
+            caught.exception.detail["components"]["inference_worker"],
             "unavailable",
         )
-        self.assertEqual(
-            caught.exception.detail["components"]["inference_worker_3d"],
-            "unavailable",
-        )
-
-    def test_readiness_requires_both_pipeline_workers(self) -> None:
-        redis_client = Mock()
-        redis_client.ping.return_value = True
-        with (
-            patch("api.routes.runtime.task_repository.health_check"),
-            patch("api.routes.runtime.get_redis_client", return_value=redis_client),
-            patch(
-                "api.routes.runtime.has_active_inference_worker",
-                side_effect=(True, False),
-            ),
-            self.assertRaises(HTTPException) as caught,
-        ):
-            get_readiness()
-
-        components = caught.exception.detail["components"]
-        self.assertEqual(components["inference_worker_2d"], "ok")
-        self.assertEqual(components["inference_worker_3d"], "unavailable")
 
     def test_readiness_returns_503_when_redis_is_unavailable(self) -> None:
         with (
@@ -253,12 +190,6 @@ class TaskRouteHelperTests(unittest.TestCase):
         self.assertEqual(caught.exception.detail["components"]["redis"], "unavailable")
 
     def test_queue_status_summarizes_the_inference_queue(self) -> None:
-        queue_2d = Mock(name="queue-2d")
-        queue_2d.name = "inference-2d"
-        queue_2d.count = 2
-        queue_2d.started_job_registry.count = 1
-        queue_2d.failed_job_registry.count = 3
-        queue_2d.get_job_ids.return_value = ["job-oldest"]
         queue_3d = Mock(name="queue-3d")
         queue_3d.name = "inference-3d"
         queue_3d.count = 4
@@ -266,30 +197,27 @@ class TaskRouteHelperTests(unittest.TestCase):
         queue_3d.failed_job_registry.count = 0
         queue_3d.get_job_ids.return_value = []
         oldest_job = Mock(enqueued_at=datetime.now().astimezone() - timedelta(seconds=4))
-        worker_2d = Mock()
-        worker_2d.queue_names.return_value = ["inference-2d"]
         worker_3d = Mock()
         worker_3d.queue_names.return_value = ["inference-3d"]
 
         with (
             patch(
                 "services.task_queue.get_task_queue",
-                side_effect=(queue_2d, queue_3d),
+                return_value=queue_3d,
             ),
             patch(
                 "services.task_queue.get_active_inference_workers",
-                return_value=[worker_2d, worker_3d],
+                return_value=[worker_3d],
             ),
             patch("services.task_queue.Job.fetch", return_value=oldest_job),
         ):
             queue_status = get_inference_queue_status()
 
-        self.assertEqual(queue_status["active_workers"], 2)
-        self.assertEqual(queue_status["queued_jobs"], 6)
-        self.assertEqual(queue_status["running_jobs"], 2)
-        self.assertEqual(queue_status["failed_jobs"], 3)
-        self.assertGreaterEqual(queue_status["oldest_wait_seconds"], 4)
-        self.assertEqual(queue_status["queues"]["2d"]["active_workers"], 1)
+        self.assertEqual(queue_status["active_workers"], 1)
+        self.assertEqual(queue_status["queued_jobs"], 4)
+        self.assertEqual(queue_status["running_jobs"], 1)
+        self.assertEqual(queue_status["failed_jobs"], 0)
+        self.assertIsNone(queue_status["oldest_wait_seconds"])
         self.assertEqual(queue_status["queues"]["3d"]["queued_jobs"], 4)
 
     def test_queue_status_returns_503_when_redis_is_unavailable(self) -> None:
@@ -327,8 +255,14 @@ class TaskHttpEndpointTests(unittest.TestCase):
         self.assertNotIn("/tasks/{task_id}/run", paths)
         self.assertNotIn("/tasks/{task_id}/classify", paths)
         self.assertNotIn("/tasks/{task_id}/segment", paths)
+        self.assertEqual(set(paths["/tasks"]), {"get"})
         self.assertIn("/tasks/3d", paths)
+        self.assertEqual(set(paths["/tasks/3d"]), {"post"})
         self.assertIn("/tasks/{task_id}/run-async", paths)
+        self.assertNotIn(
+            "requestBody",
+            paths["/tasks/{task_id}/run-async"]["post"],
+        )
         self.assertIn("/tasks/{task_id}/runs", paths)
         self.assertIn("/tasks/archived", paths)
         self.assertIn("delete", paths["/tasks/{task_id}"])
@@ -643,15 +577,24 @@ class TaskHttpEndpointTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             task_dir = Path(directory) / "task-http-001"
             task_dir.mkdir()
-            input_path = task_dir / "input" / "image.png"
-            input_path.parent.mkdir()
-            input_path.write_bytes(b"not-used-by-mock")
+            input_dir = task_dir / "input"
+            input_dir.mkdir()
+            input_paths = {
+                modality: input_dir / f"{modality}.nii.gz"
+                for modality in ("flair", "t1ce", "t1", "t2")
+            }
+            for input_path in input_paths.values():
+                input_path.write_bytes(b"not-used-by-mock")
             frontend_result = task_dir / "frontend_result.json"
             frontend_result.write_text(
                 json.dumps(
                     {
                         "task_id": task_dir.name,
-                        "image_file": "image.png",
+                        "analysis_mode": "3d",
+                        "input_files": {
+                            modality: path.name
+                            for modality, path in input_paths.items()
+                        },
                         "classification": {"class": "yes"},
                         "timing": {"classification_inference_ms": 12.5},
                         "image_path": "private/path.png",
@@ -667,10 +610,18 @@ class TaskHttpEndpointTests(unittest.TestCase):
                 updated_at=now,
                 completed_models=[],
                 input=StoredTaskInput(
-                    path="input/image.png",
-                    storage_mode="uploaded",
-                    size_bytes=1,
+                    path="input",
+                    storage_mode="uploaded_multimodal",
+                    size_bytes=4,
                     sha256="a" * 64,
+                    modalities={
+                        modality: StoredTaskModality(
+                            path=f"input/{path.name}",
+                            size_bytes=1,
+                            sha256=modality * 16,
+                        )
+                        for modality, path in input_paths.items()
+                    },
                 ),
                 job=TaskJobRecord(
                     id="job-http-001",
@@ -693,8 +644,8 @@ class TaskHttpEndpointTests(unittest.TestCase):
             with (
                 patch("api.routes.tasks.create_task_dir", return_value=task_dir),
                 patch(
-                    "api.routes.tasks.initialize_uploaded_task",
-                    return_value=input_path,
+                    "api.routes.tasks.initialize_uploaded_volume_task",
+                    return_value=input_paths,
                 ),
                 patch("api.routes.tasks.require_task_dir", return_value=task_dir),
                 patch(
@@ -705,13 +656,15 @@ class TaskHttpEndpointTests(unittest.TestCase):
                 TestClient(app) as client,
             ):
                 created = client.post(
-                    "/tasks",
-                    files={"file": ("image.png", b"image-data", "image/png")},
+                    "/tasks/3d",
+                    files={
+                        modality: (path.name, b"nifti-data", "application/octet-stream")
+                        for modality, path in input_paths.items()
+                    },
                     data={"name": "HTTP workflow test"},
                 )
                 enqueued = client.post(
                     f"/tasks/{task_dir.name}/run-async",
-                    json={"threshold": 0.5},
                 )
                 task_status = client.get(f"/tasks/{task_dir.name}")
                 result_file = client.get(

@@ -8,7 +8,6 @@ from core.result_contract import FRONTEND_RESULT_SCHEMA_VERSION
 from core.task_definitions import (
     ACTIVE_ASYNC_TASK_STATUSES,
     AnalysisMode,
-    InputStorageMode,
     JobStatus,
     ModelName,
     TaskArtifact,
@@ -78,14 +77,8 @@ class TaskDefinitionTests(unittest.TestCase):
         self.assertEqual(TaskDirectory.INPUT.value, "input")
         self.assertEqual(
             tuple(mode.value for mode in AnalysisMode),
-            ("2d", "3d"),
+            ("3d",),
         )
-        self.assertEqual(
-            tuple(mode.value for mode in InputStorageMode),
-            ("auto", "hardlink", "copy"),
-        )
-        with self.assertRaises(ValueError):
-            InputStorageMode("reference")
 
 
 if __name__ == "__main__":

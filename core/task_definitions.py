@@ -39,7 +39,6 @@ class ModelName(StrEnum):
 class AnalysisMode(StrEnum):
     '''任务使用的输入维度与推理管线'''
 
-    TWO_D = "2d"
     THREE_D = "3d"
 
 
@@ -83,14 +82,6 @@ def expected_models_for_mode(
 
     AnalysisMode(analysis_mode)
     return ALL_MODELS
-
-
-class InputStorageMode(StrEnum):
-    '''创建任务时保存输入图片的方式'''
-
-    AUTO = "auto"
-    HARDLINK = "hardlink"
-    COPY = "copy"
 
 
 class TaskDirectory(StrEnum):

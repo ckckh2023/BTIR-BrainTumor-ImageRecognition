@@ -11,8 +11,7 @@ POST /auth/register 或 POST /auth/login
     ↓
 后续请求携带 Authorization: Bearer <access_token>
     ↓
-POST /tasks 上传 2D 图片
-或 POST /tasks/3d 上传四模态 3D NIfTI
+POST /tasks/3d 上传四模态 3D NIfTI
     ↓
 POST /tasks/{task_id}/run-async 提交异步推理
     ↓
@@ -52,7 +51,6 @@ POST /tasks/{task_id}/restore 恢复所选任务
 | `POST` | `/auth/register` | 注册账号；受服务器注册开关控制 |
 | `POST` | `/auth/login` | 登录并获取访问令牌 |
 | `GET` | `/auth/me` | 查询当前登录用户 |
-| `POST` | `/tasks` | 上传图片并创建 2D 任务 |
 | `POST` | `/tasks/3d` | 上传四模态 NIfTI 并创建 3D 任务 |
 | `GET` | `/tasks` | 分页、筛选历史任务 |
 | `GET` | `/tasks/archived` | 分页、筛选尚未永久清除的归档任务 |
@@ -67,7 +65,7 @@ POST /tasks/{task_id}/restore 恢复所选任务
 | `GET` | `/healthz` | API 存活检查 |
 | `GET` | `/readyz` | 完整依赖就绪检查 |
 | `GET` | `/runtime` | 查询实际推理设备 |
-| `GET` | `/ops/queue` | 查询 2D、3D 独立队列及合计运行状态 |
+| `GET` | `/ops/queue` | 查询 3D 推理队列及合计运行状态 |
 
 ## 认证
 
@@ -94,35 +92,6 @@ Authorization: Bearer <access_token>
 登录和注册受 Redis 固定窗口限流保护，超过限制返回 `429` 并携带
 `Retry-After`。Redis 不可用时认证入口返回 `503`，已经登录用户的普通任务请求
 不依赖认证限流计数器。账号被禁用或密码被管理员重置后，旧 Token 会立即失效。
-
-## 上传并创建 2D 任务
-
-```http
-POST /tasks
-Content-Type: multipart/form-data
-```
-
-表单字段：
-
-| 字段 | 必填 | 说明 |
-| --- | --- | --- |
-| `file` | 是 | 支持 `.jpg`、`.jpeg`、`.png` |
-| `name` | 否 | 任务显示名称 |
-
-成功返回 `201 Created`：
-
-```json
-{
-  "schema_version": "0.1",
-  "task_id": "20260728_120000_001",
-  "status": "created",
-  "analysis_mode": "2d",
-  "input_file": "image.png"
-}
-```
-
-上传大小和解码后像素数量由 `BTIR_MAX_UPLOAD_BYTES` 与
-`BTIR_MAX_IMAGE_PIXELS` 限制。
 
 ## 上传并创建 3D 任务
 
@@ -172,20 +141,9 @@ BraTS 命名规则，模态由表单字段确定。四个文件总大小由
 
 ```http
 POST /tasks/{task_id}/run-async
-Content-Type: application/json
 ```
 
-请求体可以省略。指定分割阈值时：
-
-```json
-{
-  "threshold": 0.5
-}
-```
-
-`threshold` 只用于 2D 分割；3D SuperLightNet 使用多类 argmax，不读取该值。
-创建任务后，两条路线都调用同一个 `run-async` 接口，后端根据
-`analysis_mode` 自动分流。
+该请求不需要请求体。3D SuperLightNet 使用多类 argmax，不接收外部分割阈值。
 
 成功返回 `202 Accepted`。如果同一任务已经处于 `queued` 或 `running`，
 后端会复用现有作业，并通过 `reused_existing_job` 标识：
@@ -197,7 +155,7 @@ Content-Type: application/json
   "status": "queued",
   "job": {
     "id": "rq-job-id",
-    "queue": "inference",
+    "queue": "inference-3d",
     "status": "queued",
     "attempt": 0,
     "max_retries": 1,
@@ -214,13 +172,7 @@ GET /tasks/{task_id}
 ```
 
 前端可定时轮询，直到进入 `succeeded`、`failed` 或 `canceled`。
-2D 成功任务的 `completed_models` 为：
-
-```json
-["classification", "segmentation"]
-```
-
-3D 成功任务同样为：
+成功任务的 `completed_models` 为：
 
 ```json
 ["classification", "segmentation"]
@@ -234,20 +186,22 @@ GET /tasks/{task_id}
   "task_id": "20260728_120000_001",
   "name": "示例任务",
   "status": "succeeded",
-  "analysis_mode": "2d",
+  "analysis_mode": "3d",
   "expected_models": ["classification", "segmentation"],
   "created_at": "2026-07-28T12:00:00+08:00",
   "updated_at": "2026-07-28T12:00:03+08:00",
   "completed_models": ["classification", "segmentation"],
   "input": {
-    "filename": "image.png",
-    "storage_mode": "uploaded",
-    "size_bytes": 1024,
-    "sha256": "..."
+    "files": {
+      "flair": {"filename": "flair.nii.gz", "size_bytes": 1024, "sha256": "..."},
+      "t1ce": {"filename": "t1ce.nii.gz", "size_bytes": 1024, "sha256": "..."},
+      "t1": {"filename": "t1.nii.gz", "size_bytes": 1024, "sha256": "..."},
+      "t2": {"filename": "t2.nii.gz", "size_bytes": 1024, "sha256": "..."}
+    }
   },
   "job": {
     "id": "rq-job-id",
-    "queue": "inference",
+    "queue": "inference-3d",
     "status": "succeeded",
     "attempt": 0,
     "max_retries": 1,
@@ -307,7 +261,7 @@ GET /tasks/{task_id}
 
 `frontend_result` 的兼容规则：
 
-- 前端按 `analysis_mode` 选择 2D 或 3D 展示；
+- `analysis_mode` 固定为 `3d`；
 - `classification.class`、`classification.confidence` 和
   `segmentation.mask_file` 保持原位置，现有前端无需修改；
 - 分类与分割对象均包含稳定的 `model` 标识，3D 分割另外提供
@@ -315,8 +269,7 @@ GET /tasks/{task_id}
 - 替换模型可以新增模型专属字段，但不能删除或改义版本 `1.0` 的既有字段；
 - 需要破坏性修改时必须提升 `frontend_result.schema_version`，并同步前端和本文档。
 
-3D 任务的 `input.filename` 为 `null`，`input.files` 分别给出四个模态的
-文件名、大小与 SHA-256。
+任务的 `input.files` 分别给出四个模态的文件名、大小与 SHA-256。
 `frontend_result.classification` 是患者级分类结果，主要字段包括：
 
 - `model`：固定为 `models/classification/vit-binary`；
@@ -550,11 +503,11 @@ POST /tasks/{task_id}/restore
 恢复后任务重新出现在 `GET /tasks` 中，并可按原状态继续查看、重试或再次运行。
 未归档任务请求恢复时返回 `409`；已经永久清除的任务返回 `404`。
 
-### 更换输入图片
+### 更换输入体数据
 
-当前不提供修改已有任务输入图片的接口。`retry` 和 `run-async` 都继续使用
-该任务原始图片。需要更换图片时应重新调用 `POST /tasks` 创建新任务，以免
-旧运行历史与新图片混在同一个 `task_id` 下。
+当前不提供修改已有任务输入的接口。`retry` 和 `run-async` 都继续使用
+该任务原始四模态体数据。需要更换输入时应重新调用 `POST /tasks/3d` 创建新任务，
+以免旧运行历史与新输入混在同一个 `task_id` 下。
 
 ## 读取结果文件
 
@@ -646,7 +599,7 @@ async function requestTaskAction(taskId, action) {
 | --- | --- |
 | `401` | Token 缺失、无效或已过期 |
 | `403` | 注册已关闭或用户已禁用 |
-| `400` | 上传、阈值或查询参数不合法 |
+| `400` | 上传或查询参数不合法 |
 | `404` | 任务、无权访问的任务或公开文件不存在 |
 | `409` | 当前任务状态不允许操作，或写入锁等待超时 |
 | `429` | 当前用户的任务存储或并发运行数量达到上限 |
