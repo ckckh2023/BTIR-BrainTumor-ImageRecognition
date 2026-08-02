@@ -60,7 +60,6 @@ def mark_models_completed(task_dir: Path, *models: ModelName | str) -> None:
     }:
         record.status = task_status_for_completed_models(
             completed,
-            record.expected_models,
         )
     record.updated_at = datetime.now().astimezone()
     task_repository.save(task_dir, record)

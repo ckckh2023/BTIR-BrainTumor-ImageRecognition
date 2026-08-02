@@ -122,12 +122,12 @@ class VolumeClassificationTests(unittest.TestCase):
     def test_classification_error_is_not_replaced_by_another_model(self) -> None:
         with (
             patch(
-                "services.inference_service._classify_volume_vit",
+                "services.inference_service.prepare_volume_slices",
                 side_effect=RuntimeError("local model unavailable"),
             ),
             self.assertRaisesRegex(RuntimeError, "local model unavailable"),
         ):
-            classify_volume({})
+            classify_volume({"flair": Path("flair.nii.gz")})
 
     @staticmethod
     def _prediction(yes_probability: float) -> dict[str, object]:

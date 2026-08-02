@@ -40,7 +40,7 @@ POST /tasks/{task_id}/restore 恢复所选任务
 | `running` | Worker 正在执行 |
 | `cancel_requested` | 已请求在安全阶段停止 |
 | `partial` | 只完成了部分模型 |
-| `succeeded` | 当前任务 `expected_models` 中的模型均已完成 |
+| `succeeded` | 3D 分类与分割均已完成 |
 | `failed` | 自动重试耗尽后仍失败 |
 | `canceled` | 任务已取消 |
 
@@ -187,7 +187,6 @@ GET /tasks/{task_id}
   "name": "示例任务",
   "status": "succeeded",
   "analysis_mode": "3d",
-  "expected_models": ["classification", "segmentation"],
   "created_at": "2026-07-28T12:00:00+08:00",
   "updated_at": "2026-07-28T12:00:03+08:00",
   "completed_models": ["classification", "segmentation"],
@@ -334,12 +333,17 @@ GET /tasks?q=Patient&status=succeeded&created_from=2026-07-01T00:00:00%2B08:00&c
       "status": "succeeded",
       "created_at": "2026-07-28T12:00:00+08:00",
       "updated_at": "2026-07-28T12:00:03+08:00",
+      "analysis_mode": "3d",
       "completed_models": ["classification", "segmentation"],
       "input": {
-        "filename": "image.png",
-        "storage_mode": "uploaded",
-        "size_bytes": 1024,
-        "sha256": "..."
+        "size_bytes": 4096,
+        "sha256": "...",
+        "files": {
+          "flair": {"filename": "flair.nii.gz", "size_bytes": 1024, "sha256": "..."},
+          "t1": {"filename": "t1.nii.gz", "size_bytes": 1024, "sha256": "..."},
+          "t1ce": {"filename": "t1ce.nii.gz", "size_bytes": 1024, "sha256": "..."},
+          "t2": {"filename": "t2.nii.gz", "size_bytes": 1024, "sha256": "..."}
+        }
       },
       "job": null,
       "error": null

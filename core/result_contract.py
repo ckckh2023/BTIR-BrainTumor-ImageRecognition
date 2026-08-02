@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.task_definitions import AnalysisMode, ModelName, TaskStatus
+from core.task_definitions import ModelName, TaskStatus
 
 
 FRONTEND_RESULT_SCHEMA_VERSION = "1.0"
@@ -44,7 +44,8 @@ def validate_frontend_result(payload: dict[str, Any]) -> None:
             f"{payload['schema_version']!r}"
         )
 
-    mode = AnalysisMode(payload["analysis_mode"])
+    if payload["analysis_mode"] != "3d":
+        raise ValueError("analysis_mode 必须是 3d")
     TaskStatus(payload["status"])
     completed_models = payload["completed_models"]
     if not isinstance(completed_models, list):
@@ -89,7 +90,7 @@ def validate_frontend_result(payload: dict[str, Any]) -> None:
         ]
         if missing_mode_fields:
             raise ValueError(
-                "segmentation 缺少模式字段："
+                "segmentation 缺少 3D 结果字段："
                 + ", ".join(missing_mode_fields)
             )
 

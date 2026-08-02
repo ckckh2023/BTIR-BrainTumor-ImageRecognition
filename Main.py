@@ -1,4 +1,4 @@
-'''命令行入口，支持创建任务、运行分类/分割模型、清理缓存和结果等操作'''
+'''命令行入口，支持 3D 推理、运维、账号管理与评估命令'''
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from pathlib import Path
 
 from core.settings import SETTINGS
 from contracts.auth import RegisterRequest
-from core.task_definitions import TaskStatus
+from core.task_definitions import TaskDirectory, TaskStatus
 from repositories.sqlite_task_repository import SqliteTaskRepository
 from repositories.task_repository import task_repository
 from repositories.user_repository import (
@@ -32,7 +32,7 @@ from services.task_files import (
 from services.task_runner import run_task_models
 
 
-# 统一使用项目配置中的路径与默认阈值
+# 统一使用项目配置中的路径
 PROJECT_ROOT = SETTINGS.project_root
 DEFAULT_OUTPUT_DIR = SETTINGS.output_dir
 
@@ -132,11 +132,10 @@ def main(argv: list[str] | None = None) -> int:
             task_dir,
             progress_callback=progress.update,
         )
-        input_dir = run_result.input_dir
         classification = run_result.classification_result
         segmentation = run_result.segmentation_result
         result = {
-            "input_dir": str(input_dir),
+            "input_dir": str(task_dir / TaskDirectory.INPUT),
             "classification": classification,
             "segmentation": segmentation,
             "task_dir": str(task_dir),
@@ -389,7 +388,7 @@ def _print_queue_reset_report(report, *, dry_run: bool) -> None:
     '''输出 clear 对本项目 Redis 状态的处理范围'''
     action = "将清理" if dry_run else "已清理"
     print(
-        f"{action} Redis 队列 {', '.join(report.queue_names)}："
+        f"{action} Redis 队列 {report.queue_name}："
         f"排队作业 {report.queued_job_count} 条，"
         f"注册表作业 {report.registry_job_count} 条，"
         f"任务锁 {report.task_lock_count} 个"

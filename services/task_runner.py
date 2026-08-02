@@ -24,9 +24,8 @@ from services.task_results import (
 
 @dataclass(frozen=True)
 class TaskRunResult:
-    '''一次完整推理生成的输入与两项模型结果'''
+    '''一次完整推理生成的两项模型结果与总耗时'''
 
-    input_dir: Path
     classification_result: dict[str, Any]
     segmentation_result: dict[str, Any]
     total_inference_ms: float
@@ -94,7 +93,6 @@ def run_task_models(
     if progress_callback is not None:
         progress_callback("3D 分割完成", 100)
     return TaskRunResult(
-        input_dir=task_dir / "input",
         classification_result=classification_result,
         segmentation_result=segmentation_result,
         total_inference_ms=_elapsed_ms(started_at),

@@ -1,4 +1,4 @@
-'''上传图片安全边界的回归测试'''
+'''四模态体数据上传安全边界的回归测试'''
 
 from __future__ import annotations
 
@@ -13,12 +13,11 @@ import nibabel as nib
 import numpy as np
 
 from core.settings import SETTINGS
-from core.task_definitions import AnalysisMode, ModelName
 from services.task_files import initialize_uploaded_volume_task
 
 
 class TaskFileUploadTests(unittest.TestCase):
-    '''验证上传大小、像素上限和失败后的临时文件清理'''
+    '''验证上传大小、体素上限和失败后的临时文件清理'''
 
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
@@ -53,16 +52,11 @@ class TaskFileUploadTests(unittest.TestCase):
         self.assertEqual(set(stored), {"flair", "t1ce", "t1", "t2"})
         self.assertTrue(all(path.is_file() for path in stored.values()))
         saved_record = repository.save.call_args.args[1]
-        self.assertEqual(saved_record.analysis_mode, AnalysisMode.THREE_D)
-        self.assertEqual(
-            saved_record.expected_models,
-            [ModelName.CLASSIFICATION, ModelName.SEGMENTATION],
-        )
+        self.assertEqual(saved_record.analysis_mode, "3d")
         self.assertEqual(
             set(saved_record.input.modalities or {}),
             {"flair", "t1ce", "t1", "t2"},
         )
-        self.assertEqual(saved_record.input.storage_mode, "uploaded_multimodal")
 
     def test_multimodal_volume_upload_enforces_total_size_limit(self) -> None:
         settings = replace(SETTINGS, max_3d_upload_bytes=10)

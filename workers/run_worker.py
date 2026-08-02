@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 def main(argv: list[str] | None = None) -> None:
     _build_parser().parse_args(argv)
-    queues = [get_task_queue()]
+    queue = get_task_queue()
     worker_class = _get_worker_class()
     if worker_class is SimpleWorker and SETTINGS.worker_preload_models:
         outcomes = preload_inference_models()
@@ -36,12 +36,11 @@ def main(argv: list[str] | None = None) -> None:
         f"btir-inference-3d-{socket.gethostname()}-{os.getpid()}"
     )
     worker = worker_class(
-        queues,
+        [queue],
         connection=get_redis_client(),
         name=worker_name,
     )
-    queue_names = ", ".join(str(queue.name) for queue in queues)
-    print_event(f"worker 已启动，监听队列 {queue_names}", level="success")
+    print_event(f"worker 已启动，监听队列 {queue.name}", level="success")
     worker.work()
 
 

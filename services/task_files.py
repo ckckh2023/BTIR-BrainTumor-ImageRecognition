@@ -1,4 +1,4 @@
-'''任务目录、输入图片与 JSON 文件的管理'''
+'''任务目录、四模态体数据与 JSON 文件的管理'''
 
 from __future__ import annotations
 
@@ -16,12 +16,7 @@ from collections.abc import Mapping
 from core.settings import SETTINGS
 from core.task_records import StoredTaskInput, StoredTaskModality, TaskRecord
 from repositories.task_repository import task_repository
-from core.task_definitions import (
-    AnalysisMode,
-    TaskDirectory,
-    TaskStatus,
-    expected_models_for_mode,
-)
+from core.task_definitions import TaskDirectory, TaskStatus
 
 
 VOLUME_MODALITIES = ("flair", "t1ce", "t1", "t2")
@@ -47,11 +42,8 @@ def create_task_dir(output_root: Path) -> Path:
     return task_dir
 
 
-def get_task_dir(output_root: Path, task_id: str | None) -> Path:
-    '''获取任务目录；未指定任务 ID 时创建新目录'''
-    if not task_id:
-        return create_task_dir(output_root)
-
+def get_task_dir(output_root: Path, task_id: str) -> Path:
+    '''校验任务 ID 并返回已经存在的任务目录'''
     if Path(task_id).name != task_id or task_id in {".", ".."}:
         raise ValueError("--task-id 必须是任务目录名，不能是路径")
 
@@ -89,11 +81,6 @@ def _save_created_task(
             status=TaskStatus.CREATED,
             created_at=now,
             updated_at=now,
-            analysis_mode=AnalysisMode.THREE_D,
-            expected_models=sorted(
-                expected_models_for_mode(AnalysisMode.THREE_D),
-                key=lambda model: model.value,
-            ),
             input=input_record,
         ),
         user_id=user_id,
@@ -161,8 +148,6 @@ def initialize_uploaded_volume_task(
         task_dir,
         name,
         StoredTaskInput(
-            path=str(input_dir.resolve().relative_to(task_dir)),
-            storage_mode="uploaded_multimodal",
             size_bytes=total_size,
             sha256=_modality_manifest_hash(modality_records),
             modalities=modality_records,
@@ -176,7 +161,7 @@ def load_task_modalities(task_dir: Path) -> dict[str, Path]:
     '''读取并校验一个 3D 任务保存的四模态输入'''
 
     record = task_repository.load(task_dir)
-    if record.analysis_mode is not AnalysisMode.THREE_D:
+    if record.analysis_mode != "3d":
         raise ValueError("当前任务不是 3D 任务")
     modality_records = record.input.modalities
     if not modality_records or set(modality_records) != set(VOLUME_MODALITIES):

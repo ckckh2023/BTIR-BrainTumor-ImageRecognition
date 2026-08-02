@@ -1328,7 +1328,7 @@
                     })} s`
                 },
                 taskInputSummary(task) {
-                    if (task.analysis_mode === '3d' && task.input?.files) {
+                    if (task.input?.files) {
                         const count = Object.keys(task.input.files).length
                         return `${count} 个 NIfTI（FLAIR / T1CE / T1 / T2）`
                     }

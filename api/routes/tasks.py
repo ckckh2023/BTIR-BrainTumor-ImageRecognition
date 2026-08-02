@@ -143,7 +143,6 @@ def task_input_data(task_data) -> TaskInputData:
         for modality, file_data in (input_data.modalities or {}).items()
     }
     return TaskInputData(
-        storage_mode=input_data.storage_mode,
         size_bytes=input_data.size_bytes,
         sha256=input_data.sha256,
         files=modality_files,
@@ -169,7 +168,6 @@ def task_common_data(task_data) -> dict[str, Any]:
         "created_at": task_data.created_at,
         "updated_at": task_data.updated_at,
         "analysis_mode": task_data.analysis_mode,
-        "expected_models": [model.value for model in task_data.expected_models],
         "completed_models": [model.value for model in task_data.completed_models],
         "input": task_input_data(task_data),
         "job": task_data.job.model_dump(mode="json") if task_data.job else None,

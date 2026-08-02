@@ -36,12 +36,6 @@ class ModelName(StrEnum):
     SEGMENTATION = "segmentation"
 
 
-class AnalysisMode(StrEnum):
-    '''任务使用的输入维度与推理管线'''
-
-    THREE_D = "3d"
-
-
 ALL_MODELS = frozenset(ModelName)
 ACTIVE_ASYNC_TASK_STATUSES = frozenset(
     {
@@ -63,25 +57,14 @@ def task_status_from_job_status(status: JobStatus | str) -> TaskStatus:
 
 def task_status_for_completed_models(
     models: Iterable[ModelName | str],
-    expected_models: Iterable[ModelName | str] = ALL_MODELS,
 ) -> TaskStatus:
     '''根据已完成模型计算同步任务的终态'''
     completed_models = {ModelName(model) for model in models}
-    required_models = {ModelName(model) for model in expected_models}
     return (
         TaskStatus.SUCCEEDED
-        if required_models <= completed_models
+        if ALL_MODELS <= completed_models
         else TaskStatus.PARTIAL
     )
-
-
-def expected_models_for_mode(
-    analysis_mode: AnalysisMode | str,
-) -> frozenset[ModelName]:
-    '''返回指定管线当前必须完成的模型步骤'''
-
-    AnalysisMode(analysis_mode)
-    return ALL_MODELS
 
 
 class TaskDirectory(StrEnum):

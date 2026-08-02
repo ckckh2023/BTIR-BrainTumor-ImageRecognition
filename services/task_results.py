@@ -13,7 +13,6 @@ from core.result_contract import (
     validate_frontend_result,
 )
 from core.task_definitions import (
-    ALL_MODELS,
     ModelName,
     TaskArtifact,
     model_result_filename,
@@ -61,7 +60,6 @@ def _persist_model_result_unlocked(
     result["run_directory"] = run_dir.relative_to(task_dir).as_posix()
 
     stored_result = dict(result)
-    stored_result.pop("image_path", None)
     if "mask_path" in stored_result:
         stored_result["mask_file"] = task_relative_path(
             task_dir, Path(stored_result.pop("mask_path"))
@@ -80,7 +78,6 @@ def _persist_model_result_unlocked(
     )
     frontend_data = build_frontend_result(
         task_dir,
-        expected_models=task_record.expected_models,
         input_files=input_files,
         **{model.value: result},
     )
@@ -100,7 +97,6 @@ def _persist_model_result_unlocked(
 def build_frontend_result(
     task_dir: Path,
     *,
-    expected_models: list[ModelName] | frozenset[ModelName] = ALL_MODELS,
     input_files: dict[str, str] | None = None,
     classification: dict[str, Any] | None = None,
     segmentation: dict[str, Any] | None = None,
@@ -123,9 +119,7 @@ def build_frontend_result(
     result["schema_version"] = FRONTEND_RESULT_SCHEMA_VERSION
     result["task_id"] = task_dir.name
     result["updated_at"] = datetime.now().astimezone().isoformat()
-    result.pop("image_path", None)
     result["analysis_mode"] = "3d"
-    result.pop("image_file", None)
     result["input_files"] = input_files or {}
     result.setdefault("result_files", {})
     result.setdefault("latest_runs", {})
@@ -159,10 +153,7 @@ def build_frontend_result(
         name for name in ModelName if name.value in result
     ]
     result["completed_models"] = [name.value for name in completed_models]
-    result["status"] = task_status_for_completed_models(
-        completed_models,
-        expected_models,
-    ).value
+    result["status"] = task_status_for_completed_models(completed_models).value
     validate_frontend_result(result)
     return result
 

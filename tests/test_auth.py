@@ -71,8 +71,6 @@ class AuthenticationTests(unittest.TestCase):
             created_at=now,
             updated_at=now,
             input=StoredTaskInput(
-                path="input/image.png",
-                storage_mode="uploaded",
                 size_bytes=1,
                 sha256="a" * 64,
             ),

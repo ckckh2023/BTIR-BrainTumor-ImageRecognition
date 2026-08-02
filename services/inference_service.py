@@ -70,12 +70,6 @@ def _load_3d_segmentation_model(device_name: str):
 def classify_volume(modality_paths: dict[str, Path]) -> dict[str, Any]:
     '''仅使用本地 ViT 执行患者级分类；异常交由任务重试机制处理'''
 
-    return _classify_volume_vit(modality_paths)
-
-
-def _classify_volume_vit(modality_paths: dict[str, Path]) -> dict[str, Any]:
-    '''使用本地二分类 ViT 对轴向切片执行患者级均值聚合'''
-
     modality = SETTINGS.volume_classifier_modality
     try:
         volume_path = modality_paths[modality]
@@ -112,7 +106,6 @@ def _classify_volume_vit(modality_paths: dict[str, Path]) -> dict[str, Any]:
     )
     return {
         "model": "models/classification/vit-binary",
-        "analysis_mode": "3d",
         "classification": classification,
     }
 
@@ -143,7 +136,6 @@ def segment_volume(
     )
     return {
         "model": "models/segmentation3d/superlightnet",
-        "analysis_mode": "3d",
         "device": prediction["device"],
         "model_metadata": prediction["model"],
         "spatial": prediction["spatial"],
@@ -154,7 +146,7 @@ def segment_volume(
 
 
 def preload_inference_models() -> dict[str, float | str]:
-    '''按 Worker 路线预加载模型；单个模型失败不会阻止其他模型预热'''
+    '''启动 Worker 时预加载模型；单个模型失败不会阻止其他模型预热'''
 
     loaders = (
         ("classification", _load_vit_classifier_namespace, _load_vit_classifier_model),
