@@ -103,6 +103,7 @@
             maskOpacity = 0.55,
             maskVisible = true,
             viewMode = 'multiplanar',
+            onProgress = null,
         }) {
             this.validateSource(base, '基础模态')
             if (mask) this.validateSource(mask, '分割掩码')
@@ -113,13 +114,56 @@
             this.abortController = controller
             const requestId = ++this.requestId
 
+            const progressEntries = new Map()
+            const reportProgress = () => {
+                if (typeof onProgress !== 'function') return
+                let loaded = 0
+                let total = 0
+                let label = ''
+                let hasKnownTotal = false
+                for (const entry of progressEntries.values()) {
+                    if (entry.total > 0) {
+                        hasKnownTotal = true
+                        total += entry.total
+                        loaded += Math.min(entry.loaded, entry.total)
+                    }
+                    label = entry.label
+                }
+                onProgress({
+                    label,
+                    loaded,
+                    total,
+                    indeterminate: !hasKnownTotal,
+                })
+            }
+
             const basePromise = this.fetchArrayBuffer(
                 base,
                 headers,
-                controller.signal
+                controller.signal,
+                (loaded, total) => {
+                    progressEntries.set('base', {
+                        loaded,
+                        total,
+                        label: base.name,
+                    })
+                    reportProgress()
+                }
             )
             const maskPromise = mask
-                ? this.getMaskArrayBuffer(mask, headers, controller.signal)
+                ? this.getMaskArrayBuffer(
+                    mask,
+                    headers,
+                    controller.signal,
+                    (loaded, total) => {
+                        progressEntries.set('mask', {
+                            loaded,
+                            total,
+                            label: mask.name,
+                        })
+                        reportProgress()
+                    }
+                )
                 : Promise.resolve(null)
             const [baseBuffer, maskBuffer] = await Promise.all([
                 basePromise,
@@ -166,7 +210,7 @@
             }
         }
 
-        async fetchArrayBuffer(source, headers, signal) {
+        async fetchArrayBuffer(source, headers, signal, onProgress = null) {
             const response = await fetch(source.url, {
                 headers: { ...headers },
                 signal,
@@ -174,14 +218,46 @@
             if (!response.ok) {
                 throw new Error(`${source.name} 读取失败：HTTP ${response.status}`)
             }
-            return response.arrayBuffer()
+            const total = Number(response.headers.get('content-length')) || 0
+            if (!response.body || typeof response.body.getReader !== 'function') {
+                onProgress?.(0, total, source.name)
+                return response.arrayBuffer()
+            }
+
+            const reader = response.body.getReader()
+            const chunks = []
+            let loaded = 0
+            while (true) {
+                const { done, value } = await reader.read()
+                if (done) break
+                if (value && value.byteLength > 0) {
+                    chunks.push(value)
+                    loaded += value.byteLength
+                    onProgress?.(loaded, total, source.name)
+                }
+            }
+            if (loaded === 0) {
+                return new ArrayBuffer(0)
+            }
+            const merged = new Uint8Array(loaded)
+            let offset = 0
+            for (const chunk of chunks) {
+                merged.set(chunk, offset)
+                offset += chunk.byteLength
+            }
+            return merged.buffer
         }
 
-        async getMaskArrayBuffer(source, headers, signal) {
+        async getMaskArrayBuffer(source, headers, signal, onProgress = null) {
             if (this.maskCache?.url === source.url) {
                 return this.maskCache.buffer
             }
-            const buffer = await this.fetchArrayBuffer(source, headers, signal)
+            const buffer = await this.fetchArrayBuffer(
+                source,
+                headers,
+                signal,
+                onProgress
+            )
             this.maskCache = {
                 url: source.url,
                 buffer,

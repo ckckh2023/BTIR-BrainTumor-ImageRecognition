@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+import gzip
 import hashlib
 import json
 import math
@@ -95,17 +96,26 @@ def initialize_uploaded_volume_task(
     name: str | None = None,
     user_id: str | None = None,
 ) -> dict[str, Path]:
-    '''保存四模态 NIfTI，并创建一个独立的 3D 任务'''
+    '''保存四模态 NIfTI，并创建一个独立的 3D 任务
+
+    上传字节先原样暂存，用于大小限制与空间一致性校验；随后统一以
+    ``.nii.gz`` 落盘：原本就是 gzip 的上传直接复用，未压缩的 ``.nii``
+    在服务器上压缩一次，避免前端 3D 查看时反复传输大文件。
+    '''
 
     if set(uploads) != set(VOLUME_MODALITIES):
         raise ValueError("3D 任务必须同时提供 flair、t1ce、t1、t2 四个模态")
 
     input_dir = task_dir / TaskDirectory.INPUT
     input_dir.mkdir(exist_ok=True)
+    staging_paths: dict[str, Path] = {}
     stored_paths: dict[str, Path] = {}
     original_filenames: dict[str, str] = {}
+    upload_sizes: dict[str, int] = {}
+    upload_hashes: dict[str, str] = {}
     stored_sizes: dict[str, int] = {}
     stored_hashes: dict[str, str] = {}
+    created_files: list[Path] = []
     total_size = 0
 
     try:
@@ -117,26 +127,45 @@ def initialize_uploaded_volume_task(
                     f"{modality} 仅支持 .nii 或 .nii.gz 文件"
                 )
 
-            stored_path = input_dir / f"{modality}{suffix}"
-            stored_paths[modality] = stored_path.resolve()
-            with stored_path.open("wb") as destination:
-                stored_size, stored_hash = _copy_upload_with_limit(
+            staging_path = input_dir / f".{modality}{suffix}"
+            with staging_path.open("wb") as destination:
+                upload_size, upload_hash = _copy_upload_with_limit(
                     uploads[modality],
                     destination,
                     SETTINGS.max_3d_upload_bytes,
                 )
             original_filenames[modality] = original_filename
-            stored_sizes[modality] = stored_size
-            stored_hashes[modality] = stored_hash
-            total_size += stored_size
+            upload_sizes[modality] = upload_size
+            upload_hashes[modality] = upload_hash
+            staging_paths[modality] = staging_path
+            created_files.append(staging_path)
+            total_size += upload_size
             if total_size > SETTINGS.max_3d_upload_bytes:
                 raise ValueError(
                     "四模态上传总大小超过限制"
                     f"（最大 {SETTINGS.max_3d_upload_bytes} 字节）"
                 )
-        _validate_volume_headers(stored_paths)
+
+        _validate_volume_headers(staging_paths)
+
+        for modality in VOLUME_MODALITIES:
+            staging_path = staging_paths[modality]
+            stored_path = input_dir / f"{modality}.nii.gz"
+            try:
+                if _nifti_suffix(original_filenames[modality]) == ".nii.gz":
+                    os.replace(staging_path, stored_path)
+                    stored_sizes[modality] = upload_sizes[modality]
+                    stored_hashes[modality] = upload_hashes[modality]
+                else:
+                    stored_sizes[modality], stored_hashes[modality] = (
+                        _gzip_stage_to_destination(staging_path, stored_path)
+                    )
+                stored_paths[modality] = stored_path.resolve()
+                created_files.append(stored_path)
+            finally:
+                staging_path.unlink(missing_ok=True)
     except Exception:
-        for path in stored_paths.values():
+        for path in created_files:
             path.unlink(missing_ok=True)
         raise
 
@@ -153,13 +182,22 @@ def initialize_uploaded_volume_task(
         task_dir,
         name,
         StoredTaskInput(
-            size_bytes=total_size,
+            size_bytes=sum(stored_sizes.values()),
             sha256=_modality_manifest_hash(modality_records),
             modalities=modality_records,
         ),
         user_id=user_id,
     )
     return stored_paths
+
+
+def _gzip_stage_to_destination(source: Path, destination: Path) -> tuple[int, str]:
+    '''把未压缩的阶段文件压缩为 ``.nii.gz``，返回最终文件大小与哈希'''
+    with source.open("rb") as raw, destination.open("wb") as output:
+        with gzip.GzipFile(filename="", mode="wb", fileobj=output, mtime=0) as gzip_stream:
+            while chunk := raw.read(UPLOAD_COPY_CHUNK_BYTES):
+                gzip_stream.write(chunk)
+    return destination.stat().st_size, sha256(destination)
 
 
 def load_task_modalities(task_dir: Path) -> dict[str, Path]:
