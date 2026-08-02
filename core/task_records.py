@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from core.task_definitions import (
-    ALL_MODELS,
-    AnalysisMode,
     JobStatus,
     ModelName,
     TaskStatus,
@@ -31,11 +30,8 @@ class StoredTaskInput(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
-    path: str
-    storage_mode: str
     size_bytes: int
     sha256: str
-    original_filename: str | None = None
     modalities: dict[str, StoredTaskModality] | None = None
 
 
@@ -90,10 +86,7 @@ class TaskRecord(BaseModel):
     created_at: datetime
     updated_at: datetime
     archived_at: datetime | None = None
-    analysis_mode: AnalysisMode = AnalysisMode.THREE_D
-    expected_models: list[ModelName] = Field(
-        default_factory=lambda: sorted(ALL_MODELS, key=lambda model: model.value)
-    )
+    analysis_mode: Literal["3d"] = "3d"
     completed_models: list[ModelName] = Field(default_factory=list)
     input: StoredTaskInput
     job: TaskJobRecord | None = None

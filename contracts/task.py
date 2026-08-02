@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from datetime import datetime
 
-from core.task_definitions import AnalysisMode, JobStatus, ModelName, TaskStatus
+from core.task_definitions import JobStatus, ModelName, TaskStatus
 
 
 # 响应模型
@@ -28,7 +28,6 @@ class TaskInputFileData(BaseModel):
 
 # 任务输入数据模型
 class TaskInputData(BaseModel):
-    storage_mode: str
     size_bytes: int
     sha256: str
     files: dict[str, TaskInputFileData]
@@ -61,8 +60,7 @@ class TaskStatusResponse(BaseModel):
     status: TaskStatus
     created_at: datetime
     updated_at: datetime
-    analysis_mode: AnalysisMode
-    expected_models: list[str]
+    analysis_mode: Literal["3d"]
     completed_models: list[str]
     input: TaskInputData
     job: TaskJobData | None = None
@@ -76,8 +74,7 @@ class TaskSummaryResponse(BaseModel):
     status: TaskStatus
     created_at: datetime
     updated_at: datetime
-    analysis_mode: AnalysisMode
-    expected_models: list[str]
+    analysis_mode: Literal["3d"]
     completed_models: list[str]
     input: TaskInputData
     job: TaskJobData | None = None

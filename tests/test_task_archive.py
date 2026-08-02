@@ -61,8 +61,6 @@ class TaskArchiveTests(unittest.TestCase):
                 created_at=updated_at,
                 updated_at=updated_at,
                 input=StoredTaskInput(
-                    path="input/image.png",
-                    storage_mode="uploaded",
                     size_bytes=1,
                     sha256="a" * 64,
                 ),
@@ -280,8 +278,6 @@ class TaskArchiveTests(unittest.TestCase):
                 updated_at=self.now - timedelta(days=40),
                 archived_at=archived_at,
                 input=StoredTaskInput(
-                    path="input/image.png",
-                    storage_mode="uploaded",
                     size_bytes=1,
                     sha256="a" * 64,
                 ),

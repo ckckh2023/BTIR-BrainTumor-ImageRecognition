@@ -16,7 +16,7 @@ from rq.exceptions import InvalidJobOperation
 from rq.job import JobStatus as RqJobStatus
 
 from core.settings import SETTINGS
-from core.task_definitions import AnalysisMode, JobStatus, ModelName, TaskStatus
+from core.task_definitions import JobStatus, ModelName, TaskStatus
 from core.task_records import StoredTaskInput, TaskErrorRecord, TaskJobRecord, TaskRecord
 from services.inference_service import preload_inference_models
 from services.task_queue import (
@@ -81,8 +81,6 @@ class AsyncQueueTests(unittest.TestCase):
                 "updated_at": "2026-01-01T00:00:00+00:00",
                 "completed_models": [],
                 "input": {
-                    "path": "input/image.png",
-                    "storage_mode": "uploaded",
                     "size_bytes": 1,
                     "sha256": "a" * 64,
                 },
@@ -152,7 +150,7 @@ class AsyncQueueTests(unittest.TestCase):
 
     def test_3d_task_is_enqueued_on_the_3d_queue(self) -> None:
         record = deepcopy(self.record)
-        record.analysis_mode = AnalysisMode.THREE_D
+        record.analysis_mode = "3d"
         repository = FakeTaskRepository(record)
         queue = FakeQueue()
         queue.name = "inference-3d-test"
@@ -408,7 +406,6 @@ class TaskRunnerTests(unittest.TestCase):
             patch(
                 "services.task_runner.classify_volume",
                 return_value={
-                    "analysis_mode": "3d",
                     "classification": {
                         "class": "yes",
                         "method": "vit_binary_multislice_mean",
@@ -419,7 +416,6 @@ class TaskRunnerTests(unittest.TestCase):
             patch(
                 "services.task_runner.segment_volume",
                 return_value={
-                    "analysis_mode": "3d",
                     "mask_path": run_dir / "prediction.nii.gz",
                 },
             ) as segment_3d,
@@ -432,7 +428,6 @@ class TaskRunnerTests(unittest.TestCase):
 
         self.assertEqual(result.classification_result, classification_result)
         self.assertEqual(result.segmentation_result, segmentation_result)
-        self.assertEqual(result.input_dir, input_dir)
         classify_3d.assert_called_once_with(modality_paths)
         segment_3d.assert_called_once_with(
             modality_paths=modality_paths,
@@ -454,8 +449,6 @@ class InferenceWorkerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.task_id = "task-worker-001"
         self.task_dir = Path("output") / self.task_id
-        self.image_path = self.task_dir / "input" / "image.png"
-        self.run_dir = self.task_dir / "runs" / "segmentation" / "run-001"
         self.job = SimpleNamespace(id="job-worker-001")
 
     def test_worker_marks_task_succeeded_after_both_models_finish(self) -> None:
@@ -469,8 +462,6 @@ class InferenceWorkerTests(unittest.TestCase):
                     "updated_at": "2026-01-01T00:00:00+00:00",
                     "completed_models": ["classification", "segmentation"],
                     "input": {
-                        "path": "input/image.png",
-                        "storage_mode": "uploaded",
                         "size_bytes": 1,
                         "sha256": "a" * 64,
                     },
@@ -614,8 +605,6 @@ class TaskReconciliationTests(unittest.TestCase):
             updated_at=now,
             completed_models=[ModelName.CLASSIFICATION, ModelName.SEGMENTATION],
             input=StoredTaskInput(
-                path="input/image.png",
-                storage_mode="uploaded",
                 size_bytes=1,
                 sha256="a" * 64,
             ),
@@ -726,8 +715,6 @@ class TaskPerformanceRecordTests(unittest.TestCase):
             updated_at=now,
             completed_models=[],
             input=StoredTaskInput(
-                path="input/image.png",
-                storage_mode="uploaded",
                 size_bytes=1,
                 sha256="a" * 64,
             ),
@@ -802,7 +789,6 @@ class TaskPerformanceRecordTests(unittest.TestCase):
             },
             segmentation={
                 "model": "segmentation",
-                "analysis_mode": "3d",
                 "spatial": {"shape": [1, 1, 1]},
                 "labels": {"scheme": "BraTS"},
                 "regions": {},
@@ -820,54 +806,9 @@ class TaskPerformanceRecordTests(unittest.TestCase):
         self.assertEqual(result["classification"]["model"], "classification")
         self.assertEqual(result["segmentation"]["model"], "segmentation")
 
-    def test_frontend_result_supports_3d_segmentation_without_classifier(self) -> None:
-        input_dir = self.task_dir / "input"
-        mask_path = (
-            self.task_dir
-            / "runs"
-            / "segmentation"
-            / "run-3d-001"
-            / "prediction.nii.gz"
-        )
-        result = build_frontend_result(
-            self.task_dir,
-            expected_models=[ModelName.SEGMENTATION],
-            input_files={
-                "flair": "flair.nii.gz",
-                "t1ce": "t1ce.nii.gz",
-                "t1": "t1.nii.gz",
-                "t2": "t2.nii.gz",
-            },
-            segmentation={
-                "analysis_mode": "3d",
-                "model": "models/segmentation3d/superlightnet",
-                "spatial": {
-                    "shape": [240, 240, 155],
-                    "voxel_spacing_mm": [1.0, 1.0, 1.0],
-                    "orientation": ["L", "P", "S"],
-                },
-                "labels": {"scheme": "BraTS"},
-                "regions": {"4": {"name": "ET", "voxels": 10}},
-                "mask_path": mask_path,
-                "run_directory": "runs/segmentation/run-3d-001",
-            },
-        )
-
-        self.assertEqual(result["analysis_mode"], "3d")
-        self.assertEqual(result["status"], "succeeded")
-        self.assertEqual(result["completed_models"], ["segmentation"])
-        self.assertNotIn("image_file", result)
-        self.assertEqual(
-            result["segmentation"]["mask_file"],
-            "runs/segmentation/run-3d-001/prediction.nii.gz",
-        )
-        self.assertIn("model_metadata", result["segmentation"])
-
     def test_frontend_result_supports_local_vit_classification(self) -> None:
-        input_dir = self.task_dir / "input"
         result = build_frontend_result(
             self.task_dir,
-            expected_models=[ModelName.CLASSIFICATION, ModelName.SEGMENTATION],
             input_files={"flair": "flair.nii.gz"},
             classification={
                 "model": "models/classification/vit-binary",
@@ -896,10 +837,8 @@ class TaskPerformanceRecordTests(unittest.TestCase):
         )
 
     def test_frontend_result_preserves_local_vit_threshold(self) -> None:
-        input_dir = self.task_dir / "input"
         result = build_frontend_result(
             self.task_dir,
-            expected_models=[ModelName.CLASSIFICATION, ModelName.SEGMENTATION],
             input_files={"flair": "flair.nii.gz"},
             classification={
                 "model": "models/classification/vit-binary",

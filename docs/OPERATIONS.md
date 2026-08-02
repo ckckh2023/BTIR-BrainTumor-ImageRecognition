@@ -148,7 +148,10 @@ python Main.py claim-legacy-tasks <username> --apply
 output/
 └── 20260715_120000_001/
     ├── input/
-    │   └── image.jpg
+    │   ├── flair.nii.gz
+    │   ├── t1.nii.gz
+    │   ├── t1ce.nii.gz
+    │   └── t2.nii.gz
     ├── classification.json
     ├── segmentation.json
     ├── runs/

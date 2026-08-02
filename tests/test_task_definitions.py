@@ -7,14 +7,13 @@ import unittest
 from core.result_contract import FRONTEND_RESULT_SCHEMA_VERSION
 from core.task_definitions import (
     ACTIVE_ASYNC_TASK_STATUSES,
-    AnalysisMode,
+    ALL_MODELS,
     JobStatus,
     ModelName,
     TaskArtifact,
     TaskDirectory,
     TaskStatus,
     model_result_filename,
-    expected_models_for_mode,
     task_status_for_completed_models,
     task_status_from_job_status,
 )
@@ -50,14 +49,11 @@ class TaskDefinitionTests(unittest.TestCase):
             TaskStatus.SUCCEEDED,
         )
         self.assertEqual(
-            task_status_for_completed_models(
-                [ModelName.SEGMENTATION],
-                [ModelName.SEGMENTATION],
-            ),
-            TaskStatus.SUCCEEDED,
+            task_status_for_completed_models([ModelName.SEGMENTATION]),
+            TaskStatus.PARTIAL,
         )
         self.assertEqual(
-            expected_models_for_mode(AnalysisMode.THREE_D),
+            ALL_MODELS,
             {ModelName.CLASSIFICATION, ModelName.SEGMENTATION},
         )
         self.assertEqual(
@@ -75,10 +71,6 @@ class TaskDefinitionTests(unittest.TestCase):
         self.assertEqual(TaskArtifact.SEGMENTATION_RESULT.value, "segmentation.json")
         self.assertEqual(TaskArtifact.FRONTEND_RESULT.value, "frontend_result.json")
         self.assertEqual(TaskDirectory.INPUT.value, "input")
-        self.assertEqual(
-            tuple(mode.value for mode in AnalysisMode),
-            ("3d",),
-        )
 
 
 if __name__ == "__main__":

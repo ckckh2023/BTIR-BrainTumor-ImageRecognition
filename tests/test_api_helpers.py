@@ -18,14 +18,13 @@ os.environ.setdefault("BTIR_JWT_SECRET_KEY", "test-only-jwt-secret-key-at-least-
 
 from api.app import app
 from api.auth import get_current_user
-from api.routes import tasks
 from api.routes.tasks import (
     bad_request_http_error,
     task_input_data,
     task_summary_data,
 )
 from api.routes.runtime import get_liveness, get_queue_status, get_readiness
-from core.task_definitions import AnalysisMode, JobStatus, ModelName, TaskStatus
+from core.task_definitions import JobStatus, ModelName, TaskStatus
 from core.task_records import (
     StoredTaskInput,
     StoredTaskModality,
@@ -52,7 +51,7 @@ TEST_USER = UserRecord(
 
 
 class TaskRouteHelperTests(unittest.TestCase):
-    '''验证默认阈值和预期异常的 HTTP 转换规则'''
+    '''验证任务响应组装和预期异常的 HTTP 转换规则'''
 
     def test_service_exceptions_are_registered_globally(self) -> None:
         cases = [
@@ -81,8 +80,6 @@ class TaskRouteHelperTests(unittest.TestCase):
             created_at=now,
             updated_at=now,
             input=StoredTaskInput(
-                path="input/image.png",
-                storage_mode="uploaded",
                 size_bytes=1,
                 sha256="a" * 64,
             ),
@@ -115,11 +112,8 @@ class TaskRouteHelperTests(unittest.TestCase):
             status=TaskStatus.CREATED,
             created_at=now,
             updated_at=now,
-            analysis_mode=AnalysisMode.THREE_D,
-            expected_models=[ModelName.SEGMENTATION],
+            analysis_mode="3d",
             input=StoredTaskInput(
-                path="input",
-                storage_mode="uploaded_multimodal",
                 size_bytes=40,
                 sha256="a" * 64,
                 modalities=modalities,
@@ -366,8 +360,6 @@ class TaskHttpEndpointTests(unittest.TestCase):
             updated_at=archived_at,
             archived_at=archived_at,
             input=StoredTaskInput(
-                path="input/image.png",
-                storage_mode="uploaded",
                 size_bytes=1,
                 sha256="a" * 64,
             ),
@@ -425,8 +417,6 @@ class TaskHttpEndpointTests(unittest.TestCase):
             created_at=first_created_at,
             updated_at=second_created_at,
             input=StoredTaskInput(
-                path="input/image.png",
-                storage_mode="uploaded",
                 size_bytes=1,
                 sha256="a" * 64,
             ),
@@ -482,8 +472,6 @@ class TaskHttpEndpointTests(unittest.TestCase):
             updated_at=archived_at,
             archived_at=archived_at,
             input=StoredTaskInput(
-                path="input/image.png",
-                storage_mode="uploaded",
                 size_bytes=1,
                 sha256="a" * 64,
             ),
@@ -537,8 +525,6 @@ class TaskHttpEndpointTests(unittest.TestCase):
             updated_at=restored_at,
             archived_at=None,
             input=StoredTaskInput(
-                path="input/image.png",
-                storage_mode="uploaded",
                 size_bytes=1,
                 sha256="a" * 64,
             ),
@@ -610,8 +596,6 @@ class TaskHttpEndpointTests(unittest.TestCase):
                 updated_at=now,
                 completed_models=[],
                 input=StoredTaskInput(
-                    path="input",
-                    storage_mode="uploaded_multimodal",
                     size_bytes=4,
                     sha256="a" * 64,
                     modalities={

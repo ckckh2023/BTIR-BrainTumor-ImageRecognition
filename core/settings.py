@@ -170,11 +170,6 @@ class Settings:
     max_tasks_per_user: int
     max_active_tasks_per_user: int
 
-    @property
-    def task_queue_names(self) -> tuple[str]:
-        return (self.task_queue_name,)
-
-
 def _build_settings() -> Settings:
     '''构建 Settings 实例，读取 .env 文件和环境变量'''
     _load_env_file(ENV_FILE)
