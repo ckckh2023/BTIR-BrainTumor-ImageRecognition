@@ -12,12 +12,12 @@ from pathlib import Path
 
 PYTORCH_INDEXES = {
     "cpu": "https://download.pytorch.org/whl/cpu",
-    "cuda": "https://download.pytorch.org/whl/cu128",
+    "cuda": "https://download.pytorch.org/whl/cu121",
     "rocm": "https://download.pytorch.org/whl/rocm6.3",
 }
 PYTORCH_PACKAGES = {
     "cpu": ["torch==2.7.1+cpu"],
-    "cuda": ["torch==2.7.1+cu128"],
+    "cuda": ["torch==2.5.1+cu121"],
     "rocm": ["torch==2.7.1+rocm6.3"],
 }
 PROJECT_BINARY_DEPENDENCIES = [
