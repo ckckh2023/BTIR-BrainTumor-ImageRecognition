@@ -56,6 +56,9 @@ class FrontendContractTests(unittest.TestCase):
         self.assertNotIn("`下载 ${modality.label}`", self.html)
         self.assertIn("downloadFiles", self.html)
         self.assertIn("file-download-link", self.html)
+        self.assertNotIn("addDownload('classification.json'", self.html)
+        self.assertNotIn("addDownload('segmentation.json'", self.html)
+        self.assertNotIn("addDownload('frontend_result.json'", self.html)
 
 
 if __name__ == "__main__":
