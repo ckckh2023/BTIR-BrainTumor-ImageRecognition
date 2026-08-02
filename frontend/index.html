@@ -2042,6 +2042,50 @@
                     }
                     this.volumeFiles[modality] = file
                 },
+                async gzipVolumeFileForUpload(file, label) {
+                    if (!/\.nii$/i.test(file.name)) return file
+                    if (typeof CompressionStream === 'undefined') return file
+                    try {
+                        this.statusText =
+                            `<span class="loading-spinner"></span>`
+                            + `正在压缩 ${label}（${this.escapeHtml(file.name)}）...`
+                        const compressor = new CompressionStream('gzip')
+                        const writer = compressor.writable.getWriter()
+                        const reader = compressor.readable.getReader()
+                        const chunks = []
+                        const readPromise = (async () => {
+                            while (true) {
+                                const { done, value } = await reader.read()
+                                if (done) break
+                                if (value && value.byteLength > 0) {
+                                    chunks.push(value)
+                                }
+                            }
+                        })()
+                        const sliceBytes = 4 * 1024 * 1024
+                        const total = file.size
+                        let loaded = 0
+                        for (let offset = 0; offset < total; offset += sliceBytes) {
+                            const buffer = await file
+                                .slice(offset, Math.min(total, offset + sliceBytes))
+                                .arrayBuffer()
+                            await writer.write(buffer)
+                            loaded += buffer.byteLength
+                            const percent = Math.round((loaded / total) * 100)
+                            this.statusText =
+                                `<span class="loading-spinner"></span>`
+                                + `正在压缩 ${label}`
+                                + `（${this.escapeHtml(file.name)}）... ${percent}%`
+                        }
+                        await writer.close()
+                        await readPromise
+                        return new File(chunks, `${file.name}.gz`, {
+                            type: 'application/gzip',
+                        })
+                    } catch {
+                        return file
+                    }
+                },
                 async recognizeFromUpload() {
                     if (!this.canRecognize) return
                     this.resetState()
@@ -2049,9 +2093,15 @@
                     try {
                         const formData = new FormData()
                         for (const modality of this.volumeModalities) {
-                            formData.append(modality.key, this.volumeFiles[modality.key])
+                            const uploadFile = await this.gzipVolumeFileForUpload(
+                                this.volumeFiles[modality.key],
+                                modality.label
+                            )
+                            formData.append(modality.key, uploadFile)
                         }
                         formData.append('name', 'web-3d-analysis')
+                        this.statusText =
+                            '<span class="loading-spinner"></span>正在上传...'
 
                         const createResponse = await fetch(`${this.API_BASE}/tasks/3d`, {
                             method: 'POST',

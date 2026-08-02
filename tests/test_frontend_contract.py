@@ -45,6 +45,12 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("onProgress", self.html)
         self.assertIn("volume-download-track", self.html)
 
+    def test_upload_gzips_nifti_in_browser_when_supported(self) -> None:
+        self.assertIn("CompressionStream('gzip')", self.html)
+        self.assertIn("gzipVolumeFileForUpload", self.html)
+        self.assertIn("正在压缩", self.html)
+        self.assertIn("`${file.name}.gz`", self.html)
+
 
 if __name__ == "__main__":
     unittest.main()
