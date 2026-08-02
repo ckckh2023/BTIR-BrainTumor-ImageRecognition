@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import hashlib
 from io import BytesIO
 from pathlib import Path
 import tempfile
@@ -41,6 +42,10 @@ class TaskFileUploadTests(unittest.TestCase):
         with (
             patch("services.task_files.task_repository", repository),
             patch("services.task_files._validate_volume_headers"),
+            patch(
+                "services.task_files.sha256",
+                side_effect=AssertionError("上传保存后不应重新读取文件计算哈希"),
+            ),
         ):
             stored = initialize_uploaded_volume_task(
                 self.task_dir,
@@ -56,6 +61,10 @@ class TaskFileUploadTests(unittest.TestCase):
         self.assertEqual(
             set(saved_record.input.modalities or {}),
             {"flair", "t1ce", "t1", "t2"},
+        )
+        self.assertEqual(
+            saved_record.input.modalities["flair"].sha256,
+            hashlib.sha256(b"flair-nifti").hexdigest(),
         )
 
     def test_multimodal_volume_upload_enforces_total_size_limit(self) -> None:

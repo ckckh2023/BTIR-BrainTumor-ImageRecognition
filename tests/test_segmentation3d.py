@@ -5,6 +5,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 import nibabel as nib
 import numpy as np
@@ -15,6 +16,82 @@ from Jnetworks.superlightnet import THPAEncFR3
 
 
 class Segmentation3DTests(unittest.TestCase):
+    def test_cuda_accumulator_requires_safe_free_memory(self) -> None:
+        shape = (240, 240, 155)
+        cuda = torch.device("cuda")
+
+        with patch.object(
+            inference.torch.cuda,
+            "mem_get_info",
+            return_value=(4 * 1024**3, 8 * 1024**3),
+        ):
+            selected = inference._select_accumulator_device(shape, cuda)
+        self.assertEqual(selected, cuda)
+
+        with patch.object(
+            inference.torch.cuda,
+            "mem_get_info",
+            return_value=(2 * 1024**3, 8 * 1024**3),
+        ):
+            selected = inference._select_accumulator_device(shape, cuda)
+        self.assertEqual(selected, torch.device("cpu"))
+
+    def test_cuda_accumulator_oom_retries_with_cpu_accumulator(self) -> None:
+        images = np.zeros((16, 16, 16, 4), dtype=np.float32)
+        cpu_logits = torch.zeros((1, 4, 16, 16, 16), dtype=torch.float32)
+
+        with (
+            patch.object(
+                inference,
+                "_stage_input_tensor",
+                return_value=(
+                    inference._to_tensor(images),
+                    torch.device("cuda"),
+                ),
+            ),
+            patch.object(
+                inference,
+                "sliding_window_inference",
+                side_effect=[torch.cuda.OutOfMemoryError(), cpu_logits],
+            ) as sliding_window,
+            patch.object(inference.torch.cuda, "empty_cache") as empty_cache,
+        ):
+            labels = inference._run_full_volume_inference(
+                images,
+                torch.nn.Identity(),
+                torch.device("cuda"),
+                roi_size=(16, 16, 16),
+                overlap=0.5,
+                progress=False,
+            )
+
+        self.assertEqual(labels.shape, images.shape[:3])
+        self.assertEqual(sliding_window.call_count, 2)
+        self.assertEqual(
+            sliding_window.call_args_list[1].kwargs["device"],
+            torch.device("cpu"),
+        )
+        empty_cache.assert_called_once_with()
+
+    def test_input_staging_oom_falls_back_to_cpu(self) -> None:
+        images = np.zeros((16, 16, 16, 4), dtype=np.float32)
+        tensor = Mock(spec=torch.Tensor)
+        tensor.to.side_effect = torch.cuda.OutOfMemoryError()
+
+        with (
+            patch.object(inference, "_to_tensor", return_value=tensor),
+            patch.object(inference.torch.cuda, "empty_cache") as empty_cache,
+        ):
+            staged, accumulator = inference._stage_input_tensor(
+                images,
+                torch.device("cuda"),
+                torch.device("cuda"),
+            )
+
+        self.assertIs(staged, tensor)
+        self.assertEqual(accumulator, torch.device("cpu"))
+        empty_cache.assert_called_once_with()
+
     def test_internal_et_label_is_mapped_to_brats_label_four(self) -> None:
         internal = np.asarray([0, 1, 2, 3], dtype=np.uint8)
 

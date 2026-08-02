@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+
 from core.task_definitions import (
     JobStatus,
     ModelName,
@@ -11,7 +12,12 @@ from core.task_definitions import (
     task_status_for_completed_models,
     task_status_from_job_status,
 )
-from core.task_records import TaskErrorRecord, TaskJobRecord, TaskRecord, TaskRunRecord
+from core.task_records import (
+    TaskErrorRecord,
+    TaskJobRecord,
+    TaskRecord,
+    TaskRunRecord,
+)
 from repositories.task_repository import task_repository
 from repositories.task_repository_contracts import TaskRepository
 from services.task_files import task_relative_path
@@ -44,14 +50,33 @@ def mark_task_queued(
     return record
 
 
-def mark_models_completed(task_dir: Path, *models: ModelName | str) -> None:
-    '''将指定模型标记为已完成，并更新任务元数据'''
-    if not task_repository.exists(task_dir):
-        return
+def record_model_completion(
+    task_dir: Path,
+    model_name: ModelName | str,
+    result_path: Path,
+    *,
+    inference_ms: float | None = None,
+    record: TaskRecord | None = None,
+    repository: TaskRepository = task_repository,
+) -> TaskRecord:
+    '''一次写库同时记录运行历史和模型完成状态。'''
 
-    record = task_repository.load(task_dir)
+    model = ModelName(model_name)
+    record = record or repository.load(task_dir)
+    if record.runs is None:
+        record.runs = []
+    now = datetime.now().astimezone()
+    record.runs.append(
+        TaskRunRecord(
+            run_id=result_path.parent.name,
+            model=model,
+            result_file=task_relative_path(task_dir, result_path),
+            created_at=now,
+            inference_ms=inference_ms,
+        )
+    )
     completed = set(record.completed_models)
-    completed.update(ModelName(model) for model in models)
+    completed.add(model)
     record.completed_models = sorted(completed, key=lambda model: model.value)
     if record.status not in {
         TaskStatus.QUEUED,
@@ -61,8 +86,9 @@ def mark_models_completed(task_dir: Path, *models: ModelName | str) -> None:
         record.status = task_status_for_completed_models(
             completed,
         )
-    record.updated_at = datetime.now().astimezone()
-    task_repository.save(task_dir, record)
+    record.updated_at = now
+    repository.save(task_dir, record)
+    return record
 
 
 def update_task_execution_status(
@@ -136,30 +162,3 @@ def update_task_execution_status(
             record.error = None
         task_repository.save(task_dir, record)
         return record
-
-
-def record_task_run(
-    task_dir: Path,
-    model_name: ModelName | str,
-    result_path: Path,
-    *,
-    inference_ms: float | None = None,
-) -> None:
-    '''记录一条模型运行历史到任务元数据中'''
-    if not task_repository.exists(task_dir):
-        return
-
-    record = task_repository.load(task_dir)
-    if record.runs is None:
-        record.runs = []
-    record.runs.append(
-        TaskRunRecord(
-            run_id=result_path.parent.name,
-            model=ModelName(model_name),
-            result_file=task_relative_path(task_dir, result_path),
-            created_at=datetime.now().astimezone(),
-            inference_ms=inference_ms,
-        )
-    )
-    record.updated_at = datetime.now().astimezone()
-    task_repository.save(task_dir, record)

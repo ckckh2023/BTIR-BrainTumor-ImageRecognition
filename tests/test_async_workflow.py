@@ -33,7 +33,11 @@ from services.task_runner import (
 )
 from services.task_results import build_frontend_result
 from services.task_lock import TaskLockBusyError
-from services.task_state import mark_task_queued, update_task_execution_status
+from services.task_state import (
+    mark_task_queued,
+    record_model_completion,
+    update_task_execution_status,
+)
 from workers.inference_jobs import run_task_job
 from workers import run_worker
 
@@ -774,6 +778,31 @@ class TaskPerformanceRecordTests(unittest.TestCase):
         self.assertIsNone(updated.error)
         self.assertEqual(repository.record.job.id, "job-performance-002")
 
+    def test_model_completion_records_history_and_status_in_one_save(self) -> None:
+        repository = FakeTaskRepository(self.record)
+        result_path = (
+            self.task_dir
+            / "runs"
+            / "classification"
+            / "run-001"
+            / "result.json"
+        )
+
+        updated = record_model_completion(
+            self.task_dir,
+            ModelName.CLASSIFICATION,
+            result_path,
+            inference_ms=12.5,
+            record=self.record,
+            repository=repository,
+        )
+
+        self.assertEqual(len(repository.saved_records), 1)
+        self.assertEqual(updated.completed_models, [ModelName.CLASSIFICATION])
+        self.assertEqual(len(updated.runs), 1)
+        self.assertEqual(updated.runs[0].inference_ms, 12.5)
+        self.assertEqual(updated.runs[0].result_file, "runs/classification/run-001/result.json")
+
     def test_frontend_result_includes_model_timings(self) -> None:
         result = build_frontend_result(
             self.task_dir,
@@ -785,7 +814,7 @@ class TaskPerformanceRecordTests(unittest.TestCase):
                     "confidence": 0.9,
                 },
                 "run_directory": "runs/classification/run-001",
-                "timing": {"inference_ms": 12.5},
+                "timing": {"inference_ms": 12.5, "prepare_ms": 2.5},
             },
             segmentation={
                 "model": "segmentation",
@@ -794,13 +823,18 @@ class TaskPerformanceRecordTests(unittest.TestCase):
                 "regions": {},
                 "mask_path": self.task_dir / "runs" / "segmentation" / "run-001" / "mask.nii.gz",
                 "run_directory": "runs/segmentation/run-001",
-                "timing": {"inference_ms": 34.5},
+                "timing": {"inference_ms": 34.5, "model_inference_ms": 30.0},
             },
         )
 
         self.assertEqual(
             result["timing"],
-            {"classification_inference_ms": 12.5, "segmentation_inference_ms": 34.5},
+            {
+                "classification_inference_ms": 12.5,
+                "classification_breakdown": {"prepare_ms": 2.5},
+                "segmentation_inference_ms": 34.5,
+                "segmentation_breakdown": {"model_inference_ms": 30.0},
+            },
         )
         self.assertEqual(result["schema_version"], "1.0")
         self.assertEqual(result["classification"]["model"], "classification")

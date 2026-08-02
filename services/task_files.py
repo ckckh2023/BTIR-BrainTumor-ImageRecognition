@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 import hashlib
 import json
@@ -103,6 +104,8 @@ def initialize_uploaded_volume_task(
     input_dir.mkdir(exist_ok=True)
     stored_paths: dict[str, Path] = {}
     original_filenames: dict[str, str] = {}
+    stored_sizes: dict[str, int] = {}
+    stored_hashes: dict[str, str] = {}
     total_size = 0
 
     try:
@@ -117,13 +120,15 @@ def initialize_uploaded_volume_task(
             stored_path = input_dir / f"{modality}{suffix}"
             stored_paths[modality] = stored_path.resolve()
             with stored_path.open("wb") as destination:
-                _copy_upload_with_limit(
+                stored_size, stored_hash = _copy_upload_with_limit(
                     uploads[modality],
                     destination,
                     SETTINGS.max_3d_upload_bytes,
                 )
             original_filenames[modality] = original_filename
-            total_size += stored_path.stat().st_size
+            stored_sizes[modality] = stored_size
+            stored_hashes[modality] = stored_hash
+            total_size += stored_size
             if total_size > SETTINGS.max_3d_upload_bytes:
                 raise ValueError(
                     "四模态上传总大小超过限制"
@@ -139,8 +144,8 @@ def initialize_uploaded_volume_task(
         modality: StoredTaskModality(
             path=str(stored_paths[modality].relative_to(task_dir)),
             original_filename=original_filenames[modality],
-            size_bytes=stored_paths[modality].stat().st_size,
-            sha256=sha256(stored_paths[modality]),
+            size_bytes=stored_sizes[modality],
+            sha256=stored_hashes[modality],
         )
         for modality in VOLUME_MODALITIES
     }
@@ -168,6 +173,7 @@ def load_task_modalities(task_dir: Path) -> dict[str, Path]:
         raise ValueError("3D 任务缺少完整的四模态输入记录")
 
     resolved: dict[str, Path] = {}
+    hashes_to_verify: list[tuple[str, Path, str]] = []
     task_root = task_dir.resolve()
     for modality in VOLUME_MODALITIES:
         stored = modality_records[modality]
@@ -178,9 +184,23 @@ def load_task_modalities(task_dir: Path) -> dict[str, Path]:
             raise ValueError(f"{modality} 输入路径不属于当前任务") from exc
         if not path.is_file():
             raise ValueError(f"{modality} 输入文件不存在")
-        if stored.sha256 and sha256(path) != stored.sha256:
+        if path.stat().st_size != stored.size_bytes:
             raise ValueError(f"{modality} 输入文件在任务创建后发生变化")
+        if stored.sha256:
+            hashes_to_verify.append((modality, path, stored.sha256))
         resolved[modality] = path
+
+    with ThreadPoolExecutor(max_workers=len(hashes_to_verify) or 1) as executor:
+        actual_hashes = list(
+            executor.map(sha256, (item[1] for item in hashes_to_verify))
+        )
+    for (modality, _, expected_hash), actual_hash in zip(
+        hashes_to_verify,
+        actual_hashes,
+        strict=True,
+    ):
+        if actual_hash != expected_hash:
+            raise ValueError(f"{modality} 输入文件在任务创建后发生变化")
     return resolved
 
 
@@ -269,9 +289,10 @@ def _copy_upload_with_limit(
     upload: BinaryIO,
     destination: BinaryIO,
     max_upload_bytes: int,
-) -> None:
-    '''分块写入上传内容，避免单个请求无限占用磁盘'''
+) -> tuple[int, str]:
+    '''分块写入并同步计算哈希，避免保存后再次完整读取文件'''
     written_bytes = 0
+    digest = hashlib.sha256()
     while chunk := upload.read(UPLOAD_COPY_CHUNK_BYTES):
         written_bytes += len(chunk)
         if written_bytes > max_upload_bytes:
@@ -279,9 +300,11 @@ def _copy_upload_with_limit(
                 f"上传文件超过大小限制（最大 {max_upload_bytes} 字节）"
             )
         destination.write(chunk)
+        digest.update(chunk)
 
     if written_bytes == 0:
         raise ValueError("上传文件为空")
+    return written_bytes, digest.hexdigest()
 
 
 def write_json(path: Path, data: dict[str, Any]) -> Path:

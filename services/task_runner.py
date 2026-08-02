@@ -47,7 +47,7 @@ def _run_volume_segmentation(
         modality_paths=modality_paths,
         output_dir=run_dir,
     )
-    result["timing"] = {"inference_ms": _elapsed_ms(started_at)}
+    result.setdefault("timing", {})["inference_ms"] = _elapsed_ms(started_at)
     return persist_model_result(
         task_dir=task_dir,
         model_name=ModelName.SEGMENTATION,
@@ -63,7 +63,7 @@ def _run_volume_classification(
     '''执行并持久化本地 ViT 患者级分类'''
     started_at = perf_counter()
     result = classify_volume(modality_paths)
-    result["timing"] = {"inference_ms": _elapsed_ms(started_at)}
+    result.setdefault("timing", {})["inference_ms"] = _elapsed_ms(started_at)
     return persist_model_result(
         task_dir=task_dir,
         model_name=ModelName.CLASSIFICATION,
