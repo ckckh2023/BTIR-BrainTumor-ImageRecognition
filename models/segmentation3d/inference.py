@@ -15,6 +15,7 @@ import re
 import sys
 import time
 import uuid
+from collections.abc import Callable
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -391,6 +392,7 @@ def _run_full_volume_inference(
     roi_size: tuple[int, int, int],
     overlap: float,
     progress: bool,
+    progress_callback: Callable[[float], None] | None = None,
 ) -> np.ndarray:
     _validate_roi_size(roi_size)
     if not 0 <= overlap < 1:
@@ -403,12 +405,31 @@ def _run_full_volume_inference(
         accumulator_device,
     )
 
+    predictor = model
+    if progress_callback is not None:
+        total_windows = _count_sliding_windows(images.shape[:3], roi_size, overlap)
+        if total_windows > 0:
+            window_counter = {"done": 0}
+
+            def progress_predictor(
+                patch_data: torch.Tensor,
+                *args: Any,
+                **kwargs: Any,
+            ) -> torch.Tensor:
+                window_counter["done"] += 1
+                progress_callback(
+                    min(window_counter["done"], total_windows) / total_windows
+                )
+                return model(patch_data, *args, **kwargs)
+
+            predictor = progress_predictor
+
     def infer(output_device: torch.device) -> torch.Tensor:
         return sliding_window_inference(
             inputs=tensor,
             roi_size=roi_size,
             sw_batch_size=1,
-            predictor=model,
+            predictor=predictor,
             overlap=overlap,
             mode="gaussian",
             sw_device=device,
@@ -434,6 +455,39 @@ def _run_full_volume_inference(
     if internal_labels.min(initial=0) < 0 or internal_labels.max(initial=0) > 3:
         raise RuntimeError("模型返回了 0-3 范围外的内部类别")
     return internal_labels.astype(np.uint8, copy=False)
+
+
+def _count_sliding_windows(
+    image_size: tuple[int, int, int],
+    roi_size: tuple[int, int, int],
+    overlap: float,
+) -> int:
+    '''按 MONAI 相同的规则统计滑窗数量，用于逐窗口推理进度计算'''
+    from monai.inferers.utils import (
+        _get_scan_interval,
+        dense_patch_slices,
+        fall_back_tuple,
+    )
+    from monai.utils import ensure_tuple_rep
+
+    roi = fall_back_tuple(roi_size, image_size)
+    padded_size = tuple(
+        max(image_size[i], roi[i])
+        for i in range(len(image_size))
+    )
+    scan_interval = _get_scan_interval(
+        padded_size,
+        roi,
+        len(image_size),
+        ensure_tuple_rep(overlap, len(image_size)),
+    )
+    slices = dense_patch_slices(
+        padded_size,
+        roi,
+        scan_interval,
+        return_slice=True,
+    )
+    return len(slices)
 
 
 def _to_brats_labels(internal_labels: np.ndarray) -> np.ndarray:
@@ -509,6 +563,7 @@ def predict(
     overlap: float = 0.5,
     seed: int = 0,
     progress: bool = False,
+    progress_callback: Callable[[float], None] | None = None,
 ) -> dict[str, Any]:
     """Run deterministic full-volume segmentation for one BraTS subject.
 
@@ -540,6 +595,7 @@ def predict(
         roi_size=roi_size,
         overlap=overlap,
         progress=progress,
+        progress_callback=progress_callback,
     )
     model_inference_ms = (time.perf_counter() - started_at) * 1000
 

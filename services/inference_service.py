@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from functools import lru_cache
 import runpy
 import sys
@@ -130,6 +131,8 @@ def classify_volume(modality_paths: dict[str, Path]) -> dict[str, Any]:
 def segment_volume(
     modality_paths: dict[str, Path],
     output_dir: Path,
+    *,
+    progress_callback: Callable[[float], None] | None = None,
 ) -> dict[str, Any]:
     '''执行四模态完整体积 SuperLightNet 分割'''
 
@@ -150,6 +153,7 @@ def segment_volume(
         save_nifti=mask_path,
         weights_path=SETTINGS.segmenter_3d_model,
         overlap=SETTINGS.segmenter_3d_overlap,
+        progress_callback=progress_callback,
     )
     return {
         "model": "models/segmentation3d/superlightnet",

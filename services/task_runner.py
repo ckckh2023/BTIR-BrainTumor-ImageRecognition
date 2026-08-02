@@ -38,6 +38,7 @@ class TaskCancellationRequested(RuntimeError):
 def _run_volume_segmentation(
     task_dir: Path,
     modality_paths: dict[str, Path],
+    progress_callback: Callable[[str, int], None] | None = None,
 ) -> dict[str, Any]:
     '''执行并持久化四模态三维分割'''
 
@@ -46,6 +47,16 @@ def _run_volume_segmentation(
     result = segment_volume(
         modality_paths=modality_paths,
         output_dir=run_dir,
+        progress_callback=(
+            (
+                lambda fraction: progress_callback(
+                    "3D 分割推理中",
+                    min(100, 30 + int(fraction * 70)),
+                )
+            )
+            if progress_callback is not None
+            else None
+        ),
     )
     result.setdefault("timing", {})["inference_ms"] = _elapsed_ms(started_at)
     return persist_model_result(
@@ -89,7 +100,11 @@ def run_task_models(
         progress_callback("3D 分类完成，开始 3D 分割", 30)
     if should_cancel is not None and should_cancel():
         raise TaskCancellationRequested("任务已在 3D 分类完成后取消")
-    segmentation_result = _run_volume_segmentation(task_dir, modality_paths)
+    segmentation_result = _run_volume_segmentation(
+        task_dir,
+        modality_paths,
+        progress_callback=progress_callback,
+    )
     if progress_callback is not None:
         progress_callback("3D 分割完成", 100)
     if should_cancel is not None and should_cancel():

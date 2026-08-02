@@ -67,6 +67,12 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("analysisPolling", self.html)
         self.assertIn("已取消任务", self.html)
 
+    def test_running_analysis_exposes_inference_progress(self) -> None:
+        self.assertIn("analysisProgress", self.html)
+        self.assertIn("analysis-progress-track", self.html)
+        self.assertIn("analysisProgressPercent", self.html)
+        self.assertIn("resultData.progress_stage", self.html)
+
 
 if __name__ == "__main__":
     unittest.main()
