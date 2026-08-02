@@ -66,6 +66,8 @@ class TaskStatusResponse(BaseModel):
     job: TaskJobData | None = None
     error: TaskErrorData | None = None
     frontend_result: dict[str, Any] | None = None
+    progress: int | None = None
+    progress_stage: str | None = None
 
 
 class TaskSummaryResponse(BaseModel):

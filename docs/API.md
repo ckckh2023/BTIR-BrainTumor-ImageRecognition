@@ -277,6 +277,10 @@ GET /tasks/{task_id}
 ["classification", "segmentation"]
 ```
 
+推理期间（`queued`/`running`/`cancel_requested`）响应额外包含
+`progress`（0-100 整数）与 `progress_stage`（阶段文本，如
+`3D 分割推理中`），可用于前端渲染进度条。
+
 响应中的主要字段：
 
 ```json

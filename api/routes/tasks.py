@@ -40,7 +40,12 @@ from services.task_files import (
     get_task_dir,
     initialize_uploaded_volume_task,
 )
-from services.task_queue import cancel_task_run, enqueue_task_run, reconcile_task_job
+from services.task_queue import (
+    cancel_task_run,
+    enqueue_task_run,
+    get_task_job_progress,
+    reconcile_task_job,
+)
 
 router = APIRouter(prefix="/tasks", tags=["任务"])
 
@@ -329,9 +334,12 @@ def get_task(
     if frontend_result is not None:
         frontend_result = sanitize_public_payload(frontend_result)
 
+    progress = get_task_job_progress(task_data)
     return TaskStatusResponse(
         **task_common_data(task_data),
         frontend_result=frontend_result,
+        progress=progress["progress"] if progress else None,
+        progress_stage=progress["progress_stage"] if progress else None,
     )
 
 

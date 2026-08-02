@@ -24,6 +24,7 @@ from services.task_queue import (
     cancel_task_run,
     clear_task_queue_state,
     enqueue_task_run,
+    get_task_job_progress,
     reconcile_active_tasks,
     reconcile_task_job,
 )
@@ -388,6 +389,36 @@ class AsyncQueueTests(unittest.TestCase):
         self.assertTrue(rq_job.meta["cancel_requested"])
         rq_job.save_meta.assert_called_once_with()
 
+    def test_job_progress_is_read_from_rq_meta(self) -> None:
+        record = deepcopy(self.record)
+        record.job = TaskJobRecord(
+            id="job-progress-001",
+            queue="inference",
+            status=JobStatus.RUNNING,
+        )
+        rq_job = Mock()
+        rq_job.meta = {
+            "progress": 65,
+            "progress_stage": "3D 分割推理中",
+        }
+
+        with (
+            patch("services.task_queue.get_redis_client", return_value=Mock()),
+            patch("services.task_queue.Job.fetch", return_value=rq_job),
+        ):
+            progress = get_task_job_progress(record)
+
+        self.assertEqual(
+            progress,
+            {"progress": 65, "progress_stage": "3D 分割推理中"},
+        )
+
+    def test_job_progress_is_none_without_job(self) -> None:
+        record = deepcopy(self.record)
+        record.job = None
+
+        self.assertIsNone(get_task_job_progress(record))
+
 
 class TaskRunnerTests(unittest.TestCase):
     '''验证完整推理统一入口的调用顺序与返回结果'''
@@ -437,6 +468,7 @@ class TaskRunnerTests(unittest.TestCase):
         segment_3d.assert_called_once_with(
             modality_paths=modality_paths,
             output_dir=run_dir,
+            progress_callback=None,
         )
         self.assertEqual(
             persist_result.call_args_list[0].kwargs["model_name"],
@@ -490,6 +522,52 @@ class TaskRunnerTests(unittest.TestCase):
             run_task_models(task_dir, should_cancel=cancel_after_segmentation)
 
         segment_3d.assert_called_once()
+
+    def test_runner_maps_segmentation_window_progress_to_stage_percentage(self) -> None:
+        task_dir = Path("output") / "task-runner-progress-001"
+        input_dir = task_dir / "input"
+        run_dir = task_dir / "runs" / "segmentation" / "run-progress-001"
+        modality_paths = {
+            modality: input_dir / f"{modality}.nii.gz"
+            for modality in ("flair", "t1ce", "t1", "t2")
+        }
+        progress_events: list[tuple[str, int]] = []
+
+        def capture_progress(modality_paths, output_dir, progress_callback=None):
+            progress_callback(0.5)
+            return {"mask_path": run_dir / "prediction.nii.gz"}
+
+        with (
+            patch(
+                "services.task_runner.load_task_modalities",
+                return_value=modality_paths,
+            ),
+            patch(
+                "services.task_runner.classify_volume",
+                return_value={"classification": {"class": "yes"}},
+            ),
+            patch("services.task_runner.create_run_dir", return_value=run_dir),
+            patch(
+                "services.task_runner.segment_volume",
+                side_effect=capture_progress,
+            ),
+            patch(
+                "services.task_runner.persist_model_result",
+                side_effect=[
+                    {"model_result_path": "classification.json"},
+                    {"model_result_path": "segmentation.json"},
+                ],
+            ),
+        ):
+            run_task_models(
+                task_dir,
+                progress_callback=lambda stage, percentage: progress_events.append(
+                    (stage, percentage)
+                ),
+            )
+
+        self.assertIn(("3D 分割推理中", 65), progress_events)
+        self.assertIn(("3D 分类完成，开始 3D 分割", 30), progress_events)
 
 
 class InferenceWorkerTests(unittest.TestCase):

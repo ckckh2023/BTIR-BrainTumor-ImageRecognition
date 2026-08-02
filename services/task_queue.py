@@ -415,3 +415,22 @@ def _mark_task_canceled(task_dir: Path, record: TaskRecord) -> TaskRecord:
     record.error = None
     task_repository.save(task_dir, record)
     return record
+
+
+def get_task_job_progress(record: TaskRecord) -> dict[str, object] | None:
+    '''读取 RQ 作业元数据中的推理进度；无作业或读取失败时返回 None'''
+    if record.job is None:
+        return None
+    try:
+        job = Job.fetch(record.job.id, connection=get_redis_client())
+        metadata = getattr(job, "meta", None) or {}
+    except (NoSuchJobError, RedisError):
+        return None
+    progress = metadata.get("progress")
+    progress_stage = metadata.get("progress_stage")
+    if not isinstance(progress, (int, float)) or not isinstance(progress_stage, str):
+        return None
+    return {
+        "progress": int(progress),
+        "progress_stage": progress_stage,
+    }
