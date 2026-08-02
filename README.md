@@ -75,9 +75,9 @@ Copy-Item .env.example .env
 python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-`requirements.txt` 默认安装 CPU 版 PyTorch。需要运行测试时改用
-`python -m pip install -r requirements-dev.txt`。GPU 安装必须在基础依赖之后
-执行，完整顺序参见[安装与部署](docs/DEPLOYMENT.md)。
+`requirements.txt` 默认安装 NVIDIA CUDA 12.1 版 PyTorch。需要运行测试时改用
+`python -m pip install -r requirements-dev.txt`。CPU 或 Linux AMD ROCm 环境可在
+基础依赖安装后通过加速后端安装器切换，完整顺序参见[安装与部署](docs/DEPLOYMENT.md)。
 把最后一条命令生成的随机值写入 `.env` 的 `BTIR_JWT_SECRET_KEY`。服务器终端可直接
 执行 `python Main.py user create <username>` 创建普通账号；首次部署可执行
 `python Main.py user create <username> --admin` 创建管理员，不需要临时开放公开注册。

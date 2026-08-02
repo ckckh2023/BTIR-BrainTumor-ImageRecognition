@@ -60,8 +60,9 @@ python -m pip install -r requirements.txt
 cp .env.example .env
 ```
 
-基础依赖默认安装 CPU 版 PyTorch。生产环境建议使用独立系统目录保存运行
-数据，例如 `/var/lib/btir/output`，不要将任务数据混入代码目录。
+基础依赖默认安装 NVIDIA CUDA 12.1 版 PyTorch。CPU 或 Linux AMD ROCm 服务器
+需在基础依赖安装后按“GPU 后端”一节显式切换。生产环境建议使用独立系统目录
+保存运行数据，例如 `/var/lib/btir/output`，不要将任务数据混入代码目录。
 
 ## 配置文件
 
@@ -223,15 +224,17 @@ python -m uvicorn api.app:app --host 127.0.0.1 --port 8000 \
 
 ## GPU 后端
 
-安装基础依赖后，可以让项目自动选择适合当前机器的 PyTorch：
+`requirements.txt` 默认提供 NVIDIA CUDA 12.1 版 PyTorch。安装基础依赖后，
+也可以让项目自动选择适合当前机器的 PyTorch：
 
 ```powershell
 python -m accelerator.install --backend auto
 ```
 
-GPU 安装命令应当最后执行。再次运行 `pip install -r requirements.txt` 会恢复
-默认 CPU 版 PyTorch，此时需要重新执行加速后端安装器。安装器会同时保持项目
-锁定的 NumPy 与 Pillow 版本，避免重装 Torch 时升级公共二进制依赖。
+后端切换命令应当最后执行。再次运行 `pip install -r requirements.txt` 会恢复
+默认 CUDA 12.1 版 PyTorch；CPU 或 ROCm 环境需要重新执行对应的后端安装命令。
+安装器会同时保持项目锁定的 NumPy 与 Pillow 版本，避免重装 Torch 时升级公共
+二进制依赖。
 
 先预览将执行的操作：
 
@@ -242,7 +245,7 @@ python -m accelerator.install --backend auto --dry-run
 明确指定后端：
 
 ```bash
-# NVIDIA CUDA
+# NVIDIA CUDA 12.1（团队服务器默认）
 python -m accelerator.install --backend cuda
 
 # Linux AMD ROCm
@@ -254,7 +257,7 @@ python -m accelerator.install --backend cpu
 
 说明：
 
-- NVIDIA 自动选择项目支持的 CUDA 版本。
+- 默认 NVIDIA 后端为 CUDA 12.1；`auto` 检测到 `nvidia-smi` 时选择该后端。
 - AMD ROCm 仅支持 Linux；AMD Windows 使用 CPU。
 - `BTIR_DEVICE=auto` 会在已正确安装后端时自动选择 GPU。
 - 多张 GPU 可通过 `BTIR_DEVICE=cuda:0` 指定设备。
