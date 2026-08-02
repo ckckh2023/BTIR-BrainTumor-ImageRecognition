@@ -121,13 +121,17 @@
                 let total = 0
                 let label = ''
                 let hasKnownTotal = false
+                let dominantSize = -1
                 for (const entry of progressEntries.values()) {
                     if (entry.total > 0) {
                         hasKnownTotal = true
                         total += entry.total
                         loaded += Math.min(entry.loaded, entry.total)
                     }
-                    label = entry.label
+                    if (entry.total > dominantSize) {
+                        dominantSize = entry.total
+                        label = entry.label
+                    }
                 }
                 onProgress({
                     label,
