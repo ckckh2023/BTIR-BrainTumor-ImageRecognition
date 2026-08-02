@@ -356,6 +356,37 @@
             cursor: wait;
         }
 
+        .file-downloads {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+            margin-top: 12px;
+            padding: 10px 12px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 12px;
+        }
+
+        .file-downloads-title {
+            color: #64748b;
+            white-space: nowrap;
+        }
+
+        .file-download-link {
+            color: #1e3c72;
+            text-decoration: underline;
+            text-underline-offset: 2px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .file-download-link:hover {
+            color: #3b82f6;
+        }
+
         .json-viewer {
             flex: 1;
             background: #1e293b;
@@ -1072,6 +1103,17 @@
                     <div class="json-viewer json-placeholder" v-else>
                         {{ statusText.includes('等待') ? '等待识别...' : (fileList.length ? '选择文件查看' : '暂无数据') }}
                     </div>
+                    <div class="file-downloads" v-if="downloadFiles.length">
+                        <span class="file-downloads-title">下载文件：</span>
+                        <a
+                            v-for="f in downloadFiles"
+                            :key="f.path"
+                            class="file-download-link"
+                            href="#"
+                            :title="f.path"
+                            @click.prevent="downloadTaskFile(f)"
+                        >{{ f.label }}</a>
+                    </div>
                 </div>
 
                 <div class="task-manager" v-else>
@@ -1256,6 +1298,7 @@
                     tumorArea: null,
                     regionStats: [],
                     fileList: [],
+                    downloadFiles: [],
                     selectedFilePath: '',
                     selectedFileContent: '',
                     selectedFileType: '',
@@ -1672,6 +1715,7 @@
                     this.jsonPath = ''
                     this.jsonData = ''
                     this.fileList = []
+                    this.downloadFiles = []
                     this.selectedFilePath = ''
                     this.selectedFileContent = ''
                     this.selectedFileType = ''
@@ -1700,30 +1744,8 @@
                         addFile('classification.json', rf.classification, 'json')
                         addFile('segmentation.json', rf.segmentation, 'json')
                         maskPath = rf.mask || maskPath
-                        addFile(
-                            '下载3D掩码',
-                            rf.mask,
-                            'download'
-                        )
                     }
                     maskPath = resultData.segmentation?.mask_file || maskPath
-                    addFile(
-                        '下载3D掩码',
-                        resultData.segmentation?.mask_file,
-                        'download'
-                    )
-
-                    if (resultData.latest_runs) {
-                        const lr = resultData.latest_runs
-                        if (lr.classification) {
-                            const short = lr.classification.replace(/^runs\//, '')
-                            addFile(short, lr.classification, 'json')
-                        }
-                        if (lr.segmentation) {
-                            const short = lr.segmentation.replace(/^runs\//, '')
-                            addFile(short, lr.segmentation, 'json')
-                        }
-                    }
                     const inputs = taskData?.input?.files || resultData.input_files || {}
                     const modalities = {}
                     for (const modality of this.volumeModalities) {
@@ -1752,12 +1774,28 @@
                             },
                         })
                     }
+
+                    const downloads = []
+                    const addDownload = (label, path) => {
+                        if (!path || downloads.some(entry => entry.path === path)) {
+                            return
+                        }
+                        downloads.push({ label, path, type: 'download' })
+                    }
                     for (const modality of this.volumeModalities) {
                         const source = modalities[modality.key]
                         if (source) {
-                            addFile(`下载 ${modality.label}`, source.path, 'download')
+                            addDownload(source.name, source.path)
                         }
                     }
+                    addDownload(maskPath.split('/').pop() || '3D分割掩码', maskPath)
+                    if (resultData.result_files) {
+                        const rf = resultData.result_files
+                        addDownload('frontend_result.json', rf.frontend)
+                        addDownload('classification.json', rf.classification)
+                        addDownload('segmentation.json', rf.segmentation)
+                    }
+                    this.downloadFiles = downloads
                     return files
                 },
                 taskFileUrl(filePath) {

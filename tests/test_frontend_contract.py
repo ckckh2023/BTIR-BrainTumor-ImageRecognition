@@ -51,6 +51,12 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("正在压缩", self.html)
         self.assertIn("`${file.name}.gz`", self.html)
 
+    def test_result_file_tabs_keep_json_and_volume_only(self) -> None:
+        self.assertNotIn("下载3D掩码", self.html)
+        self.assertNotIn("`下载 ${modality.label}`", self.html)
+        self.assertIn("downloadFiles", self.html)
+        self.assertIn("file-download-link", self.html)
+
 
 if __name__ == "__main__":
     unittest.main()
