@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-import json
 from pathlib import Path
 import shutil
 from typing import Literal
@@ -14,6 +13,7 @@ from core.task_definitions import ACTIVE_ASYNC_TASK_STATUSES, TaskStatus
 from core.task_records import TaskRecord
 from repositories.task_repository import task_repository
 from repositories.task_repository_contracts import TaskNotFoundError, TaskRepository
+from services.audit_service import append_audit_event
 from services.task_lock import task_write_lock
 
 
@@ -34,6 +34,7 @@ def archive_task(
     task_id: str,
     *,
     actor_user_id: str | None = None,
+    target_user_id: str | None = None,
     now: datetime | None = None,
     repository: TaskRepository = task_repository,
     output_dir: Path = SETTINGS.output_dir,
@@ -79,6 +80,7 @@ def archive_task(
             archive_dir=archive_dir,
             audit_operation="archive_api",
             actor_user_id=actor_user_id,
+            target_user_id=target_user_id,
         )
 
 
@@ -86,6 +88,7 @@ def restore_task(
     task_id: str,
     *,
     actor_user_id: str | None = None,
+    target_user_id: str | None = None,
     now: datetime | None = None,
     repository: TaskRepository = task_repository,
     output_dir: Path = SETTINGS.output_dir,
@@ -124,6 +127,7 @@ def restore_task(
             repository=repository,
             archive_dir=archive_dir,
             actor_user_id=actor_user_id,
+            target_user_id=target_user_id,
         )
 
 
@@ -228,15 +232,15 @@ def purge_expired_archives(
             try:
                 shutil.rmtree(pending_dir)
             except OSError:
-                _append_audit(
-                    archive_dir,
+                append_audit_event(
+                    audit_dir=archive_dir,
                     operation="purge_pending",
                     task_id=current.task_id,
                     timestamp=now,
                 )
                 raise
-            _append_audit(
-                archive_dir,
+            append_audit_event(
+                audit_dir=archive_dir,
                 operation="purge",
                 task_id=current.task_id,
                 timestamp=now,
@@ -274,6 +278,7 @@ def _move_task_to_archive(
     archive_dir: Path,
     audit_operation: str,
     actor_user_id: str | None = None,
+    target_user_id: str | None = None,
 ) -> TaskRecord:
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(source), str(destination))
@@ -284,12 +289,13 @@ def _move_task_to_archive(
         record.archived_at = None
         shutil.move(str(destination), str(source))
         raise
-    _append_audit(
-        archive_dir,
+    append_audit_event(
+        audit_dir=archive_dir,
         operation=audit_operation,
         task_id=record.task_id,
         timestamp=timestamp,
         actor_user_id=actor_user_id,
+        target_user_id=target_user_id,
     )
     return record
 
@@ -303,6 +309,7 @@ def _move_task_from_archive(
     repository: TaskRepository,
     archive_dir: Path,
     actor_user_id: str | None = None,
+    target_user_id: str | None = None,
 ) -> TaskRecord:
     destination.parent.mkdir(parents=True, exist_ok=True)
     original_archived_at = record.archived_at
@@ -317,12 +324,13 @@ def _move_task_from_archive(
         record.updated_at = original_updated_at
         shutil.move(str(destination), str(source))
         raise
-    _append_audit(
-        archive_dir,
+    append_audit_event(
+        audit_dir=archive_dir,
         operation="restore_api",
         task_id=record.task_id,
         timestamp=timestamp,
         actor_user_id=actor_user_id,
+        target_user_id=target_user_id,
     )
     return record
 
@@ -341,23 +349,3 @@ def _ensure_same_volume(source: Path, destination: Path) -> None:
 def _ensure_apply_is_enabled(dry_run: bool, cleanup_enabled: bool) -> None:
     if not dry_run and not cleanup_enabled:
         raise ValueError("自动清理未启用；请先设置 BTIR_TASK_CLEANUP_ENABLED=true")
-
-
-def _append_audit(
-    archive_dir: Path,
-    *,
-    operation: str,
-    task_id: str,
-    timestamp: datetime,
-    actor_user_id: str | None = None,
-) -> None:
-    archive_dir.mkdir(parents=True, exist_ok=True)
-    entry = {
-        "operation": operation,
-        "task_id": task_id,
-        "timestamp": timestamp.isoformat(),
-    }
-    if actor_user_id is not None:
-        entry["actor_user_id"] = actor_user_id
-    with (archive_dir / "audit.jsonl").open("a", encoding="utf-8") as audit_file:
-        audit_file.write(json.dumps(entry, ensure_ascii=False) + "\n")

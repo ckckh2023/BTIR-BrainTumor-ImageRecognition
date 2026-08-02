@@ -15,7 +15,7 @@ BTIR 提供脑肿瘤 MRI 图像分类与分割能力。每次分析以独立
 | 运行安全 | 已完成 | Redis 写入锁、SQLite 事务、JSON 原子写入 |
 | CPU/GPU | 已完成 | CPU、NVIDIA CUDA、Linux AMD ROCm |
 | 接口协议 | 核心流程已完成 | 3D 四模态上传、异步运行和结果展示已对接；高级任务操作界面待补充 |
-| 多用户 | 基础能力已完成 | JWT 登录、任务隔离、认证限流、账号终端管理、Token 撤销和用户任务配额已完成；管理员查询待补充 |
+| 多用户 | 第一阶段已完成 | JWT 隔离、用户配额、强制改密，以及管理员查询、密码重置、任务删除/恢复和审计查询已完成 |
 
 > 升级注意：当前版本已删除 2D 创建与推理能力，只接受四模态 3D 任务。升级已有
 > 部署前先备份 `data/btir.db`、活动输出与归档目录；旧 2D 任务不会被自动迁移或
@@ -79,7 +79,8 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 `python -m pip install -r requirements-dev.txt`。GPU 安装必须在基础依赖之后
 执行，完整顺序参见[安装与部署](docs/DEPLOYMENT.md)。
 把最后一条命令生成的随机值写入 `.env` 的 `BTIR_JWT_SECRET_KEY`。服务器终端可直接
-执行 `python Main.py user create <username>` 创建账号，不需要临时开放公开注册。
+执行 `python Main.py user create <username>` 创建普通账号；首次部署可执行
+`python Main.py user create <username> --admin` 创建管理员，不需要临时开放公开注册。
 
 3D 任务默认使用仓库内的本地二分类 ViT。它从配置模态提取 25 张轴向切片，
 离线完成 `no/yes` 分类并生成病例级平均概率。分类加载或推理失败时不会切换其他
@@ -171,13 +172,20 @@ python Main.py claim-legacy-tasks <username> --apply
 
 ```powershell
 python Main.py user create <username>
+python Main.py user create <username> --admin
 python Main.py user list
+python Main.py user set-role <username> admin
+python Main.py user set-role <username> user
 python Main.py user disable <username>
 python Main.py user enable <username>
 python Main.py user reset-password <username>
 ```
 
-禁用账号或重置密码会撤销该用户已经签发的旧 Token。HTTP 仍可用于本机和内网
+角色变更、禁用账号或重置密码都会撤销该用户已经签发的旧 Token；密码被重置后，
+用户必须调用 `POST /auth/change-password` 修改临时密码才能继续操作任务。管理员可通过
+`GET /admin/users` 和 `GET /admin/tasks` 查询跨用户摘要，还可以重置指定用户密码
+或安全删除、恢复其指定任务，并通过 `GET /admin/audit` 查询审计记录；管理员接口
+暂不开放跨用户运行和文件下载。HTTP 仍可用于本机和内网
 联调；正式公网部署时再由反向代理提供 HTTPS。
 
 完整请求、响应和前端 `fetch` 示例参见 [API 对接说明](docs/API.md)。
@@ -300,7 +308,7 @@ python Main.py purge-archive
 2. 用患者级、按来源隔离的数据继续校准本地 ViT，优先评估肿瘤召回率、假阴性和
    阈值稳定性；验证前不允许分类结果跳过分割。
 3. 在医学依据和输出协议明确后，再增加基于 3D 分割结果的高级分析或诊断路线。
-4. 补充完整审计管理与管理员查询。
+4. 补充管理员敏感操作二次确认、审计日志轮转与保留策略。
 
 ## 彩蛋
 

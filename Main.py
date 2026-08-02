@@ -13,6 +13,7 @@ from pathlib import Path
 from core.settings import SETTINGS
 from contracts.auth import RegisterRequest
 from core.task_definitions import TaskDirectory, TaskStatus
+from core.user_records import UserRole
 from repositories.sqlite_task_repository import SqliteTaskRepository
 from repositories.task_repository import task_repository
 from repositories.user_repository import (
@@ -254,6 +255,11 @@ def _build_parser() -> argparse.ArgumentParser:
     user_commands = user.add_subparsers(dest="user_command", required=True)
     user_create = user_commands.add_parser("create", help="创建用户账号")
     user_create.add_argument("username", help="新用户名称")
+    user_create.add_argument(
+        "--admin",
+        action="store_true",
+        help="创建管理员账号；默认创建普通用户",
+    )
     user_commands.add_parser("list", help="列出用户账号，不显示密码信息")
     for command_name, help_text in (
         ("enable", "启用用户账号"),
@@ -262,6 +268,16 @@ def _build_parser() -> argparse.ArgumentParser:
     ):
         user_command = user_commands.add_parser(command_name, help=help_text)
         user_command.add_argument("username", help="目标用户名")
+    user_role = user_commands.add_parser(
+        "set-role",
+        help="调整用户角色并撤销旧 Token",
+    )
+    user_role.add_argument("username", help="目标用户名")
+    user_role.add_argument(
+        "role",
+        choices=tuple(role.value for role in UserRole),
+        help="目标角色：user 或 admin",
+    )
 
     evaluate_3d = commands.add_parser(
         "evaluate-3d",
@@ -441,17 +457,25 @@ def _manage_user(args: argparse.Namespace) -> None:
         print(f"用户账号：{len(users)} 个")
         for user in users:
             status_text = "启用" if user.is_active else "禁用"
-            print(f"  {user.username}\t{status_text}\t{user.created_at.isoformat()}")
+            print(
+                f"  {user.username}\t{user.role.value}\t{status_text}\t"
+                f"{user.created_at.isoformat()}"
+            )
         return
 
     username = args.username
     if command == "create":
         password = _read_new_password(username)
         try:
-            user = repository.create_user(username, hash_password(password))
+            role = UserRole.ADMIN if args.admin else UserRole.USER
+            user = repository.create_user(
+                username,
+                hash_password(password),
+                role=role,
+            )
         except UsernameAlreadyExistsError:
             raise ValueError(f"用户 '{username}' 已存在") from None
-        print(f"用户已创建：{user.username}")
+        print(f"用户已创建：{user.username}（{user.role.value}）")
         return
 
     existing = repository.get_by_username(username)
@@ -460,8 +484,21 @@ def _manage_user(args: argparse.Namespace) -> None:
 
     if command == "reset-password":
         password = _read_new_password(username)
-        repository.update_password(username, hash_password(password))
-        print(f"用户密码已重置，旧 Token 已失效：{username}")
+        repository.update_password(
+            username,
+            hash_password(password),
+            must_change_password=True,
+        )
+        print(f"用户密码已重置，旧 Token 已失效；下次登录必须改密：{username}")
+        return
+
+    if command == "set-role":
+        role = UserRole(args.role)
+        if existing.role == role:
+            print(f"用户已经是 {role.value} 角色：{username}")
+            return
+        repository.set_role(username, role)
+        print(f"用户角色已调整为 {role.value}，旧 Token 已失效：{username}")
         return
 
     is_active = command == "enable"

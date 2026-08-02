@@ -5,7 +5,13 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from redis.exceptions import RedisError
 
-from contracts.auth import AuthResponse, LoginRequest, RegisterRequest, UserInfoResponse
+from contracts.auth import (
+    AuthResponse,
+    ChangePasswordRequest,
+    LoginRequest,
+    RegisterRequest,
+    UserInfoResponse,
+)
 from api.auth import get_current_user, get_user_repository
 from core.user_records import UserRecord
 from core.settings import SETTINGS
@@ -94,6 +100,8 @@ def register(request: RegisterRequest, http_request: Request) -> AuthResponse:
         access_token=token,
         user_id=user.user_id,
         username=user.username,
+        role=user.role,
+        must_change_password=user.must_change_password,
     )
 
 
@@ -140,6 +148,8 @@ def login(request: LoginRequest, http_request: Request) -> AuthResponse:
         access_token=token,
         user_id=user.user_id,
         username=user.username,
+        role=user.role,
+        must_change_password=user.must_change_password,
     )
 
 
@@ -148,6 +158,46 @@ def get_current_user_info(current_user: UserRecord = Depends(get_current_user)) 
     return UserInfoResponse(
         user_id=current_user.user_id,
         username=current_user.username,
+        role=current_user.role,
         is_active=current_user.is_active,
+        must_change_password=current_user.must_change_password,
         created_at=current_user.created_at.isoformat(),
+    )
+
+
+@router.post("/change-password", response_model=AuthResponse)
+def change_password(
+    request: ChangePasswordRequest,
+    current_user: UserRecord = Depends(get_current_user),
+) -> AuthResponse:
+    if not verify_password(request.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="当前密码错误",
+        )
+    if request.current_password == request.new_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="新密码不能与当前密码相同",
+        )
+    user_repo = get_user_repository()
+    updated = user_repo.update_password(
+        current_user.username,
+        hash_password(request.new_password),
+        must_change_password=False,
+    )
+    if updated is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在",
+        )
+    token = create_access_token(
+        data={"sub": updated.user_id, "ver": updated.token_version}
+    )
+    return AuthResponse(
+        access_token=token,
+        user_id=updated.user_id,
+        username=updated.username,
+        role=updated.role,
+        must_change_password=updated.must_change_password,
     )

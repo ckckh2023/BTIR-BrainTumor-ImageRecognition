@@ -142,6 +142,16 @@ class TaskStorageTests(unittest.TestCase):
         created = user_repository.get_by_username("alice")
         self.assertIsNotNone(created)
         self.assertEqual(created.hashed_password, "hash:safe-password")
+        self.assertEqual(created.role.value, "user")
+
+        with (
+            patch("Main.task_repository", self.repository),
+            redirect_stdout(StringIO()),
+        ):
+            self.assertEqual(main(["user", "set-role", "alice", "admin"]), 0)
+        promoted = user_repository.get_by_username("alice")
+        self.assertEqual(promoted.role.value, "admin")
+        self.assertEqual(promoted.token_version, 1)
 
         with (
             patch("Main.task_repository", self.repository),
@@ -150,7 +160,7 @@ class TaskStorageTests(unittest.TestCase):
             self.assertEqual(main(["user", "disable", "alice"]), 0)
         disabled = user_repository.get_by_username("alice")
         self.assertFalse(disabled.is_active)
-        self.assertEqual(disabled.token_version, 1)
+        self.assertEqual(disabled.token_version, 2)
 
         with (
             patch("Main.task_repository", self.repository),
@@ -159,7 +169,7 @@ class TaskStorageTests(unittest.TestCase):
             self.assertEqual(main(["user", "enable", "alice"]), 0)
         enabled = user_repository.get_by_username("alice")
         self.assertTrue(enabled.is_active)
-        self.assertEqual(enabled.token_version, 1)
+        self.assertEqual(enabled.token_version, 2)
 
         with (
             patch("Main.task_repository", self.repository),
@@ -170,7 +180,8 @@ class TaskStorageTests(unittest.TestCase):
             self.assertEqual(main(["user", "reset-password", "alice"]), 0)
         reset = user_repository.get_by_username("alice")
         self.assertEqual(reset.hashed_password, "hash:new-password")
-        self.assertEqual(reset.token_version, 2)
+        self.assertEqual(reset.token_version, 3)
+        self.assertTrue(reset.must_change_password)
 
     def test_list_tasks_supports_status_filter_and_pagination(self) -> None:
         task_ids = ["task-001", "task-002", "task-003"]
@@ -381,6 +392,53 @@ class TaskStorageTests(unittest.TestCase):
             connection.close()
 
         self.assertEqual(versions, list(range(1, CURRENT_SCHEMA_VERSION + 1)))
+
+    def test_existing_users_default_to_user_role_during_migration(self) -> None:
+        database_path = self.project_root / "user-role-migration.db"
+        repository = SqliteTaskRepository(database_path)
+        user_repository = SqliteUserRepository(repository)
+        user_repository.create_user("legacy_user", "password-hash")
+
+        connection = sqlite3.connect(database_path)
+        try:
+            connection.execute("ALTER TABLE users RENAME TO users_with_role")
+            connection.execute(
+                """
+                CREATE TABLE users (
+                    user_id TEXT PRIMARY KEY,
+                    username TEXT NOT NULL UNIQUE,
+                    hashed_password TEXT NOT NULL,
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    token_version INTEGER NOT NULL DEFAULT 0
+                )
+                """
+            )
+            connection.execute(
+                """
+                INSERT INTO users (
+                    user_id, username, hashed_password, is_active,
+                    created_at, updated_at, token_version
+                )
+                SELECT user_id, username, hashed_password, is_active,
+                       created_at, updated_at, token_version
+                FROM users_with_role
+                """
+            )
+            connection.execute("DROP TABLE users_with_role")
+            connection.execute("DELETE FROM schema_migrations WHERE version >= 10")
+            connection.commit()
+        finally:
+            connection.close()
+
+        migrated_repository = SqliteTaskRepository(database_path)
+        migrated_user = SqliteUserRepository(migrated_repository).get_by_username(
+            "legacy_user"
+        )
+
+        self.assertIsNotNone(migrated_user)
+        self.assertEqual(migrated_user.role.value, "user")
 
     def test_legacy_database_is_upgraded_without_losing_task_rows(self) -> None:
         legacy_database_path = self.project_root / "legacy-tasks.db"

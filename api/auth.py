@@ -9,7 +9,7 @@ from repositories.user_repository import SqliteUserRepository
 from repositories.sqlite_task_repository import SqliteTaskRepository
 from repositories.task_repository import task_repository
 from services.auth_service import decode_access_token
-from core.user_records import UserRecord
+from core.user_records import UserRecord, UserRole
 
 _security = HTTPBearer(auto_error=False)
 
@@ -69,3 +69,30 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     return user
+
+
+async def require_admin(
+    current_user: UserRecord = Depends(get_current_user),
+) -> UserRecord:
+    if current_user.must_change_password:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="必须先修改临时密码",
+        )
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="需要管理员权限",
+        )
+    return current_user
+
+
+async def require_password_changed(
+    current_user: UserRecord = Depends(get_current_user),
+) -> UserRecord:
+    if current_user.must_change_password:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="必须先修改临时密码",
+        )
+    return current_user

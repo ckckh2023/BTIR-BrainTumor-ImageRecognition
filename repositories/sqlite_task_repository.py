@@ -184,6 +184,29 @@ def _migration_009_add_user_token_version(connection: sqlite3.Connection) -> Non
         )
 
 
+def _migration_010_add_user_role(connection: sqlite3.Connection) -> None:
+    columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(users)").fetchall()
+    }
+    if "role" not in columns:
+        connection.execute(
+            "ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'"
+        )
+
+
+def _migration_011_add_user_password_change_flag(connection: sqlite3.Connection) -> None:
+    columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(users)").fetchall()
+    }
+    if "must_change_password" not in columns:
+        connection.execute(
+            "ALTER TABLE users ADD COLUMN must_change_password "
+            "INTEGER NOT NULL DEFAULT 0"
+        )
+
+
 # 创建迁移清单
 SCHEMA_MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (1, "create_tasks_table", _migration_001_create_tasks_table),
@@ -195,6 +218,8 @@ SCHEMA_MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (7, "add_user_id_to_tasks", _migration_007_add_user_id_to_tasks),
     (8, "add_user_task_indexes", _migration_008_add_user_task_indexes),
     (9, "add_user_token_version", _migration_009_add_user_token_version),
+    (10, "add_user_role", _migration_010_add_user_role),
+    (11, "add_user_password_change_flag", _migration_011_add_user_password_change_flag),
 )
 CURRENT_SCHEMA_VERSION = SCHEMA_MIGRATIONS[-1][0]
 
@@ -541,6 +566,17 @@ class SqliteTaskRepository:
         if row is None:
             raise TaskNotFoundError("任务元数据不存在")
         return row["user_id"]
+
+    def get_task_user_ids(self, task_ids: list[str]) -> dict[str, str | None]:
+        if not task_ids:
+            return {}
+        placeholders = ", ".join("?" for _ in task_ids)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"SELECT task_id, user_id FROM tasks WHERE task_id IN ({placeholders})",
+                task_ids,
+            ).fetchall()
+        return {row["task_id"]: row["user_id"] for row in rows}
 
     def count_unowned_tasks(self) -> int:
         with self._connect() as connection:
