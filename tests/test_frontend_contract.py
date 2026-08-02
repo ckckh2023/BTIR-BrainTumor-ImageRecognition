@@ -73,6 +73,12 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("analysisProgressPercent", self.html)
         self.assertIn("resultData.progress_stage", self.html)
 
+    def test_upload_phase_is_included_in_inference_progress(self) -> None:
+        self.assertIn("uploadTaskFiles", self.html)
+        self.assertIn("xhr.upload.onprogress", self.html)
+        self.assertIn("正在上传数据", self.html)
+        self.assertIn("正在压缩/上传数据", self.html)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1449,8 +1449,7 @@
                     return Math.min(100, Math.max(0, Math.round(progress.percent)))
                 },
                 analysisProgressLabel() {
-                    const stage = this.analysisProgress?.stage
-                    return stage ? `推理进度：${stage}` : '推理中...'
+                    return this.analysisProgress?.stage || '推理中...'
                 },
                 taskPage() {
                     return Math.floor(this.taskOffset / this.taskLimit) + 1
@@ -1800,7 +1799,10 @@
                     this.loading = true
                     this.analysisCancelled = false
                     this.analysisPolling = false
-                    this.analysisProgress = null
+                    this.analysisProgress = {
+                        percent: 0,
+                        stage: '正在压缩/上传数据...',
+                    }
                     this.statusText = '<span class="loading-spinner"></span>创建任务中...'
                     this.taskId = ''
                     this.jsonPath = ''
@@ -2160,15 +2162,15 @@
                                 : resultData.status === 'cancel_requested'
                                     ? '<span class="loading-spinner"></span>取消中，正在停止推理...'
                                     : '<span class="loading-spinner"></span>3D分析推理中...'
-                            this.analysisProgress = (
+                            if (
                                 resultData.progress !== null
                                 && resultData.progress !== undefined
-                            )
-                                ? {
+                            ) {
+                                this.analysisProgress = {
                                     percent: Number(resultData.progress) || 0,
                                     stage: resultData.progress_stage || '',
                                 }
-                                : null
+                            }
                             const pollInterval = Date.now() - pollingStartedAt < 15_000 ? 500 : 1000
                             await new Promise(resolve => setTimeout(resolve, pollInterval))
                         }
@@ -2261,6 +2263,46 @@
                         return file
                     }
                 },
+                uploadTaskFiles(formData) {
+                    return new Promise((resolve, reject) => {
+                        const xhr = new XMLHttpRequest()
+                        xhr.open('POST', `${this.API_BASE}/tasks/3d`)
+                        const token = localStorage.getItem('btir_token')
+                        if (token) {
+                            xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+                        }
+                        xhr.upload.onprogress = (event) => {
+                            if (event.lengthComputable && event.total > 0) {
+                                this.analysisProgress = {
+                                    percent: Math.min(
+                                        10,
+                                        Math.round((event.loaded / event.total) * 10)
+                                    ),
+                                    stage: '正在上传数据...',
+                                }
+                            }
+                        }
+                        xhr.onload = () => {
+                            let payload = null
+                            try {
+                                payload = JSON.parse(xhr.responseText)
+                            } catch {
+                                payload = null
+                            }
+                            if (xhr.status >= 200 && xhr.status < 300) {
+                                resolve(payload || {})
+                                return
+                            }
+                            const detail = payload?.detail
+                            const message = typeof detail === 'string'
+                                ? detail
+                                : (detail?.message || `创建任务失败: HTTP ${xhr.status}`)
+                            reject(new Error(message))
+                        }
+                        xhr.onerror = () => reject(new Error('网络错误，创建任务失败'))
+                        xhr.send(formData)
+                    })
+                },
                 async recognizeFromUpload() {
                     if (!this.canRecognize) return
                     this.resetState()
@@ -2278,21 +2320,12 @@
                         this.statusText =
                             '<span class="loading-spinner"></span>正在上传...'
 
-                        const createResponse = await fetch(`${this.API_BASE}/tasks/3d`, {
-                            method: 'POST',
-                            headers: this.authHeaders,
-                            body: formData,
-                        })
-
-                        if (!createResponse.ok) {
-                            throw new Error(await this.responseError(createResponse, '创建任务'))
-                        }
-
-                        const createData = await createResponse.json()
+                        const createData = await this.uploadTaskFiles(formData)
                         this.taskId = createData.task_id
                         await this.runAndGetResult(this.taskId)
                     } catch (error) {
                         this.statusText = `<span class="status-error">✗ ${this.escapeHtml(error.message)}</span>`
+                        this.analysisProgress = null
                         console.error('识别错误:', error)
                     } finally {
                         this.loading = false
