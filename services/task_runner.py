@@ -51,7 +51,7 @@ def _run_volume_segmentation(
             (
                 lambda fraction: progress_callback(
                     "3D 分割推理中",
-                    min(100, 30 + int(fraction * 70)),
+                    min(100, 15 + int(fraction * 85)),
                 )
             )
             if progress_callback is not None
@@ -97,7 +97,7 @@ def run_task_models(
         raise TaskCancellationRequested("任务已在 3D 分类开始前取消")
     classification_result = _run_volume_classification(task_dir, modality_paths)
     if progress_callback is not None:
-        progress_callback("3D 分类完成，开始 3D 分割", 30)
+        progress_callback("3D 分类完成，开始 3D 分割", 15)
     if should_cancel is not None and should_cancel():
         raise TaskCancellationRequested("任务已在 3D 分类完成后取消")
     segmentation_result = _run_volume_segmentation(

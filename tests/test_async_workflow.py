@@ -566,8 +566,8 @@ class TaskRunnerTests(unittest.TestCase):
                 ),
             )
 
-        self.assertIn(("3D 分割推理中", 65), progress_events)
-        self.assertIn(("3D 分类完成，开始 3D 分割", 30), progress_events)
+        self.assertIn(("3D 分割推理中", 57), progress_events)
+        self.assertIn(("3D 分类完成，开始 3D 分割", 15), progress_events)
 
 
 class InferenceWorkerTests(unittest.TestCase):
