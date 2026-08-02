@@ -51,6 +51,13 @@ POST /tasks/{task_id}/restore 恢复所选任务
 | `POST` | `/auth/register` | 注册账号；受服务器注册开关控制 |
 | `POST` | `/auth/login` | 登录并获取访问令牌 |
 | `GET` | `/auth/me` | 查询当前登录用户 |
+| `POST` | `/auth/change-password` | 修改当前密码并换发 Token |
+| `GET` | `/admin/users` | 管理员分页、筛选用户摘要 |
+| `GET` | `/admin/tasks` | 管理员分页、筛选跨用户任务摘要 |
+| `POST` | `/admin/users/{user_id}/reset-password` | 管理员重置指定用户密码 |
+| `DELETE` | `/admin/users/{user_id}/tasks/{task_id}` | 管理员安全删除指定用户任务 |
+| `POST` | `/admin/users/{user_id}/tasks/{task_id}/restore` | 管理员恢复指定用户归档任务 |
+| `GET` | `/admin/audit` | 管理员分页、筛选安全审计记录 |
 | `POST` | `/tasks/3d` | 上传四模态 NIfTI 并创建 3D 任务 |
 | `GET` | `/tasks` | 分页、筛选历史任务 |
 | `GET` | `/tasks/archived` | 分页、筛选尚未永久清除的归档任务 |
@@ -78,7 +85,9 @@ Content-Type: application/json
 {"username": "alice", "password": "safe-password"}
 ```
 
-成功后返回 `access_token`、`user_id` 和 `username`。除健康检查、运行信息和
+成功后返回 `access_token`、`user_id`、`username`、`role` 和
+`must_change_password`。`role` 为 `user`
+或 `admin`，公开注册始终创建普通用户。除健康检查、运行信息和
 `/auth/register`、`/auth/login` 外，任务接口都必须携带：
 
 ```http
@@ -91,7 +100,97 @@ Authorization: Bearer <access_token>
 
 登录和注册受 Redis 固定窗口限流保护，超过限制返回 `429` 并携带
 `Retry-After`。Redis 不可用时认证入口返回 `503`，已经登录用户的普通任务请求
-不依赖认证限流计数器。账号被禁用或密码被管理员重置后，旧 Token 会立即失效。
+不依赖认证限流计数器。账号被禁用、密码被管理员重置或角色发生变化后，旧 Token
+会立即失效。
+
+管理员或服务器终端重置密码后，登录响应中的 `must_change_password` 为 `true`。
+此时 `/auth/me` 和 `/auth/change-password` 仍可访问，但任务和管理员接口返回
+`403`。用户必须提交当前临时密码与自己的新密码：
+
+```http
+POST /auth/change-password
+Authorization: Bearer <temporary_access_token>
+Content-Type: application/json
+
+{
+  "current_password": "temporary-password",
+  "new_password": "user-private-password"
+}
+```
+
+成功响应会返回新的 `access_token`，并将 `must_change_password` 设为 `false`；
+临时 Token 同时失效。
+
+## 管理员查询与管理
+
+管理员接口使用同一个 Bearer Token，仅 `role=admin` 的启用账号可以调用；普通
+账号返回 `403`。查询接口只返回脱敏摘要，不开放跨用户运行或文件下载。
+
+```http
+GET /admin/users?limit=50&offset=0&q=alice&role=user&is_active=true
+Authorization: Bearer <admin_access_token>
+```
+
+用户列表支持 `q`（用户名模糊匹配）、`role`、`is_active`、`limit` 和 `offset`，
+不会返回密码哈希或 Token 版本。
+
+```http
+GET /admin/tasks?limit=50&offset=0&owner_username=alice&status=failed&archived=false
+Authorization: Bearer <admin_access_token>
+```
+
+任务列表支持 `q`、`owner_username`、`status`、`archived`、`limit` 和 `offset`。
+`archived=false` 查询活动区（其中也包括已完成但尚未归档的任务），`true` 查询归档
+区；每条任务附带 `owner_user_id` 和 `owner_username`，历史无归属任务的两项均为
+`null`。管理员账号由服务器终端创建或调整：
+
+```bash
+python Main.py user create <username> --admin
+python Main.py user set-role <username> admin
+```
+
+管理员重置指定用户密码时，提交一次性的临时新密码：
+
+```http
+POST /admin/users/{user_id}/reset-password
+Authorization: Bearer <admin_access_token>
+Content-Type: application/json
+
+{"new_password": "temporary-password"}
+```
+
+后端不内置所有账号共用的“默认密码”，避免默认凭据泄露后影响全部用户。管理员可以
+按团队规则填写临时密码并通过安全渠道告知用户。重置成功后，该用户全部旧 Token
+立即失效；审计日志只记录管理员和目标用户，不记录明文或哈希密码。
+
+管理员安全删除指定用户的指定任务：
+
+```http
+DELETE /admin/users/{user_id}/tasks/{task_id}
+Authorization: Bearer <admin_access_token>
+```
+
+后端会严格复核任务归属；任务不属于路径中的用户时返回 `404`。成功后执行软删除，
+完整任务目录先进入归档区，并在 `archive/audit.jsonl` 中记录 `actor_user_id`、
+`target_user_id` 和 `task_id`。排队或运行中的任务返回 `409`；永久清除仍由
+`purge-archive --apply` 按宽限期统一执行。
+
+管理员恢复尚未永久清除的任务：
+
+```http
+POST /admin/users/{user_id}/tasks/{task_id}/restore
+Authorization: Bearer <admin_access_token>
+```
+
+审计查询支持 `operation`、`actor_user_id`、`target_user_id`、`task_id`、
+`created_from`、`created_to`、`limit` 和 `offset`：
+
+```http
+GET /admin/audit?operation=archive_api&target_user_id=<user_id>&limit=50
+Authorization: Bearer <admin_access_token>
+```
+
+结果按时间倒序返回。无法解析的历史损坏行不会阻断查询，会计入 `invalid_lines`。
 
 ## 上传并创建 3D 任务
 

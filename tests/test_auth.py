@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import datetime, timezone
+from contextlib import nullcontext
 import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -23,6 +24,7 @@ from api.routes.tasks import enforce_active_task_limit, enforce_task_storage_lim
 from core.settings import SETTINGS
 from core.task_definitions import TaskStatus
 from core.task_records import StoredTaskInput, TaskRecord
+from core.user_records import UserRole
 from repositories.sqlite_task_repository import SqliteTaskRepository
 from repositories.user_repository import SqliteUserRepository
 from services.auth_service import hash_password, validate_auth_configuration
@@ -35,9 +37,16 @@ class AuthenticationTests(unittest.TestCase):
         self.root = Path(self.temporary_directory.name)
         self.repository = SqliteTaskRepository(self.root / "tasks.db")
         self.registration_settings = replace(SETTINGS, registration_enabled=True)
+        self.admin_settings = replace(
+            SETTINGS,
+            output_dir=self.root / "output",
+            task_archive_dir=self.root / "archive",
+        )
         self.patches = [
             patch("api.auth.task_repository", self.repository),
             patch("api.routes.tasks.task_repository", self.repository),
+            patch("api.routes.admin.task_repository", self.repository),
+            patch("api.routes.admin.SETTINGS", self.admin_settings),
             patch("api.routes.auth.SETTINGS", self.registration_settings),
             patch("api.routes.auth.consume_auth_rate_limit"),
             patch("api.routes.auth.clear_auth_rate_limit"),
@@ -88,6 +97,64 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(login.status_code, status.HTTP_200_OK)
         self.assertEqual(profile.status_code, status.HTTP_200_OK)
         self.assertEqual(profile.json()["username"], "alice")
+        self.assertEqual(registered["role"], "user")
+        self.assertEqual(login.json()["role"], "user")
+        self.assertEqual(profile.json()["role"], "user")
+
+    def test_admin_can_query_users_and_cross_user_tasks_read_only(self) -> None:
+        with TestClient(app) as client:
+            alice = self._register(client, "alice")
+            bob = self._register(client, "bob")
+            regular_admin_response = client.get(
+                "/admin/users",
+                headers=self._headers(alice),
+            )
+
+            user_repository = SqliteUserRepository(self.repository)
+            promoted = user_repository.set_role("alice", UserRole.ADMIN)
+            self.assertIsNotNone(promoted)
+            old_token_response = client.get(
+                "/admin/users",
+                headers=self._headers(alice),
+            )
+            login = client.post(
+                "/auth/login",
+                json={"username": "alice", "password": "safe-password"},
+            )
+            admin_headers = self._headers(login.json())
+
+            task_dir = self.root / "task-owned-by-bob"
+            task_dir.mkdir()
+            self.repository.save(
+                task_dir,
+                self._record(task_dir.name),
+                user_id=bob["user_id"],
+            )
+            users_response = client.get(
+                "/admin/users?role=user&q=bo",
+                headers=admin_headers,
+            )
+            tasks_response = client.get(
+                "/admin/tasks?owner_username=bob",
+                headers=admin_headers,
+            )
+
+        self.assertEqual(regular_admin_response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(old_token_response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(login.status_code, status.HTTP_200_OK)
+        self.assertEqual(login.json()["role"], "admin")
+        self.assertEqual(users_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(users_response.json()["total"], 1)
+        user_item = users_response.json()["items"][0]
+        self.assertEqual(user_item["username"], "bob")
+        self.assertNotIn("hashed_password", user_item)
+        self.assertNotIn("token_version", user_item)
+        self.assertEqual(tasks_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(tasks_response.json()["total"], 1)
+        task_item = tasks_response.json()["items"][0]
+        self.assertEqual(task_item["task_id"], task_dir.name)
+        self.assertEqual(task_item["owner_user_id"], bob["user_id"])
+        self.assertEqual(task_item["owner_username"], "bob")
 
     def test_registration_can_be_disabled(self) -> None:
         with (
@@ -100,6 +167,119 @@ class AuthenticationTests(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_admin_can_reset_password_and_archive_a_specific_users_task(self) -> None:
+        output_dir = self.admin_settings.output_dir
+        output_dir.mkdir()
+        with TestClient(app) as client:
+            admin = self._register(client, "admin")
+            bob = self._register(client, "bob")
+            user_repository = SqliteUserRepository(self.repository)
+            user_repository.set_role("admin", UserRole.ADMIN)
+            login = client.post(
+                "/auth/login",
+                json={"username": "admin", "password": "safe-password"},
+            )
+            admin_headers = self._headers(login.json())
+
+            forbidden_reset = client.post(
+                f"/admin/users/{admin['user_id']}/reset-password",
+                headers=self._headers(bob),
+                json={"new_password": "temporary-password"},
+            )
+            reset = client.post(
+                f"/admin/users/{bob['user_id']}/reset-password",
+                headers=admin_headers,
+                json={"new_password": "temporary-password"},
+            )
+            old_bob_token = client.get("/auth/me", headers=self._headers(bob))
+            new_bob_login = client.post(
+                "/auth/login",
+                json={"username": "bob", "password": "temporary-password"},
+            )
+            temporary_headers = self._headers(new_bob_login.json())
+            password_change_required = client.get(
+                "/tasks",
+                headers=temporary_headers,
+            )
+            temporary_profile = client.get(
+                "/auth/me",
+                headers=temporary_headers,
+            )
+            changed_password = client.post(
+                "/auth/change-password",
+                headers=temporary_headers,
+                json={
+                    "current_password": "temporary-password",
+                    "new_password": "bob-private-password",
+                },
+            )
+            changed_headers = self._headers(changed_password.json())
+            expired_temporary_token = client.get(
+                "/auth/me",
+                headers=temporary_headers,
+            )
+            usable_task_list = client.get("/tasks", headers=changed_headers)
+
+            task_dir = output_dir / "task-owned-by-bob"
+            task_dir.mkdir()
+            self.repository.save(
+                task_dir,
+                self._record(task_dir.name),
+                user_id=bob["user_id"],
+            )
+            wrong_owner = client.delete(
+                f"/admin/users/{admin['user_id']}/tasks/{task_dir.name}",
+                headers=admin_headers,
+            )
+            with patch(
+                "services.archive_service.task_write_lock",
+                side_effect=lambda _: nullcontext(),
+            ):
+                archived = client.delete(
+                    f"/admin/users/{bob['user_id']}/tasks/{task_dir.name}",
+                    headers=admin_headers,
+                )
+                restored = client.post(
+                    f"/admin/users/{bob['user_id']}/tasks/{task_dir.name}/restore",
+                    headers=admin_headers,
+                )
+            audit_response = client.get(
+                f"/admin/audit?target_user_id={bob['user_id']}",
+                headers=admin_headers,
+            )
+
+        self.assertEqual(forbidden_reset.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(reset.status_code, status.HTTP_200_OK)
+        self.assertTrue(reset.json()["token_revoked"])
+        self.assertEqual(old_bob_token.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(new_bob_login.status_code, status.HTTP_200_OK)
+        self.assertTrue(new_bob_login.json()["must_change_password"])
+        self.assertEqual(password_change_required.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(temporary_profile.json()["must_change_password"])
+        self.assertEqual(changed_password.status_code, status.HTTP_200_OK)
+        self.assertFalse(changed_password.json()["must_change_password"])
+        self.assertEqual(expired_temporary_token.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(usable_task_list.status_code, status.HTTP_200_OK)
+        self.assertEqual(wrong_owner.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(archived.status_code, status.HTTP_200_OK)
+        self.assertEqual(restored.status_code, status.HTTP_200_OK)
+        self.assertTrue(task_dir.is_dir())
+        self.assertEqual(audit_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(audit_response.json()["total"], 3)
+        self.assertEqual(
+            [item["operation"] for item in audit_response.json()["items"]],
+            ["restore_api", "archive_api", "admin_password_reset"],
+        )
+        audit_text = (
+            self.admin_settings.task_archive_dir / "audit.jsonl"
+        ).read_text(encoding="utf-8")
+        self.assertIn('"operation": "admin_password_reset"', audit_text)
+        self.assertIn('"operation": "archive_api"', audit_text)
+        self.assertIn('"operation": "restore_api"', audit_text)
+        self.assertIn(f'"actor_user_id": "{admin["user_id"]}"', audit_text)
+        self.assertIn(f'"target_user_id": "{bob["user_id"]}"', audit_text)
+        self.assertNotIn("temporary-password", audit_text)
 
     def test_protected_endpoint_without_token_returns_unauthorized(self) -> None:
         with TestClient(app) as client:

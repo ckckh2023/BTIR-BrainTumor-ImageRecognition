@@ -118,14 +118,20 @@ API 缺少安全的 `BTIR_JWT_SECRET_KEY` 时会拒绝启动。账号可以直�
 
 ```bash
 python Main.py user create <username>
+python Main.py user create <username> --admin
 python Main.py user list
+python Main.py user set-role <username> admin
+python Main.py user set-role <username> user
 python Main.py user disable <username>
 python Main.py user enable <username>
 python Main.py user reset-password <username>
 ```
 
-登录和注册已有 Redis 应用层限流；生产环境仍建议在反向代理层增加第二层频率
-限制。禁用账号或重置密码会递增 Token 版本，使已经签发的旧 Token 立即失效。
+`--admin` 仅用于首次部署或明确授权的管理员账号；公开注册始终创建普通用户。
+角色变更、禁用账号或重置密码会递增 Token 版本，使已经签发的旧 Token 立即
+失效。重置后的密码是临时密码，用户登录后必须通过 `/auth/change-password` 设置
+自己的新密码才能操作任务。登录和注册已有 Redis 应用层限流；生产环境仍建议在
+反向代理层增加第二层频率限制。
 
 生产环境常见调整：
 

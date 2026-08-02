@@ -234,7 +234,9 @@ DELETE /tasks/{task_id}
 ```
 
 会立即将指定非活动任务移入同一归档区，审计操作记为 `archive_api`，并记录
-发起操作的 `actor_user_id`。该接口
+发起操作的 `actor_user_id` 和任务所有者 `target_user_id`。管理员也可以使用
+`DELETE /admin/users/{user_id}/tasks/{task_id}` 执行相同的安全删除；后端会先复核
+任务归属。该接口
 不受 `BTIR_TASK_CLEANUP_ENABLED` 开关限制，因为它来自用户明确操作；但后续
 永久清除仍必须启用清理并执行 `purge-archive --apply`。
 
@@ -247,9 +249,18 @@ DELETE /tasks/{task_id}
 POST /tasks/{task_id}/restore
 ```
 
+管理员恢复指定用户任务时使用：
+
+```http
+POST /admin/users/{user_id}/tasks/{task_id}/restore
+```
+
 恢复会将完整目录移回输出区、清除 `archived_at`、刷新 `updated_at` 并记录
-带 `actor_user_id` 的 `restore_api` 审计。只要 purge 尚未实际执行，超过宽限日期的任务仍可恢复；
+带 `actor_user_id` 和 `target_user_id` 的 `restore_api` 审计。只要 purge 尚未实际执行，超过宽限日期的任务仍可恢复；
 永久清除后文件和 SQLite 记录都不存在，无法恢复。
+
+管理员可使用 `GET /admin/audit` 按操作、管理员、目标用户、任务和时间范围筛选
+`audit.jsonl`，接口只返回结构化审计字段，不返回密码或任务文件内容。
 
 ### 自动永久清除建议
 

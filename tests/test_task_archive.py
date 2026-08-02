@@ -149,6 +149,7 @@ class TaskArchiveTests(unittest.TestCase):
             archived = archive_task(
                 task_dir.name,
                 actor_user_id="user-a",
+                target_user_id="user-b",
                 now=self.now,
                 repository=self.repository,
                 output_dir=self.output_dir,
@@ -173,6 +174,10 @@ class TaskArchiveTests(unittest.TestCase):
         )
         self.assertIn(
             '"actor_user_id": "user-a"',
+            (self.archive_dir / "audit.jsonl").read_text(encoding="utf-8"),
+        )
+        self.assertIn(
+            '"target_user_id": "user-b"',
             (self.archive_dir / "audit.jsonl").read_text(encoding="utf-8"),
         )
 

@@ -89,6 +89,22 @@ class TaskListResponse(BaseModel):
     offset: int
 
 
+class AdminTaskSummaryResponse(TaskSummaryResponse):
+    owner_user_id: str | None
+    owner_username: str | None
+    archived_at: datetime | None = None
+    purge_eligible_at: datetime | None = None
+
+
+class AdminTaskListResponse(BaseModel):
+    schema_version: Literal["0.1"] = "0.1"
+    items: list[AdminTaskSummaryResponse]
+    total: int
+    limit: int
+    offset: int
+    archived: bool
+
+
 class ArchivedTaskSummaryResponse(TaskSummaryResponse):
     archived_at: datetime
     purge_eligible_at: datetime

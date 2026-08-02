@@ -90,6 +90,9 @@ class TaskRepository(Protocol):
     def get_task_user_id(self, task_id: str) -> str | None:
         '''返回任务所属用户ID；任务不存在时抛出 TaskNotFoundError'''
 
+    def get_task_user_ids(self, task_ids: list[str]) -> dict[str, str | None]:
+        '''批量返回任务与所属用户ID，供管理员列表避免逐条查询'''
+
     def count_unowned_tasks(self) -> int:
         '''返回尚未分配用户的历史任务数量'''
 

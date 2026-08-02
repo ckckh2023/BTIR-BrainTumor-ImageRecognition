@@ -11,7 +11,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse, JSONResponse
 
-from api.auth import get_current_user
+from api.auth import require_password_changed
 from contracts.task import (
     ArchivedTaskListResponse,
     ArchivedTaskSummaryResponse,
@@ -202,7 +202,7 @@ def create_3d_task_from_upload(
     t1: UploadFile = File(...),
     t2: UploadFile = File(...),
     name: str | None = Form(default=None),
-    current_user: UserRecord = Depends(get_current_user),
+    current_user: UserRecord = Depends(require_password_changed),
 ) -> VolumeTaskCreatedResponse:
     '''上传四模态 NIfTI 并创建 3D 分割任务'''
 
@@ -254,7 +254,7 @@ def list_tasks(
     query: str | None = Query(default=None, alias="q", max_length=100),
     created_from: datetime | None = Query(default=None),
     created_to: datetime | None = Query(default=None),
-    current_user: UserRecord = Depends(get_current_user),
+    current_user: UserRecord = Depends(require_password_changed),
 ) -> TaskListResponse:
     '''分页查询任务，可按整体状态筛选'''
     normalized_from = normalize_query_datetime(created_from)
@@ -292,7 +292,7 @@ def list_archived_tasks(
     offset: int = Query(default=0, ge=0),
     status_filter: TaskStatus | None = Query(default=None, alias="status"),
     query: str | None = Query(default=None, alias="q", max_length=100),
-    current_user: UserRecord = Depends(get_current_user),
+    current_user: UserRecord = Depends(require_password_changed),
 ) -> ArchivedTaskListResponse:
     '''分页查询尚未永久清除的归档任务'''
     task_records, total = task_repository.list_archived_tasks(
@@ -313,7 +313,7 @@ def list_archived_tasks(
 @router.get("/{task_id}", response_model=TaskStatusResponse)
 def get_task(
     task_id: str,
-    current_user: UserRecord = Depends(get_current_user),
+    current_user: UserRecord = Depends(require_password_changed),
 ) -> TaskStatusResponse:
     '''获取指定任务状态和当前结果'''
     verify_task_owner(task_id, current_user)
@@ -338,12 +338,16 @@ def get_task(
 @router.delete("/{task_id}", response_model=TaskArchivedResponse)
 def delete_task(
     task_id: str,
-    current_user: UserRecord = Depends(get_current_user),
+    current_user: UserRecord = Depends(require_password_changed),
 ) -> TaskArchivedResponse:
     '''将指定的非活动任务安全移入归档区'''
     verify_task_owner(task_id, current_user)
     try:
-        task_data = archive_task(task_id, actor_user_id=current_user.user_id)
+        task_data = archive_task(
+            task_id,
+            actor_user_id=current_user.user_id,
+            target_user_id=current_user.user_id,
+        )
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -364,12 +368,16 @@ def delete_task(
 @router.post("/{task_id}/restore", response_model=TaskRestoredResponse)
 def restore_archived_task(
     task_id: str,
-    current_user: UserRecord = Depends(get_current_user),
+    current_user: UserRecord = Depends(require_password_changed),
 ) -> TaskRestoredResponse:
     '''将尚未永久清除的归档任务恢复到活动任务目录'''
     verify_task_owner(task_id, current_user)
     try:
-        task_data = restore_task(task_id, actor_user_id=current_user.user_id)
+        task_data = restore_task(
+            task_id,
+            actor_user_id=current_user.user_id,
+            target_user_id=current_user.user_id,
+        )
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -389,7 +397,7 @@ def list_task_runs(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     model_filter: ModelName | None = Query(default=None, alias="model"),
-    current_user: UserRecord = Depends(get_current_user),
+    current_user: UserRecord = Depends(require_password_changed),
 ) -> TaskRunListResponse:
     '''分页查询指定任务的历史运行元数据'''
     verify_task_owner(task_id, current_user)
@@ -422,7 +430,7 @@ def list_task_runs(
 def get_task_file(
     task_id: str,
     file_path: str,
-    current_user: UserRecord = Depends(get_current_user),
+    current_user: UserRecord = Depends(require_password_changed),
 ) -> FileResponse:
     '''安全读取任务目录中的结果文件'''
     verify_task_owner(task_id, current_user)
@@ -462,7 +470,7 @@ def get_task_file(
 )
 def enqueue_task(
     task_id: str,
-    current_user: UserRecord = Depends(get_current_user),
+    current_user: UserRecord = Depends(require_password_changed),
 ) -> TaskEnqueuedResponse:
     '''将完整推理提交到 RQ 队列，并立即返回作业信息'''
     verify_task_owner(task_id, current_user)
@@ -484,7 +492,7 @@ def enqueue_task(
 @router.post("/{task_id}/cancel", response_model=TaskCancellationResponse)
 def cancel_task(
     task_id: str,
-    current_user: UserRecord = Depends(get_current_user),
+    current_user: UserRecord = Depends(require_password_changed),
 ) -> TaskCancellationResponse:
     '''取消排队任务，或请求运行中的任务在安全阶段停止'''
     verify_task_owner(task_id, current_user)
@@ -510,7 +518,7 @@ def cancel_task(
 )
 def retry_failed_task(
     task_id: str,
-    current_user: UserRecord = Depends(get_current_user),
+    current_user: UserRecord = Depends(require_password_changed),
 ) -> TaskEnqueuedResponse:
     '''手动重新提交一项最终失败的推理任务'''
     verify_task_owner(task_id, current_user)

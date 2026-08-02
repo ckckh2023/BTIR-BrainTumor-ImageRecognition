@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from api.routes.auth import router as auth_router
+from api.routes.admin import router as admin_router
 from api.routes.runtime import router as runtime_router
 from api.routes.tasks import router as tasks_router
 from core.settings import SETTINGS
@@ -28,7 +29,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="脑肿瘤图像分析 API",
-    version="0.11.0",
+    version="0.12.0",
     lifespan=lifespan,
 )
 
@@ -86,5 +87,6 @@ app.mount(
 )
 
 app.include_router(auth_router)
+app.include_router(admin_router)
 app.include_router(runtime_router)
 app.include_router(tasks_router)
