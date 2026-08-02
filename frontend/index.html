@@ -239,6 +239,28 @@
             font-family: 'Consolas', 'Monaco', monospace;
         }
 
+        .result-item-status-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .cancel-analysis-btn {
+            flex-shrink: 0;
+            padding: 3px 10px;
+            background: #e53e3e;
+            color: #ffffff;
+            border: 1px solid #c53030;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .cancel-analysis-btn:hover {
+            background: #c53030;
+        }
+
         .result-highlight {
             color: #38a169;
             font-weight: 600;
@@ -957,7 +979,15 @@
                     <div class="result-box">
                         <div class="result-item">
                             <div class="result-label">状态：</div>
-                            <div class="result-value" v-html="statusText"></div>
+                            <div class="result-item-status-row">
+                                <div class="result-value" v-html="statusText"></div>
+                                <button
+                                    type="button"
+                                    class="cancel-analysis-btn"
+                                    v-if="loading && taskId && !analysisCancelled"
+                                    @click="cancelCurrentAnalysis"
+                                >取消</button>
+                            </div>
                         </div>
                         <div class="result-item" v-if="taskId">
                             <div class="result-label">任务ID：</div>
@@ -1284,6 +1314,7 @@
                 return {
                     API_BASE: '',
                     loading: false,
+                    analysisCancelled: false,
                     statusText: '等待识别...',
                     taskId: '',
                     jsonPath: '',
@@ -1718,6 +1749,7 @@
                 resetState() {
                     this.destroyVolumeViewer()
                     this.loading = true
+                    this.analysisCancelled = false
                     this.statusText = '<span class="loading-spinner"></span>创建任务中...'
                     this.taskId = ''
                     this.jsonPath = ''
@@ -2028,6 +2060,7 @@
                     }
                 },
                 async runAndGetResult(taskId) {
+                    this.analysisCancelled = false
                     this.statusText = '<span class="loading-spinner"></span>运行3D模型中...'
 
                     const runResponse = await fetch(`${this.API_BASE}/tasks/${taskId}/run-async`, {
@@ -2042,6 +2075,11 @@
                     const pollingStartedAt = Date.now()
                     const deadline = pollingStartedAt + 30 * 60 * 1000
                     while (Date.now() < deadline) {
+                        if (this.analysisCancelled) {
+                            this.statusText =
+                                `<span class="status-error">✗ 已取消任务 ${taskId}</span>`
+                            return
+                        }
                         const resultResponse = await fetch(`${this.API_BASE}/tasks/${taskId}`, {
                             headers: this.authHeaders,
                         })
@@ -2067,6 +2105,28 @@
                     }
 
                     throw new Error('识别任务超时，请稍后重试')
+                },
+                async cancelCurrentAnalysis() {
+                    if (!this.taskId || this.analysisCancelled) return
+                    this.analysisCancelled = true
+                    try {
+                        const response = await fetch(
+                            `${this.API_BASE}/tasks/${encodeURIComponent(this.taskId)}/cancel`,
+                            { method: 'POST', headers: this.authHeaders }
+                        )
+                        if (!response.ok) {
+                            this.analysisCancelled = false
+                            throw new Error(await this.responseError(response, '取消任务'))
+                        }
+                        const payload = await response.json()
+                        this.statusText = payload.status === 'cancel_requested'
+                            ? `<span class="status-error">✗ 已请求取消任务 ${this.taskId}</span>`
+                            : `<span class="status-error">✗ 任务 ${this.taskId} 已取消</span>`
+                        this.loading = false
+                    } catch (error) {
+                        this.statusText =
+                            `<span class="status-error">✗ ${this.escapeHtml(error.message)}</span>`
+                    }
                 },
                 triggerVolumePicker(modality) {
                     document.getElementById(`volume-file-${modality}`)?.click()
