@@ -363,7 +363,7 @@ class AsyncQueueTests(unittest.TestCase):
 
         self.assertEqual(canceled.status, TaskStatus.CANCELED)
 
-    def test_running_task_records_a_cooperative_cancellation_request(self) -> None:
+    def test_running_task_is_canceled_immediately_with_worker_flag(self) -> None:
         record = deepcopy(self.record)
         record.status = TaskStatus.RUNNING
         record.job = TaskJobRecord(
@@ -381,9 +381,10 @@ class AsyncQueueTests(unittest.TestCase):
             patch("services.task_queue.get_redis_client", return_value=Mock()),
             patch("services.task_queue.Job.fetch", return_value=rq_job),
         ):
-            cancellation_requested = cancel_task_run(self.task_dir)
+            canceled = cancel_task_run(self.task_dir)
 
-        self.assertEqual(cancellation_requested.status, TaskStatus.CANCEL_REQUESTED)
+        self.assertEqual(canceled.status, TaskStatus.CANCELED)
+        self.assertEqual(canceled.job.status, JobStatus.CANCELED)
         self.assertTrue(rq_job.meta["cancel_requested"])
         rq_job.save_meta.assert_called_once_with()
 
@@ -445,6 +446,50 @@ class TaskRunnerTests(unittest.TestCase):
             persist_result.call_args_list[1].kwargs["model_name"],
             ModelName.SEGMENTATION,
         )
+
+    def test_runner_cancels_after_segmentation_completes(self) -> None:
+        task_dir = Path("output") / "task-runner-cancel-001"
+        input_dir = task_dir / "input"
+        run_dir = task_dir / "runs" / "segmentation" / "run-cancel-001"
+        modality_paths = {
+            modality: input_dir / f"{modality}.nii.gz"
+            for modality in ("flair", "t1ce", "t1", "t2")
+        }
+        cancel_counter = {"calls": 0}
+
+        def cancel_after_segmentation() -> bool:
+            cancel_counter["calls"] += 1
+            return cancel_counter["calls"] >= 3
+
+        with (
+            patch(
+                "services.task_runner.load_task_modalities",
+                return_value=modality_paths,
+            ),
+            patch(
+                "services.task_runner.classify_volume",
+                return_value={"classification": {"class": "yes"}},
+            ),
+            patch("services.task_runner.create_run_dir", return_value=run_dir),
+            patch(
+                "services.task_runner.segment_volume",
+                return_value={"mask_path": run_dir / "prediction.nii.gz"},
+            ) as segment_3d,
+            patch(
+                "services.task_runner.persist_model_result",
+                side_effect=[
+                    {"model_result_path": "classification.json"},
+                    {"model_result_path": "segmentation.json"},
+                ],
+            ),
+            self.assertRaisesRegex(
+                TaskCancellationRequested,
+                "分割完成后取消",
+            ),
+        ):
+            run_task_models(task_dir, should_cancel=cancel_after_segmentation)
+
+        segment_3d.assert_called_once()
 
 
 class InferenceWorkerTests(unittest.TestCase):
@@ -802,6 +847,47 @@ class TaskPerformanceRecordTests(unittest.TestCase):
         self.assertEqual(len(updated.runs), 1)
         self.assertEqual(updated.runs[0].inference_ms, 12.5)
         self.assertEqual(updated.runs[0].result_file, "runs/classification/run-001/result.json")
+
+    def test_canceled_status_survives_worker_completion_updates(self) -> None:
+        record = deepcopy(self.record)
+        record.status = TaskStatus.CANCELED
+        record.completed_models = [ModelName.CLASSIFICATION]
+        repository = FakeTaskRepository(record)
+
+        with (
+            patch("services.task_state.task_repository", repository),
+            patch("services.task_state.task_write_lock", lambda _: nullcontext()),
+        ):
+            finished = update_task_execution_status(
+                self.task_dir,
+                JobStatus.SUCCEEDED,
+                job_id="job-performance-001",
+            )
+
+        self.assertEqual(finished.status, TaskStatus.CANCELED)
+
+    def test_model_completion_keeps_canceled_status(self) -> None:
+        record = deepcopy(self.record)
+        record.status = TaskStatus.CANCELED
+        repository = FakeTaskRepository(record)
+        result_path = (
+            self.task_dir
+            / "runs"
+            / "segmentation"
+            / "run-001"
+            / "result.json"
+        )
+
+        updated = record_model_completion(
+            self.task_dir,
+            ModelName.SEGMENTATION,
+            result_path,
+            record=record,
+            repository=repository,
+        )
+
+        self.assertEqual(updated.status, TaskStatus.CANCELED)
+        self.assertEqual(updated.completed_models, [ModelName.SEGMENTATION])
 
     def test_frontend_result_includes_model_timings(self) -> None:
         result = build_frontend_result(

@@ -82,6 +82,7 @@ def record_model_completion(
         TaskStatus.QUEUED,
         TaskStatus.RUNNING,
         TaskStatus.CANCEL_REQUESTED,
+        TaskStatus.CANCELED,
     }:
         record.status = task_status_for_completed_models(
             completed,
@@ -143,12 +144,15 @@ def update_task_execution_status(
                 else (execution_ms if execution_ms is not None else (job.execution_ms if job else None))
             ),
         )
-        record.status = (
-            TaskStatus.CANCEL_REQUESTED
-            if job_status is JobStatus.RUNNING
+        if record.status is TaskStatus.CANCELED:
+            record.status = TaskStatus.CANCELED
+        elif (
+            job_status is JobStatus.RUNNING
             and record.status is TaskStatus.CANCEL_REQUESTED
-            else task_status_from_job_status(job_status)
-        )
+        ):
+            record.status = TaskStatus.CANCEL_REQUESTED
+        else:
+            record.status = task_status_from_job_status(job_status)
         record.job = job
         record.updated_at = now
         if error:

@@ -92,6 +92,8 @@ def run_task_models(
     segmentation_result = _run_volume_segmentation(task_dir, modality_paths)
     if progress_callback is not None:
         progress_callback("3D 分割完成", 100)
+    if should_cancel is not None and should_cancel():
+        raise TaskCancellationRequested("任务已在 3D 分割完成后取消")
     return TaskRunResult(
         classification_result=classification_result,
         segmentation_result=segmentation_result,

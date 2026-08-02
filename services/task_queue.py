@@ -238,7 +238,11 @@ def enqueue_task_run(
 
 
 def cancel_task_run(task_dir: Path) -> TaskRecord:
-    '''取消未执行任务，或请求运行中的任务在安全阶段停止'''
+    '''取消排队或运行中的任务
+
+    运行中的任务也会立即标记为已取消；worker 通过作业元数据感知取消，
+    在推理收尾后以同一终态落库，避免界面长时间停留在“取消中”。
+    '''
     with task_write_lock(task_dir.name):
         record = task_repository.load(task_dir)
         if record.status is TaskStatus.CANCELED:
@@ -266,11 +270,7 @@ def cancel_task_run(task_dir: Path) -> TaskRecord:
         if rq_status is RqJobStatus.STARTED:
             job.meta["cancel_requested"] = True
             job.save_meta()
-            record.status = TaskStatus.CANCEL_REQUESTED
-            record.updated_at = datetime.now().astimezone()
-            record.error = None
-            task_repository.save(task_dir, record)
-            return record
+            return _mark_task_canceled(task_dir, record)
         if rq_status is RqJobStatus.CANCELED:
             return _mark_task_canceled(task_dir, record)
         raise ValueError("仅排队或运行中的任务可以取消")
