@@ -39,6 +39,12 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("formatInferenceTime(run.inference_ms)", self.html)
         self.assertIn("value === null || value === undefined", self.html)
 
+    def test_volume_viewer_exposes_download_progress(self) -> None:
+        self.assertIn("volumeDownload", self.html)
+        self.assertIn("volumeDownloadPercent", self.html)
+        self.assertIn("onProgress", self.html)
+        self.assertIn("volume-download-track", self.html)
+
 
 if __name__ == "__main__":
     unittest.main()

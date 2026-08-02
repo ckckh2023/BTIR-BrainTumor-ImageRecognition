@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import gzip
 import hashlib
 from io import BytesIO
 from pathlib import Path
@@ -122,6 +123,60 @@ class TaskFileUploadTests(unittest.TestCase):
 
         repository.save.assert_not_called()
         self.assertFalse(any((self.task_dir / "input").iterdir()))
+
+    def test_uncompressed_nii_upload_is_gzip_stored(self) -> None:
+        repository = Mock()
+        volume_bytes = nib.Nifti1Image(
+            np.zeros((2, 2, 2), dtype=np.float32),
+            np.eye(4),
+        ).to_bytes()
+        uploads = {
+            modality: BytesIO(volume_bytes)
+            for modality in ("flair", "t1ce", "t1", "t2")
+        }
+        filenames = {
+            modality: f"{modality}.nii"
+            for modality in uploads
+        }
+
+        with (
+            patch("services.task_files.task_repository", repository),
+            patch("services.task_files._validate_volume_headers"),
+        ):
+            stored = initialize_uploaded_volume_task(
+                self.task_dir,
+                uploads,
+                filenames,
+                name="gzip storage test",
+            )
+
+        expected_hash = None
+        for modality in ("flair", "t1ce", "t1", "t2"):
+            stored_path = stored[modality]
+            self.assertEqual(stored_path.name, f"{modality}.nii.gz")
+            self.assertTrue(stored_path.is_file())
+            stored_bytes = stored_path.read_bytes()
+            self.assertEqual(gzip.decompress(stored_bytes), volume_bytes)
+            expected_hash = hashlib.sha256(stored_bytes).hexdigest()
+
+        saved_record = repository.save.call_args.args[1]
+        for modality in ("flair", "t1ce", "t1", "t2"):
+            record = saved_record.input.modalities[modality]
+            self.assertEqual(record.path, f"input/{modality}.nii.gz")
+            stored_path = stored[modality]
+            self.assertEqual(record.size_bytes, stored_path.stat().st_size)
+            self.assertEqual(record.sha256, expected_hash)
+        self.assertEqual(
+            saved_record.input.size_bytes,
+            sum(stored[modality].stat().st_size for modality in stored),
+        )
+        stored_names = {
+            path.name for path in (self.task_dir / "input").iterdir()
+        }
+        self.assertEqual(
+            stored_names,
+            {f"{modality}.nii.gz" for modality in ("flair", "t1ce", "t1", "t2")},
+        )
 
 
 if __name__ == "__main__":

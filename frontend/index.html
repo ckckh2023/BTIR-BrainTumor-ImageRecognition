@@ -696,6 +696,42 @@
             color: #fecaca;
         }
 
+        .volume-download-panel {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            width: min(340px, 82%);
+        }
+
+        .volume-download-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: #dbeafe;
+        }
+
+        .volume-download-track {
+            width: 100%;
+            height: 6px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 999px;
+            overflow: hidden;
+        }
+
+        .volume-download-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #60a5fa);
+            border-radius: 999px;
+            transition: width 0.15s ease-out;
+        }
+
+        .volume-download-percent {
+            color: #93c5fd;
+            font-variant-numeric: tabular-nums;
+        }
+
         .volume-viewer-legend {
             display: flex;
             flex-wrap: wrap;
@@ -990,7 +1026,23 @@
                         <div class="volume-viewer-stage">
                             <canvas ref="volumeCanvas" tabindex="0"></canvas>
                             <div class="volume-viewer-status" v-if="volumeViewerLoading">
-                                <span><span class="loading-spinner"></span>读取并解析 NIfTI 数据...</span>
+                                <div class="volume-download-panel">
+                                    <span class="volume-download-label">
+                                        <span class="loading-spinner"></span>
+                                        {{ volumeDownloadLabel }}
+                                    </span>
+                                    <template v-if="volumeDownload && !volumeDownload.indeterminate && volumeDownload.total > 0">
+                                        <div class="volume-download-track">
+                                            <div
+                                                class="volume-download-bar"
+                                                :style="{ width: volumeDownloadPercent + '%' }"
+                                            ></div>
+                                        </div>
+                                        <span class="volume-download-percent">
+                                            {{ volumeDownloadPercent }}%
+                                        </span>
+                                    </template>
+                                </div>
                             </div>
                             <div class="volume-viewer-status error" v-else-if="volumeViewerError">
                                 {{ volumeViewerError }}
@@ -1213,6 +1265,7 @@
                     volumeViewerSources: null,
                     volumeViewerLoading: false,
                     volumeViewerError: '',
+                    volumeDownload: null,
                     selectedVolumeModality: 'flair',
                     volumeMaskVisible: true,
                     volumeMaskOpacity: 0.55,
@@ -1236,6 +1289,38 @@
                 }
             },
             computed: {
+                volumeDownloadLabel() {
+                    const download = this.volumeDownload
+                    if (!download) {
+                        return '读取并解析 NIfTI 数据...'
+                    }
+                    if (
+                        !download.indeterminate
+                        && download.total > 0
+                        && download.loaded >= download.total
+                    ) {
+                        return '下载完成，正在解析 NIfTI 数据...'
+                    }
+                    if (
+                        !download.indeterminate
+                        && download.total > 0
+                        && download.label
+                    ) {
+                        return `正在下载 ${download.label}...`
+                    }
+                    return '正在下载体数据...'
+                },
+                volumeDownloadPercent() {
+                    const download = this.volumeDownload
+                    if (!download || !download.total) return 0
+                    return Math.min(
+                        100,
+                        Math.max(
+                            0,
+                            Math.round((download.loaded / download.total) * 100)
+                        )
+                    )
+                },
                 taskPage() {
                     return Math.floor(this.taskOffset / this.taskLimit) + 1
                 },
@@ -1742,6 +1827,7 @@
 
                     this.volumeViewerLoading = true
                     this.volumeViewerError = ''
+                    this.volumeDownload = null
                     try {
                         if (!this.volumeViewer) {
                             this.volumeViewer = Vue.markRaw(
@@ -1763,6 +1849,9 @@
                             maskOpacity: this.volumeMaskOpacity,
                             maskVisible: this.volumeMaskVisible,
                             viewMode: this.volumeViewMode,
+                            onProgress: (progress) => {
+                                this.volumeDownload = progress
+                            },
                         })
                     } catch (error) {
                         if (error.name !== 'AbortError') {
@@ -1770,6 +1859,7 @@
                         }
                     } finally {
                         this.volumeViewerLoading = false
+                        this.volumeDownload = null
                     }
                 },
                 async changeVolumeModality(modality) {
@@ -1798,6 +1888,7 @@
                     this.volumeViewer?.cleanup()
                     this.volumeViewer = null
                     this.volumeViewerLoading = false
+                    this.volumeDownload = null
                 },
                 selectFile(f) {
                     if (f.type === 'download') {
