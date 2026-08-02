@@ -64,6 +64,8 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("cancelCurrentAnalysis", self.html)
         self.assertIn("cancel-analysis-btn", self.html)
         self.assertIn("analysisCancelled", self.html)
+        self.assertIn("analysisPolling", self.html)
+        self.assertIn("已取消任务", self.html)
 
 
 if __name__ == "__main__":

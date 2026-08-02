@@ -561,7 +561,8 @@ POST /tasks/{task_id}/cancel
 ```
 
 - `created` 或尚未执行的作业会直接变为 `canceled`。
-- 运行中的任务先变为 `cancel_requested`，Worker 在安全阶段停止。
+- 运行中的任务立即变为 `canceled`，并通知 Worker 在推理收尾后以同一
+  终态落库，避免界面长时间停留在“取消中”。
 - 已完成或已失败任务返回 `409 Conflict`。
 - 对已取消任务重复调用是幂等的。
 
