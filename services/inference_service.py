@@ -76,19 +76,29 @@ def classify_volume(modality_paths: dict[str, Path]) -> dict[str, Any]:
     except KeyError as exc:
         raise ValueError(f"3D 分类缺少 {modality} 模态") from exc
 
+    started_at = perf_counter()
     prepared = prepare_volume_slices(
         volume_path,
         max_slices=SETTINGS.vit_classifier_max_slices,
     )
+    prepare_ms = (perf_counter() - started_at) * 1000
     namespace = _load_vit_classifier_namespace()
     torch = namespace["torch"]
     device = resolve_device(torch, SETTINGS.device)
+
+    started_at = perf_counter()
     loaded = _load_vit_classifier_model(str(device))
+    model_setup_ms = (perf_counter() - started_at) * 1000
+
+    started_at = perf_counter()
     predictions = namespace["predict_images"](
         loaded,
         prepared.images,
         batch_size=SETTINGS.vit_classifier_batch_size,
     )
+    model_inference_ms = (perf_counter() - started_at) * 1000
+
+    started_at = perf_counter()
     classification = aggregate_mean_slice_predictions(
         prepared.indices,
         predictions,
@@ -104,9 +114,16 @@ def classify_volume(modality_paths: dict[str, Path]) -> dict[str, Any]:
             "intensity_window": list(prepared.intensity_window),
         }
     )
+    postprocess_ms = (perf_counter() - started_at) * 1000
     return {
         "model": "models/classification/vit-binary",
         "classification": classification,
+        "timing": {
+            "prepare_ms": round(prepare_ms, 3),
+            "model_setup_ms": round(model_setup_ms, 3),
+            "model_inference_ms": round(model_inference_ms, 3),
+            "postprocess_ms": round(postprocess_ms, 3),
+        },
     }
 
 
@@ -142,6 +159,7 @@ def segment_volume(
         "labels": prediction["labels"],
         "regions": prediction["regions"],
         "mask_path": prediction["saved_path"],
+        "timing": prediction["timing"],
     }
 
 

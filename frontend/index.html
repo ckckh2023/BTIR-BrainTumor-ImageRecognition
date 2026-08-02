@@ -1908,7 +1908,8 @@
                         throw new Error(`运行模型失败: ${runResponse.status}`)
                     }
 
-                    const deadline = Date.now() + 30 * 60 * 1000
+                    const pollingStartedAt = Date.now()
+                    const deadline = pollingStartedAt + 30 * 60 * 1000
                     while (Date.now() < deadline) {
                         const resultResponse = await fetch(`${this.API_BASE}/tasks/${taskId}`, {
                             headers: this.authHeaders,
@@ -1930,7 +1931,8 @@
                         this.statusText = resultData.status === 'queued'
                             ? '<span class="loading-spinner"></span>任务排队中...'
                             : '<span class="loading-spinner"></span>3D分析推理中...'
-                        await new Promise(resolve => setTimeout(resolve, 1000))
+                        const pollInterval = Date.now() - pollingStartedAt < 15_000 ? 500 : 1000
+                        await new Promise(resolve => setTimeout(resolve, pollInterval))
                     }
 
                     throw new Error('识别任务超时，请稍后重试')

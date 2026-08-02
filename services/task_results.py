@@ -21,7 +21,7 @@ from core.task_definitions import (
 from repositories.task_repository import task_repository
 from services.task_files import create_run_dir, task_relative_path, write_json
 from services.task_lock import task_write_lock
-from services.task_state import mark_models_completed, record_task_run
+from services.task_state import record_model_completion
 
 
 def persist_model_result(
@@ -89,8 +89,14 @@ def _persist_model_result_unlocked(
     result["frontend_result_path"] = task_relative_path(task_dir, frontend_path)
     timing = result.get("timing")
     inference_ms = timing.get("inference_ms") if isinstance(timing, dict) else None
-    record_task_run(task_dir, model, history_path, inference_ms=inference_ms)
-    mark_models_completed(task_dir, model)
+    record_model_completion(
+        task_dir,
+        model,
+        history_path,
+        inference_ms=inference_ms,
+        record=task_record,
+        repository=task_repository,
+    )
     return result
 
 
@@ -171,3 +177,10 @@ def _set_model_timing(
     frontend_result.setdefault("timing", {})[f"{model}_inference_ms"] = timing[
         "inference_ms"
     ]
+    breakdown = {
+        name: value
+        for name, value in timing.items()
+        if name != "inference_ms" and isinstance(value, (int, float))
+    }
+    if breakdown:
+        frontend_result["timing"][f"{model}_breakdown"] = breakdown

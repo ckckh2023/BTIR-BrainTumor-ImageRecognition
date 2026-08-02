@@ -16,6 +16,7 @@ import sys
 import time
 import uuid
 from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +47,7 @@ MODALITY_ALIASES = {
     "t2": ("t2",),
 }
 ROI_SIZE = (128, 128, 128)
+CUDA_ACCUMULATOR_RESERVE_BYTES = 2 * 1024**3
 INTERNAL_TO_BRATS = np.asarray((0, 1, 2, 4), dtype=np.uint8)
 BRATS_CLASS_NAMES = {
     0: "background",
@@ -288,8 +290,7 @@ def _load_and_validate_subject(
                 f"{modality} 与 flair 的空间方向不一致"
             )
 
-    arrays: list[np.ndarray] = []
-    for modality in MODALITIES:
+    def load_array(modality: str) -> np.ndarray:
         try:
             data = np.asarray(images[modality].dataobj, dtype=np.float32)
         except Exception as exc:
@@ -300,7 +301,10 @@ def _load_and_validate_subject(
             raise InputValidationError(
                 f"{modality} 体素中包含 NaN 或无穷值"
             )
-        arrays.append(data)
+        return data
+
+    with ThreadPoolExecutor(max_workers=len(MODALITIES)) as executor:
+        arrays = list(executor.map(load_array, MODALITIES))
 
     stacked = np.stack(arrays, axis=-1)
     return stacked, reference, paths
@@ -314,17 +318,15 @@ def _zscore_normalize(images: np.ndarray) -> np.ndarray:
     normalized = np.zeros(images.shape, dtype=np.float32)
     for index, modality in enumerate(MODALITIES):
         channel = images[..., index]
-        values = channel[foreground].astype(np.float64, copy=False)
-        standard_deviation = float(values.std())
+        values = channel[foreground]
+        standard_deviation = float(values.std(dtype=np.float64))
         if not np.isfinite(standard_deviation) or standard_deviation <= 1e-8:
             raise InputValidationError(
                 f"{modality} 前景体素没有有效强度变化，无法执行 z-score"
             )
-        mean = float(values.mean())
+        mean = float(values.mean(dtype=np.float64))
         normalized_channel = normalized[..., index]
-        normalized_channel[foreground] = (
-            channel[foreground] - mean
-        ) / standard_deviation
+        normalized_channel[foreground] = (values - mean) / standard_deviation
     return normalized
 
 
@@ -342,6 +344,45 @@ def _validate_roi_size(roi_size: tuple[int, int, int]) -> None:
         )
 
 
+def _select_accumulator_device(
+    image_shape: tuple[int, int, int],
+    inference_device: torch.device,
+) -> torch.device:
+    """在显存充足时让 MONAI 直接在 GPU 汇总窗口，避免频繁传回 CPU。"""
+
+    cpu = torch.device("cpu")
+    if inference_device.type != "cuda":
+        return cpu
+
+    # GPU 路径需要四通道输入、四通道输出与一张权重图，另留 2 GiB
+    # 给当前窗口、模型激活和运行时碎片。显存不足时继续使用原 CPU 路径。
+    staging_bytes = int(np.prod(image_shape, dtype=np.int64)) * 9 * 4
+    try:
+        free_bytes, _ = torch.cuda.mem_get_info(inference_device)
+    except (RuntimeError, TypeError):
+        return cpu
+    if free_bytes < CUDA_ACCUMULATOR_RESERVE_BYTES + staging_bytes:
+        return cpu
+    return inference_device
+
+
+def _stage_input_tensor(
+    images: np.ndarray,
+    inference_device: torch.device,
+    accumulator_device: torch.device,
+) -> tuple[torch.Tensor, torch.device]:
+    '''显存充足时一次上传完整输入；失败则连同结果汇总一起回退 CPU。'''
+
+    tensor = _to_tensor(images)
+    if accumulator_device.type != "cuda":
+        return tensor, accumulator_device
+    try:
+        return tensor.to(inference_device), accumulator_device
+    except torch.cuda.OutOfMemoryError:
+        torch.cuda.empty_cache()
+        return tensor, torch.device("cpu")
+
+
 def _run_full_volume_inference(
     images: np.ndarray,
     model: torch.nn.Module,
@@ -355,9 +396,15 @@ def _run_full_volume_inference(
     if not 0 <= overlap < 1:
         raise ValueError(f"overlap 必须位于 [0, 1)，收到: {overlap}")
 
-    tensor = _to_tensor(images)
-    with torch.inference_mode():
-        logits = sliding_window_inference(
+    accumulator_device = _select_accumulator_device(images.shape[:3], device)
+    tensor, accumulator_device = _stage_input_tensor(
+        images,
+        device,
+        accumulator_device,
+    )
+
+    def infer(output_device: torch.device) -> torch.Tensor:
+        return sliding_window_inference(
             inputs=tensor,
             roi_size=roi_size,
             sw_batch_size=1,
@@ -365,16 +412,25 @@ def _run_full_volume_inference(
             overlap=overlap,
             mode="gaussian",
             sw_device=device,
-            device=torch.device("cpu"),
+            device=output_device,
             progress=progress,
         )
+
+    with torch.inference_mode():
+        try:
+            logits = infer(accumulator_device)
+        except torch.cuda.OutOfMemoryError:
+            if accumulator_device.type != "cuda":
+                raise
+            torch.cuda.empty_cache()
+            logits = infer(torch.device("cpu"))
 
     expected_shape = (1, 4, *images.shape[:3])
     if tuple(logits.shape) != expected_shape:
         raise RuntimeError(
             f"模型输出 shape 异常，期望 {expected_shape}，收到 {tuple(logits.shape)}"
         )
-    internal_labels = logits.argmax(dim=1).squeeze(0).numpy()
+    internal_labels = logits.argmax(dim=1).squeeze(0).to("cpu").numpy()
     if internal_labels.min(initial=0) < 0 or internal_labels.max(initial=0) > 3:
         raise RuntimeError("模型返回了 0-3 范围外的内部类别")
     return internal_labels.astype(np.uint8, copy=False)
@@ -460,11 +516,23 @@ def predict(
     files, or an explicit mapping with the keys flair/t1ce/t1/t2.
     """
 
+    total_started_at = time.perf_counter()
     resolved_device = _resolve_device(device)
     _configure_determinism(seed)
+
+    started_at = time.perf_counter()
     images, reference, paths = _load_and_validate_subject(subject)
+    load_validate_ms = (time.perf_counter() - started_at) * 1000
+
+    started_at = time.perf_counter()
     normalized = _zscore_normalize(images)
+    normalize_ms = (time.perf_counter() - started_at) * 1000
+
+    started_at = time.perf_counter()
     model = model or load_model(resolved_device, weights_path)
+    model_setup_ms = (time.perf_counter() - started_at) * 1000
+
+    started_at = time.perf_counter()
     internal_labels = _run_full_volume_inference(
         normalized,
         model,
@@ -473,7 +541,12 @@ def predict(
         overlap=overlap,
         progress=progress,
     )
+    model_inference_ms = (time.perf_counter() - started_at) * 1000
+
+    started_at = time.perf_counter()
     segmentation = _to_brats_labels(internal_labels)
+    regions = _region_statistics(segmentation, reference)
+    postprocess_ms = (time.perf_counter() - started_at) * 1000
 
     result: dict[str, Any] = {
         "model": {
@@ -502,15 +575,27 @@ def predict(
                 for label, name in BRATS_CLASS_NAMES.items()
             },
         },
-        "regions": _region_statistics(segmentation, reference),
+        "regions": regions,
     }
 
+    save_ms = 0.0
     if save_nifti is not None:
+        started_at = time.perf_counter()
         result["saved_path"] = str(
             _save_segmentation(segmentation, reference, save_nifti)
         )
+        save_ms = (time.perf_counter() - started_at) * 1000
     if return_volume:
         result["segmentation"] = segmentation
+    result["timing"] = {
+        "load_validate_ms": round(load_validate_ms, 3),
+        "normalize_ms": round(normalize_ms, 3),
+        "model_setup_ms": round(model_setup_ms, 3),
+        "model_inference_ms": round(model_inference_ms, 3),
+        "postprocess_ms": round(postprocess_ms, 3),
+        "save_ms": round(save_ms, 3),
+        "total_ms": round((time.perf_counter() - total_started_at) * 1000, 3),
+    }
     return result
 
 

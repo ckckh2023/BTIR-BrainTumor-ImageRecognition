@@ -254,7 +254,25 @@ GET /tasks/{task_id}
   },
   "result_files": {},
   "latest_runs": {},
-  "timing": {}
+  "timing": {
+    "classification_inference_ms": 520.0,
+    "classification_breakdown": {
+      "prepare_ms": 65.0,
+      "model_setup_ms": 0.01,
+      "model_inference_ms": 454.9,
+      "postprocess_ms": 0.09
+    },
+    "segmentation_inference_ms": 4080.0,
+    "segmentation_breakdown": {
+      "load_validate_ms": 128.0,
+      "normalize_ms": 484.0,
+      "model_setup_ms": 0.01,
+      "model_inference_ms": 3389.0,
+      "postprocess_ms": 29.0,
+      "save_ms": 40.0,
+      "total_ms": 4073.0
+    }
+  }
 }
 ```
 

@@ -102,7 +102,7 @@ BTIR_MAX_3D_VOXELS=20000000
 BTIR_3D_SEGMENTER_OVERLAP=0.5
 BTIR_VIT_CLASSIFIER_MODEL_DIR=models/classification/vit-binary
 BTIR_VIT_CLASSIFIER_MAX_SLICES=25
-BTIR_VIT_CLASSIFIER_BATCH_SIZE=16
+BTIR_VIT_CLASSIFIER_BATCH_SIZE=25
 BTIR_VIT_CLASSIFIER_THRESHOLD=0.5
 BTIR_3D_CLASSIFIER_MODALITY=flair
 ```
@@ -259,7 +259,9 @@ python -m accelerator.install --backend cpu
   其他分类模型。分类成功后继续执行 3D 分割。
 - 当前实现采用 `128×128×128` 滑窗和可配置重叠率，已在 8 GB 显存的
   RTX 5070 Laptop GPU 上完成 `240×240×155` 体积验证，因此不要求把
-  整个原始体积一次性放入显存。实际耗时与显卡、重叠率和输入尺寸有关。
+  整个原始体积一次性放入显存。显存余量充足时窗口结果会直接在 GPU 汇总；
+  余量不足或汇总发生 OOM 时自动回退到 CPU 汇总。实际耗时与显卡、重叠率和
+  输入尺寸有关。
 
 验证 CUDA：
 

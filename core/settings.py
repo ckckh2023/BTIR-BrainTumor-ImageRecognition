@@ -203,7 +203,7 @@ def _build_settings() -> Settings:
         ),
         vit_classifier_batch_size=_get_positive_int(
             "BTIR_VIT_CLASSIFIER_BATCH_SIZE",
-            16,
+            25,
         ),
         vit_classifier_threshold=_get_fraction(
             "BTIR_VIT_CLASSIFIER_THRESHOLD",

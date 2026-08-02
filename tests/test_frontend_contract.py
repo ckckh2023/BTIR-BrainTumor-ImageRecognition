@@ -24,6 +24,10 @@ class FrontendContractTests(unittest.TestCase):
         self.assertNotIn("image-viewer", self.html)
         self.assertNotIn(".jpg", self.html)
 
+    def test_active_task_polling_is_fast_then_backs_off(self) -> None:
+        self.assertIn("pollingStartedAt", self.html)
+        self.assertIn("< 15_000 ? 500 : 1000", self.html)
+
     def test_task_manager_exposes_cancel_action(self) -> None:
         self.assertIn("canCancelTask(task.status)", self.html)
         self.assertIn("@click=\"cancelTask(task)\"", self.html)
