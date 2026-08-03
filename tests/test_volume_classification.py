@@ -118,6 +118,38 @@ class VolumeClassificationTests(unittest.TestCase):
         self.assertEqual(result["aggregation"], "mean_probability")
         self.assertEqual(result["method"], "vit_binary_multislice_mean")
         self.assertEqual(result["evidence_slices"][0]["slice_index"], 12)
+        self.assertEqual(
+            result["probability_statistics"],
+            {
+                "mean_yes_probability": 0.5,
+                "stddev_yes_probability": 0.353553,
+                "min_yes_probability": 0.1,
+                "max_yes_probability": 0.9,
+                "median_yes_probability": 0.5,
+                "positive_slice_ratio": 0.5,
+            },
+        )
+        self.assertEqual(result["threshold_margin"], -0.05)
+        self.assertEqual(
+            result["positive_slice_structure"],
+            {
+                "positive_runs": 1,
+                "longest_positive_run_samples": 2,
+                "positive_span_samples": 2,
+            },
+        )
+        self.assertEqual(
+            result["probability_histogram"],
+            [
+                {"lower": 0.0, "upper": 0.2, "count": 1},
+                {"lower": 0.2, "upper": 0.4, "count": 1},
+                {"lower": 0.4, "upper": 0.6, "count": 0},
+                {"lower": 0.6, "upper": 0.8, "count": 0},
+                {"lower": 0.8, "upper": 1.0, "count": 2},
+            ],
+        )
+        self.assertEqual(len(result["slice_probability_series"]), 4)
+        self.assertEqual(result["slice_probability_series"][0], {"slice_index": 10, "yes_probability": 0.1})
 
     def test_classification_error_is_not_replaced_by_another_model(self) -> None:
         with (

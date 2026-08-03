@@ -164,6 +164,8 @@ def segment_volume(
         "spatial": prediction["spatial"],
         "labels": prediction["labels"],
         "regions": prediction["regions"],
+        "composites": prediction.get("composites", {}),
+        "morphology": prediction.get("morphology", {}),
         "mask_path": prediction["saved_path"],
         "timing": prediction["timing"],
     }
