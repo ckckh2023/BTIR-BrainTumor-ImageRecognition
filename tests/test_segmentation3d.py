@@ -16,6 +16,31 @@ from Jnetworks.superlightnet import THPAEncFR3
 
 
 class Segmentation3DTests(unittest.TestCase):
+    def test_runtime_mode_switches_between_deterministic_and_fast(self) -> None:
+        original_deterministic = torch.are_deterministic_algorithms_enabled()
+        original_benchmark = torch.backends.cudnn.benchmark
+        original_cudnn_deterministic = torch.backends.cudnn.deterministic
+        original_matmul_tf32 = getattr(torch.backends.cuda.matmul, "allow_tf32", None)
+        original_cudnn_tf32 = getattr(torch.backends.cudnn, "allow_tf32", None)
+        try:
+            inference._configure_inference_runtime(0, fast_inference=False)
+            self.assertTrue(torch.are_deterministic_algorithms_enabled())
+            self.assertFalse(torch.backends.cudnn.benchmark)
+            self.assertTrue(torch.backends.cudnn.deterministic)
+
+            inference._configure_inference_runtime(0, fast_inference=True)
+            self.assertFalse(torch.are_deterministic_algorithms_enabled())
+            self.assertTrue(torch.backends.cudnn.benchmark)
+            self.assertFalse(torch.backends.cudnn.deterministic)
+        finally:
+            torch.use_deterministic_algorithms(original_deterministic)
+            torch.backends.cudnn.benchmark = original_benchmark
+            torch.backends.cudnn.deterministic = original_cudnn_deterministic
+            if original_matmul_tf32 is not None:
+                torch.backends.cuda.matmul.allow_tf32 = original_matmul_tf32
+            if original_cudnn_tf32 is not None:
+                torch.backends.cudnn.allow_tf32 = original_cudnn_tf32
+
     def test_cuda_accumulator_requires_safe_free_memory(self) -> None:
         shape = (240, 240, 155)
         cuda = torch.device("cuda")

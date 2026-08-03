@@ -64,6 +64,13 @@
             flex-shrink: 0;
         }
 
+        .upload-restart-bar {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 12px;
+            flex-shrink: 0;
+        }
+
         label {
             display: block;
             margin-bottom: 8px;
@@ -1180,7 +1187,7 @@
                     </div>
                 </div>
 
-                <div class="input-group">
+                <div class="input-group" v-if="!loading && !taskId">
                     <label>四模态 NIfTI：</label>
                     <div
                         :class="['volume-drop-zone', { dragging: volumeDropActive }]"
@@ -1275,7 +1282,11 @@
                     </div>
                 </div>
 
-                <button class="recognize-btn" @click="recognizeFromUpload" :disabled="loading || !canRecognize">
+                <div class="upload-restart-bar" v-else-if="taskId && !loading">
+                    <button type="button" class="browse-btn compact" @click="startNewUpload">重新上传病例</button>
+                </div>
+
+                <button class="recognize-btn" v-if="!loading && !taskId" @click="recognizeFromUpload" :disabled="!canRecognize">
                     {{ loading ? '3D分析中...' : '开始3D分析' }}
                 </button>
 
@@ -2179,6 +2190,17 @@
                     this.tumorArea = null
                     this.regionStats = []
                     this.supplementaryAnalysis = null
+                },
+                startNewUpload() {
+                    this.resetState()
+                    this.loading = false
+                    this.analysisProgress = null
+                    this.statusText = '等待识别...'
+                    this.volumeFiles = { flair: null, t1ce: null, t1: null, t2: null }
+                    this.volumeArchiveFile = null
+                    this.volumeDropActive = false
+                    this.volumeSourceMenuVisible = false
+                    this.clearVolumeSelectionState()
                 },
                 buildFileList(resultData = {}, taskData = null) {
                     const files = []

@@ -154,6 +154,7 @@ def segment_volume(
         save_nifti=mask_path,
         weights_path=SETTINGS.segmenter_3d_model,
         overlap=SETTINGS.segmenter_3d_overlap,
+        fast_inference=SETTINGS.segmenter_3d_fast_inference,
         progress_callback=progress_callback,
         cancel_callback=cancel_callback,
     )

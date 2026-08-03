@@ -101,6 +101,7 @@ BTIR_MAX_ACTIVE_TASKS_PER_USER=2
 BTIR_MAX_3D_UPLOAD_BYTES=536870912
 BTIR_MAX_3D_VOXELS=20000000
 BTIR_3D_SEGMENTER_OVERLAP=0.5
+BTIR_3D_FAST_INFERENCE=true
 BTIR_VIT_CLASSIFIER_MODEL_DIR=models/classification/vit-binary
 BTIR_VIT_CLASSIFIER_MAX_SLICES=25
 BTIR_VIT_CLASSIFIER_BATCH_SIZE=25
@@ -166,6 +167,10 @@ BTIR_CORS_ORIGINS=https://你的前端域名
 DeepSeek 超时、限流、网络错误、空响应或不符合协议的 JSON 都会被记录为“综合分析暂不可用”，
 不会影响本地分类和分割任务的成功状态。结果仅为实验性模型输出的辅助说明，不构成医学诊断、
 分型、分期或治疗建议。
+
+`BTIR_3D_FAST_INFERENCE=true` 会为 CUDA 推理启用 cuDNN benchmark 与 TF32，以降低
+滑窗分割耗时；默认启用。需要对模型版本进行逐体素可复现比对时设为 `false`，并在报告中
+记录所用模式。CPU 推理不受该开关影响。
 
 ## 启动 Redis
 
@@ -454,7 +459,7 @@ systemd timer 或 cron，不加入 supervisor 主循环。
    `POST /tasks/{task_id}/run-async`。
 6. 轮询任务直到 `succeeded`，确认分类与分割结果均存在。
 7. 有带 `seg` 标签的 BraTS 验证集时，执行
-   `python Main.py evaluate-3d <数据集目录>`，记录 WT/TC/ET Dice、耗时和
-   峰值显存，作为模型升级前后的固定基线。
+   `python Main.py evaluate-3d <数据集目录>`，记录 WT/TC/ET Dice、分类检测指标、
+   耗时和峰值显存，作为模型升级前后的固定基线。
 
 运行时监控、归档和异常恢复参见 [运维说明](OPERATIONS.md)。

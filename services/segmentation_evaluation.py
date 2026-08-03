@@ -16,7 +16,7 @@ import nibabel as nib
 import numpy as np
 
 
-EVALUATION_SCHEMA_VERSION = "1.0"
+EVALUATION_SCHEMA_VERSION = "1.1"
 MODALITIES = ("flair", "t1ce", "t1", "t2")
 REGION_LABELS = {
     "WT": frozenset({1, 2, 4}),
@@ -25,6 +25,7 @@ REGION_LABELS = {
 }
 ALLOWED_BRATS_LABELS = frozenset({0, 1, 2, 4})
 Segmenter = Callable[[dict[str, Path], Path], dict[str, Any]]
+Classifier = Callable[[dict[str, Path]], dict[str, Any]]
 ProgressCallback = Callable[[str, int], None]
 
 
@@ -85,9 +86,10 @@ def evaluate_brats_segmentation(
     predictions_dir: str | Path | None = None,
     limit: int | None = None,
     segmenter: Segmenter | None = None,
+    classifier: Classifier | None = None,
     progress_callback: ProgressCallback | None = None,
 ) -> dict[str, Any]:
-    '''逐病例运行真实分割，并汇总 WT、TC、ET Dice 与资源耗时'''
+    '''逐病例评测分割 Dice；传入分类器时同时汇总病例级检测指标'''
 
     dataset_root = Path(dataset_dir).expanduser().resolve()
     subjects = discover_brats_subjects(dataset_root, limit=limit)
@@ -102,7 +104,11 @@ def evaluate_brats_segmentation(
 
     report: dict[str, Any] = {
         "schema_version": EVALUATION_SCHEMA_VERSION,
-        "evaluation": "brats_3d_segmentation",
+        "evaluation": (
+            "brats_3d_segmentation_and_classification"
+            if classifier is not None
+            else "brats_3d_segmentation"
+        ),
         "created_at": datetime.now().astimezone().isoformat(),
         "dataset": str(dataset_root),
         "region_definitions": {
@@ -133,6 +139,7 @@ def evaluate_brats_segmentation(
                     subject,
                     output_dir,
                     segmenter,
+                    classifier,
                     retain_prediction=persistent_root is not None,
                 )
             except Exception as exc:
@@ -177,9 +184,22 @@ def _evaluate_subject(
     subject: BratsSubject,
     output_dir: Path,
     segmenter: Segmenter,
+    classifier: Classifier | None,
     *,
     retain_prediction: bool,
 ) -> dict[str, Any]:
+    target_image = nib.load(str(subject.label_path))
+    target = _validated_brats_labels(target_image, "真值标签")
+    classification_result = None
+    classification_inference_ms = None
+    if classifier is not None:
+        classification_started_at = perf_counter()
+        classification_result = classifier(subject.modalities)
+        classification_inference_ms = round(
+            (perf_counter() - classification_started_at) * 1000,
+            3,
+        )
+
     _reset_cuda_peak_memory()
     _synchronize_cuda()
     started_at = perf_counter()
@@ -189,9 +209,7 @@ def _evaluate_subject(
 
     prediction_path = Path(result["mask_path"]).expanduser().resolve()
     prediction_image = nib.load(str(prediction_path))
-    target_image = nib.load(str(subject.label_path))
     prediction = _validated_brats_labels(prediction_image, "预测掩码")
-    target = _validated_brats_labels(target_image, "真值标签")
     _validate_same_space(prediction_image, target_image)
 
     scores = {
@@ -217,6 +235,12 @@ def _evaluate_subject(
     peak_memory = _cuda_peak_memory_mb()
     if peak_memory is not None and str(result.get("device", "")).startswith("cuda"):
         case["peak_gpu_memory_mb"] = peak_memory
+    if classification_result is not None:
+        case["classification"] = _classification_case_result(
+            classification_result,
+            target,
+            inference_ms=classification_inference_ms,
+        )
     return case
 
 
@@ -244,9 +268,129 @@ def _summarize_successful_cases(
     ]
     return {
         "dice": dice_summary,
+        "classification": _summarize_classification(successful),
         "inference_ms": _descriptive_statistics(inference_values),
         "peak_gpu_memory_mb": _descriptive_statistics(memory_values),
     }
+
+
+def _classification_case_result(
+    result: dict[str, Any],
+    target: np.ndarray,
+    *,
+    inference_ms: float | None,
+) -> dict[str, Any]:
+    classification = result.get("classification")
+    if not isinstance(classification, dict):
+        raise ValueError("分类评测结果缺少 classification 对象")
+    predicted_class = classification.get("class")
+    if predicted_class not in {"yes", "no"}:
+        raise ValueError("分类评测结果 class 必须为 yes 或 no")
+    probabilities = classification.get("probabilities")
+    if not isinstance(probabilities, dict):
+        raise ValueError("分类评测结果缺少 probabilities 对象")
+    yes_probability = float(probabilities.get("yes"))
+    if not 0 <= yes_probability <= 1:
+        raise ValueError("分类评测 yes 概率必须位于 0 到 1 之间")
+    ground_truth_positive = bool(np.any(target != 0))
+    return {
+        "model": result.get("model"),
+        "predicted_class": predicted_class,
+        "yes_probability": round(yes_probability, 6),
+        "threshold": classification.get("threshold"),
+        "ground_truth_positive": ground_truth_positive,
+        "correct": (predicted_class == "yes") == ground_truth_positive,
+        "inference_ms": inference_ms,
+    }
+
+
+def _summarize_classification(cases: list[dict[str, Any]]) -> dict[str, Any] | None:
+    classification_cases = [
+        case["classification"]
+        for case in cases
+        if isinstance(case.get("classification"), dict)
+    ]
+    if not classification_cases:
+        return None
+
+    true_positive = sum(
+        item["ground_truth_positive"] and item["predicted_class"] == "yes"
+        for item in classification_cases
+    )
+    false_negative = sum(
+        item["ground_truth_positive"] and item["predicted_class"] == "no"
+        for item in classification_cases
+    )
+    true_negative = sum(
+        not item["ground_truth_positive"] and item["predicted_class"] == "no"
+        for item in classification_cases
+    )
+    false_positive = sum(
+        not item["ground_truth_positive"] and item["predicted_class"] == "yes"
+        for item in classification_cases
+    )
+    total = len(classification_cases)
+    probabilities = [float(item["yes_probability"]) for item in classification_cases]
+    labels = [int(item["ground_truth_positive"]) for item in classification_cases]
+    return {
+        "evaluated_cases": total,
+        "ground_truth_positive_cases": true_positive + false_negative,
+        "ground_truth_negative_cases": true_negative + false_positive,
+        "confusion_matrix": {
+            "true_positive": true_positive,
+            "false_negative": false_negative,
+            "true_negative": true_negative,
+            "false_positive": false_positive,
+        },
+        "metrics": {
+            "accuracy": _rate(true_positive + true_negative, total),
+            "sensitivity": _rate(true_positive, true_positive + false_negative),
+            "specificity": _rate(true_negative, true_negative + false_positive),
+            "precision": _rate(true_positive, true_positive + false_positive),
+            "f1": _rate(2 * true_positive, 2 * true_positive + false_positive + false_negative),
+            "brier_score": round(
+                mean((probability - label) ** 2 for probability, label in zip(probabilities, labels, strict=True)),
+                6,
+            ),
+        },
+        "yes_probability": _descriptive_statistics(probabilities),
+        "calibration_bins": _calibration_bins(probabilities, labels),
+        "inference_ms": _descriptive_statistics([
+            float(item["inference_ms"])
+            for item in classification_cases
+            if item["inference_ms"] is not None
+        ]),
+    }
+
+
+def _rate(numerator: int, denominator: int) -> float | None:
+    return round(numerator / denominator, 6) if denominator else None
+
+
+def _calibration_bins(
+    probabilities: list[float],
+    labels: list[int],
+) -> list[dict[str, Any]]:
+    edges = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
+    bins: list[dict[str, Any]] = []
+    for lower, upper in zip(edges, edges[1:]):
+        values = [
+            (probability, label)
+            for probability, label in zip(probabilities, labels, strict=True)
+            if lower <= probability < upper or (upper == 1.0 and probability == upper)
+        ]
+        bins.append({
+            "lower": lower,
+            "upper": upper,
+            "count": len(values),
+            "mean_yes_probability": (
+                round(mean(value[0] for value in values), 6) if values else None
+            ),
+            "observed_positive_rate": (
+                round(mean(value[1] for value in values), 6) if values else None
+            ),
+        })
+    return bins
 
 
 def _descriptive_statistics(values: list[float]) -> dict[str, Any]:
@@ -344,6 +488,14 @@ def _run_project_segmenter(
     from services.inference_service import segment_volume
 
     return segment_volume(modalities, output_dir)
+
+
+def run_project_classifier(modalities: dict[str, Path]) -> dict[str, Any]:
+    '''调用项目当前患者级分类器，供评测命令显式注入。'''
+
+    from services.inference_service import classify_volume
+
+    return classify_volume(modalities)
 
 
 def _reset_cuda_peak_memory() -> None:

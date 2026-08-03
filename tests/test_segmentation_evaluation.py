@@ -78,9 +78,21 @@ class SegmentationEvaluationTests(unittest.TestCase):
                     "mask_path": str(prediction_path),
                 }
 
+            def fake_classifier(modalities: dict[str, Path]) -> dict[str, object]:
+                self.assertEqual(set(modalities), {"flair", "t1ce", "t1", "t2"})
+                return {
+                    "model": "fake/classifier",
+                    "classification": {
+                        "class": "yes",
+                        "probabilities": {"yes": 0.9, "no": 0.1},
+                        "threshold": 0.5,
+                    },
+                }
+
             report = evaluate_brats_segmentation(
                 root,
                 segmenter=fake_segmenter,
+                classifier=fake_classifier,
             )
 
             self.assertEqual(report["successful_subjects"], 1)
@@ -88,6 +100,13 @@ class SegmentationEvaluationTests(unittest.TestCase):
             self.assertEqual(report["summary"]["dice"]["WT"]["mean"], 1.0)
             self.assertEqual(report["summary"]["dice"]["TC"]["mean"], 1.0)
             self.assertEqual(report["summary"]["dice"]["ET"]["mean"], 1.0)
+            classification = report["summary"]["classification"]
+            self.assertEqual(classification["ground_truth_positive_cases"], 1)
+            self.assertEqual(classification["ground_truth_negative_cases"], 0)
+            self.assertEqual(classification["metrics"]["accuracy"], 1.0)
+            self.assertEqual(classification["metrics"]["sensitivity"], 1.0)
+            self.assertEqual(classification["metrics"]["brier_score"], 0.01)
+            self.assertEqual(classification["calibration_bins"][-1]["count"], 1)
             self.assertNotIn("prediction_file", report["subjects"][0])
 
 

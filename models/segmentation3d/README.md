@@ -25,9 +25,9 @@
 
 ## 实现说明
 
-`inference.py` 使用 `128×128×128` MONAI 滑窗恢复完整体积，并在推理模式下
-固定 SuperLightNet 内部方向选择，避免同一输入重复运行得到不同结果。模型训练
-时仍保留原始的随机方向增强行为。
+`inference.py` 使用 `128×128×128` MONAI 滑窗恢复完整体积，并固定 SuperLightNet
+内部方向选择。默认快速模式会启用 CUDA 的 cuDNN benchmark 与 TF32；如需逐体素可复现
+评测，可将 `BTIR_3D_FAST_INFERENCE=false`。模型训练时仍保留原始的随机方向增强行为。
 
 ## 分割评测
 

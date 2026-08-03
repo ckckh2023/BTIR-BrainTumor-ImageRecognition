@@ -286,9 +286,10 @@ python Main.py purge-archive
 
 命令行模型调用仅用于开发调试；正式前端流程使用异步 API。
 `evaluate-3d` 会发现数据集根目录下包含四模态和 `*_seg.nii[.gz]` 的病例，
-逐例计算 BraTS WT、TC、ET Dice，同时记录耗时和 CUDA 峰值显存。默认报告写入
-`output/evaluations/segmentation3d-report.json`，不保留大型预测掩码；需要人工
-复核时可增加 `--predictions-dir <目录>`。
+逐例计算 BraTS WT、TC、ET Dice，以及病例级分类的混淆矩阵、敏感度、特异度、F1、
+Brier 分数和概率分桶，同时记录耗时和 CUDA 峰值显存。默认报告写入
+`output/evaluations/segmentation3d-report.json`，不保留大型预测掩码；需要人工复核时
+可增加 `--predictions-dir <目录>`。仅需分割基线时加 `--skip-classification`。
 
 前端统一结果 `frontend_result.json` 使用独立的 `schema_version: "1.0"`。
 分类和分割对象都保留稳定的 `model` 标识；更换模型实现时不得改变既有字段语义，

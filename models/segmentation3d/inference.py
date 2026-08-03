@@ -68,8 +68,8 @@ class InputValidationError(ValueError):
     """Raised when the four input modalities do not form one spatial volume."""
 
 
-def _configure_determinism(seed: int) -> None:
-    """Configure deterministic inference before any CUDA work is submitted."""
+def _configure_inference_runtime(seed: int, *, fast_inference: bool) -> None:
+    """配置可复现或快速推理运行时，必须在提交 CUDA 工作前调用"""
 
     os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
     random.seed(seed)
@@ -78,13 +78,13 @@ def _configure_determinism(seed: int) -> None:
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
 
-    torch.use_deterministic_algorithms(True)
-    torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.deterministic = True
+    torch.use_deterministic_algorithms(not fast_inference)
+    torch.backends.cudnn.benchmark = fast_inference
+    torch.backends.cudnn.deterministic = not fast_inference
     if hasattr(torch.backends.cuda.matmul, "allow_tf32"):
-        torch.backends.cuda.matmul.allow_tf32 = False
+        torch.backends.cuda.matmul.allow_tf32 = fast_inference
     if hasattr(torch.backends.cudnn, "allow_tf32"):
-        torch.backends.cudnn.allow_tf32 = False
+        torch.backends.cudnn.allow_tf32 = fast_inference
 
 
 def _resolve_device(device: str | torch.device) -> torch.device:
@@ -657,11 +657,12 @@ def predict(
     roi_size: tuple[int, int, int] = ROI_SIZE,
     overlap: float = 0.5,
     seed: int = 0,
+    fast_inference: bool = False,
     progress: bool = False,
     progress_callback: Callable[[float], None] | None = None,
     cancel_callback: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
-    """Run deterministic full-volume segmentation for one BraTS subject.
+    """Run full-volume segmentation for one BraTS subject.
 
     ``subject`` can be a directory containing exactly discoverable modality
     files, or an explicit mapping with the keys flair/t1ce/t1/t2.
@@ -669,7 +670,7 @@ def predict(
 
     total_started_at = time.perf_counter()
     resolved_device = _resolve_device(device)
-    _configure_determinism(seed)
+    _configure_inference_runtime(seed, fast_inference=fast_inference)
 
     started_at = time.perf_counter()
     images, reference, paths = _load_and_validate_subject(subject)
@@ -708,6 +709,7 @@ def predict(
             "name": MODEL_NAME,
             "variant": MODEL_VARIANT,
             "weights": Path(weights_path).name,
+            "inference_mode": "fast" if fast_inference else "deterministic",
         },
         "device": str(resolved_device),
         "modalities": {
