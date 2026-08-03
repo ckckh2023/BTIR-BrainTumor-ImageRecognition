@@ -171,7 +171,7 @@ def initialize_uploaded_volume_task(
 
     modality_records = {
         modality: StoredTaskModality(
-            path=str(stored_paths[modality].relative_to(task_dir)),
+            path=task_relative_path(task_dir, stored_paths[modality]),
             original_filename=original_filenames[modality],
             size_bytes=stored_sizes[modality],
             sha256=stored_hashes[modality],

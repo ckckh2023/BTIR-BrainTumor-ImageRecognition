@@ -116,6 +116,45 @@ class Segmentation3DTests(unittest.TestCase):
         self.assertEqual(labels.shape, images.shape[:3])
         self.assertEqual(progress_values, [0.25, 0.5, 0.75, 1.0])
 
+    def test_full_volume_inference_checks_cancel_before_each_window(self) -> None:
+        images = np.zeros((16, 16, 16, 4), dtype=np.float32)
+        model = Mock(return_value=torch.zeros((1, 4, 16, 16, 16)))
+        cancel_calls = {"count": 0}
+
+        def cancel_callback() -> None:
+            cancel_calls["count"] += 1
+            if cancel_calls["count"] == 2:
+                raise RuntimeError("cancel current segmentation")
+
+        def fake_sliding_window(inputs, *, predictor, **kwargs):
+            predictor(inputs)
+            predictor(inputs)
+
+        with (
+            patch.object(
+                inference,
+                "_stage_input_tensor",
+                return_value=(inference._to_tensor(images), torch.device("cpu")),
+            ),
+            patch.object(
+                inference,
+                "sliding_window_inference",
+                side_effect=fake_sliding_window,
+            ),
+            self.assertRaisesRegex(RuntimeError, "cancel current segmentation"),
+        ):
+            inference._run_full_volume_inference(
+                images,
+                model,
+                torch.device("cpu"),
+                roi_size=(16, 16, 16),
+                overlap=0.25,
+                progress=False,
+                cancel_callback=cancel_callback,
+            )
+
+        model.assert_called_once()
+
     def test_input_staging_oom_falls_back_to_cpu(self) -> None:
         images = np.zeros((16, 16, 16, 4), dtype=np.float32)
         tensor = Mock(spec=torch.Tensor)

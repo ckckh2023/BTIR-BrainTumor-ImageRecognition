@@ -38,25 +38,30 @@ class TaskCancellationRequested(RuntimeError):
 def _run_volume_segmentation(
     task_dir: Path,
     modality_paths: dict[str, Path],
+    should_cancel: Callable[[], bool] | None = None,
     progress_callback: Callable[[str, int], None] | None = None,
 ) -> dict[str, Any]:
     '''执行并持久化四模态三维分割'''
 
     run_dir = create_run_dir(task_dir, ModelName.SEGMENTATION)
     started_at = perf_counter()
+
+    def check_cancellation() -> None:
+        if should_cancel is not None and should_cancel():
+            raise TaskCancellationRequested("任务已在 3D 分割窗口之间取消")
+
+    def report_progress(fraction: float) -> None:
+        if progress_callback is not None:
+            progress_callback(
+                "3D 分割推理中",
+                min(99, 12 + int(fraction * 88)),
+            )
+
     result = segment_volume(
         modality_paths=modality_paths,
         output_dir=run_dir,
-        progress_callback=(
-            (
-                lambda fraction: progress_callback(
-                    "3D 分割推理中",
-                    min(100, 12 + int(fraction * 88)),
-                )
-            )
-            if progress_callback is not None
-            else None
-        ),
+        progress_callback=report_progress if progress_callback is not None else None,
+        cancel_callback=check_cancellation if should_cancel is not None else None,
     )
     result.setdefault("timing", {})["inference_ms"] = _elapsed_ms(started_at)
     return persist_model_result(
@@ -103,12 +108,13 @@ def run_task_models(
     segmentation_result = _run_volume_segmentation(
         task_dir,
         modality_paths,
+        should_cancel=should_cancel,
         progress_callback=progress_callback,
     )
-    if progress_callback is not None:
-        progress_callback("3D 分割完成", 100)
     if should_cancel is not None and should_cancel():
         raise TaskCancellationRequested("任务已在 3D 分割完成后取消")
+    if progress_callback is not None:
+        progress_callback("3D 分割完成", 100)
     return TaskRunResult(
         classification_result=classification_result,
         segmentation_result=segmentation_result,

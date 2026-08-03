@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from time import perf_counter
 from typing import Any
 
 from rq import get_current_job
 
 from core.settings import SETTINGS
-from core.task_definitions import JobStatus
+from core.task_definitions import JobStatus, TaskStatus
+from repositories.task_repository import task_repository
 from services.task_runner import TaskCancellationRequested, run_task_models
 from services.task_files import get_task_dir
 from services.task_state import update_task_execution_status
@@ -31,7 +33,7 @@ def run_task_job(task_id: str) -> dict[str, Any]:
     attempt = _get_job_attempt(job)
     if attempt is not None:
         status_kwargs["attempt"] = attempt
-    if _is_cancellation_requested(job):
+    if _is_cancellation_requested(job, task_dir):
         return _finish_canceled_task(task_dir, job, attempt, execution_ms=0.0)
     update_task_execution_status(
         task_dir,
@@ -43,7 +45,7 @@ def run_task_job(task_id: str) -> dict[str, Any]:
     try:
         run_result = run_task_models(
             task_dir,
-            should_cancel=lambda: _is_cancellation_requested(job),
+            should_cancel=lambda: _is_cancellation_requested(job, task_dir),
             progress_callback=lambda stage, percentage: _record_job_progress(
                 job,
                 task_id,
@@ -110,11 +112,22 @@ def _get_job_attempt(job: Any) -> int | None:
     return SETTINGS.task_job_max_retries - retries_left + 1
 
 
-def _is_cancellation_requested(job: Any) -> bool:
+def _is_cancellation_requested(job: Any, task_dir: Path | None = None) -> bool:
+    '''同时读取 RQ 标记与任务状态，避免进度元数据并发写入丢失取消信号'''
     refresh = getattr(job, "refresh", None)
     if callable(refresh):
         refresh()
-    return bool(getattr(job, "meta", {}).get("cancel_requested"))
+    metadata = getattr(job, "meta", None)
+    if metadata is None:
+        return False
+    if bool(metadata.get("cancel_requested")):
+        return True
+    if task_dir is None:
+        return False
+    return task_repository.load(task_dir).status in {
+        TaskStatus.CANCEL_REQUESTED,
+        TaskStatus.CANCELED,
+    }
 
 
 def _record_job_progress(
@@ -124,6 +137,9 @@ def _record_job_progress(
     percentage: int,
 ) -> None:
     '''将真实阶段写入 worker 日志；RQ 可用时同步保存到作业元数据'''
+    refresh = getattr(job, "refresh", None)
+    if callable(refresh):
+        refresh()
     metadata = getattr(job, "meta", None)
     if isinstance(metadata, dict):
         metadata["progress"] = percentage
