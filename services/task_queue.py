@@ -136,7 +136,10 @@ def clear_task_queue_state(*, dry_run: bool) -> TaskQueueResetReport:
             for _, job_ids in registry_entries
             for job_id in job_ids
         }
-        task_lock_keys = list(connection.scan_iter(match="btir:task:*:write"))
+        task_lock_keys = {
+            *connection.scan_iter(match="btir:task:*:write"),
+            *connection.scan_iter(match="btir:user:*:quota"),
+        }
     except RedisError as exc:
         raise TaskQueueUnavailableError(
             "Redis 不可用，无法确认并清空 BTIR 队列状态"

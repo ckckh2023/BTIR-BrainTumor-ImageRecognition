@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import redirect_stderr, redirect_stdout
+from dataclasses import replace
 from io import StringIO
 import json
 import tempfile
@@ -10,13 +12,16 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 import sqlite3
+from threading import Barrier
 from unittest.mock import patch
 
 from Main import _build_parser, main
+from core.settings import SETTINGS
 from core.task_definitions import TaskStatus
 from core.task_records import StoredTaskInput, TaskRecord
 from repositories.task_repository_contracts import (
     TaskNotFoundError,
+    TaskQuotaExceededError,
     TaskRepositoryUnavailableError,
 )
 from repositories.sqlite_task_repository import CURRENT_SCHEMA_VERSION, SqliteTaskRepository
@@ -34,6 +39,7 @@ class TaskStorageTests(unittest.TestCase):
         self.output_dir = self.project_root / "output"
         self.archive_dir = self.project_root / "archive"
         self.repository = SqliteTaskRepository(self.project_root / "tasks.db")
+        self.cli_settings = replace(SETTINGS, task_archive_dir=self.archive_dir)
 
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
@@ -132,6 +138,7 @@ class TaskStorageTests(unittest.TestCase):
     def test_user_management_commands_update_account_state(self) -> None:
         with (
             patch("Main.task_repository", self.repository),
+            patch("Main.SETTINGS", self.cli_settings),
             patch("Main.getpass.getpass", side_effect=["safe-password", "safe-password"]),
             patch("Main.hash_password", side_effect=lambda value: f"hash:{value}"),
             redirect_stdout(StringIO()),
@@ -146,6 +153,7 @@ class TaskStorageTests(unittest.TestCase):
 
         with (
             patch("Main.task_repository", self.repository),
+            patch("Main.SETTINGS", self.cli_settings),
             redirect_stdout(StringIO()),
         ):
             self.assertEqual(main(["user", "set-role", "alice", "admin"]), 0)
@@ -155,6 +163,7 @@ class TaskStorageTests(unittest.TestCase):
 
         with (
             patch("Main.task_repository", self.repository),
+            patch("Main.SETTINGS", self.cli_settings),
             redirect_stdout(StringIO()),
         ):
             self.assertEqual(main(["user", "disable", "alice"]), 0)
@@ -164,6 +173,7 @@ class TaskStorageTests(unittest.TestCase):
 
         with (
             patch("Main.task_repository", self.repository),
+            patch("Main.SETTINGS", self.cli_settings),
             redirect_stdout(StringIO()),
         ):
             self.assertEqual(main(["user", "enable", "alice"]), 0)
@@ -173,6 +183,7 @@ class TaskStorageTests(unittest.TestCase):
 
         with (
             patch("Main.task_repository", self.repository),
+            patch("Main.SETTINGS", self.cli_settings),
             patch("Main.getpass.getpass", side_effect=["new-password", "new-password"]),
             patch("Main.hash_password", side_effect=lambda value: f"hash:{value}"),
             redirect_stdout(StringIO()),
@@ -182,6 +193,40 @@ class TaskStorageTests(unittest.TestCase):
         self.assertEqual(reset.hashed_password, "hash:new-password")
         self.assertEqual(reset.token_version, 3)
         self.assertTrue(reset.must_change_password)
+        audit_text = (self.archive_dir / "audit.jsonl").read_text(encoding="utf-8")
+        self.assertIn('"operation": "user_created_cli"', audit_text)
+        self.assertIn('"operation": "user_role_changed_cli"', audit_text)
+        self.assertIn('"operation": "user_status_changed_cli"', audit_text)
+        self.assertIn('"operation": "password_reset_cli"', audit_text)
+
+    def test_task_quota_check_is_atomic_across_concurrent_writes(self) -> None:
+        user = SqliteUserRepository(self.repository).create_user(
+            "quota-user",
+            "password-hash",
+        )
+        task_dirs = [self.output_dir / f"quota-task-{index}" for index in range(2)]
+        for task_dir in task_dirs:
+            task_dir.mkdir(parents=True)
+        barrier = Barrier(2)
+
+        def save_task(task_dir: Path) -> str:
+            barrier.wait()
+            try:
+                self.repository.save(
+                    task_dir,
+                    self._record(task_dir.name),
+                    user_id=user.user_id,
+                    max_tasks_per_user=1,
+                )
+            except TaskQuotaExceededError:
+                return "limited"
+            return "saved"
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            outcomes = list(executor.map(save_task, task_dirs))
+
+        self.assertCountEqual(outcomes, ["saved", "limited"])
+        self.assertEqual(self.repository.count(user_id=user.user_id), 1)
 
     def test_list_tasks_supports_status_filter_and_pagination(self) -> None:
         task_ids = ["task-001", "task-002", "task-003"]
@@ -439,6 +484,50 @@ class TaskStorageTests(unittest.TestCase):
 
         self.assertIsNotNone(migrated_user)
         self.assertEqual(migrated_user.role.value, "user")
+
+    def test_username_normalization_migration_rejects_case_only_duplicates(self) -> None:
+        database_path = self.project_root / "username-normalization-conflict.db"
+        SqliteTaskRepository(database_path)
+        connection = sqlite3.connect(database_path)
+        try:
+            connection.execute("ALTER TABLE users RENAME TO users_with_normalized_name")
+            connection.execute(
+                """
+                CREATE TABLE users (
+                    user_id TEXT PRIMARY KEY,
+                    username TEXT NOT NULL UNIQUE,
+                    hashed_password TEXT NOT NULL,
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    token_version INTEGER NOT NULL DEFAULT 0,
+                    role TEXT NOT NULL DEFAULT 'user',
+                    must_change_password INTEGER NOT NULL DEFAULT 0
+                )
+                """
+            )
+            connection.executemany(
+                """
+                INSERT INTO users (
+                    user_id, username, hashed_password, is_active,
+                    created_at, updated_at, token_version, role,
+                    must_change_password
+                )
+                VALUES (?, ?, 'hash', 1, '2026-01-01', '2026-01-01', 0, 'user', 0)
+                """,
+                (("user-a", "Alice"), ("user-b", "alice")),
+            )
+            connection.execute("DROP TABLE users_with_normalized_name")
+            connection.execute("DELETE FROM schema_migrations WHERE version = 12")
+            connection.commit()
+        finally:
+            connection.close()
+
+        with self.assertRaisesRegex(
+            TaskRepositoryUnavailableError,
+            "仅大小写不同的重复用户名",
+        ):
+            SqliteTaskRepository(database_path)
 
     def test_legacy_database_is_upgraded_without_losing_task_rows(self) -> None:
         legacy_database_path = self.project_root / "legacy-tasks.db"

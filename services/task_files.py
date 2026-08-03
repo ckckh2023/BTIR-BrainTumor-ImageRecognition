@@ -72,6 +72,7 @@ def _save_created_task(
     name: str | None,
     input_record: StoredTaskInput,
     user_id: str | None = None,
+    max_tasks_per_user: int | None = None,
 ) -> None:
     '''以统一结构写入新建任务的元数据'''
     now = datetime.now().astimezone()
@@ -86,6 +87,7 @@ def _save_created_task(
             input=input_record,
         ),
         user_id=user_id,
+        max_tasks_per_user=max_tasks_per_user,
     )
 
 
@@ -95,6 +97,7 @@ def initialize_uploaded_volume_task(
     filenames: Mapping[str, str | None],
     name: str | None = None,
     user_id: str | None = None,
+    max_tasks_per_user: int | None = None,
 ) -> dict[str, Path]:
     '''保存四模态 NIfTI，并创建一个独立的 3D 任务
 
@@ -187,6 +190,7 @@ def initialize_uploaded_volume_task(
             modalities=modality_records,
         ),
         user_id=user_id,
+        max_tasks_per_user=max_tasks_per_user,
     )
     return stored_paths
 

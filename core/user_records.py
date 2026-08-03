@@ -13,6 +13,11 @@ class UserRole(StrEnum):
     ADMIN = "admin"
 
 
+def normalize_username(username: str) -> str:
+    '''生成用于唯一约束和账号查找的用户名规范值'''
+    return username.casefold()
+
+
 class UserRecord(BaseModel):
     model_config = ConfigDict(extra="allow")
 

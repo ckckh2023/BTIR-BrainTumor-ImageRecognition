@@ -21,6 +21,7 @@ from repositories.user_repository import (
     UsernameAlreadyExistsError,
 )
 from services.archive_service import archive_expired_tasks, purge_expired_archives
+from services.audit_service import append_audit_event
 from services.auth_service import hash_password
 from services.cleanup_service import clear_generated_files, purge_logs_and_data
 from services.console import ConsoleProgress, print_event
@@ -475,6 +476,13 @@ def _manage_user(args: argparse.Namespace) -> None:
             )
         except UsernameAlreadyExistsError:
             raise ValueError(f"用户 '{username}' 已存在") from None
+        append_audit_event(
+            operation="user_created_cli",
+            timestamp=datetime.now().astimezone(),
+            target_user_id=user.user_id,
+            outcome="success",
+            audit_dir=SETTINGS.task_archive_dir,
+        )
         print(f"用户已创建：{user.username}（{user.role.value}）")
         return
 
@@ -484,10 +492,17 @@ def _manage_user(args: argparse.Namespace) -> None:
 
     if command == "reset-password":
         password = _read_new_password(username)
-        repository.update_password(
+        updated = repository.update_password(
             username,
             hash_password(password),
             must_change_password=True,
+        )
+        append_audit_event(
+            operation="password_reset_cli",
+            timestamp=datetime.now().astimezone(),
+            target_user_id=updated.user_id if updated is not None else existing.user_id,
+            outcome="success",
+            audit_dir=SETTINGS.task_archive_dir,
         )
         print(f"用户密码已重置，旧 Token 已失效；下次登录必须改密：{username}")
         return
@@ -497,7 +512,14 @@ def _manage_user(args: argparse.Namespace) -> None:
         if existing.role == role:
             print(f"用户已经是 {role.value} 角色：{username}")
             return
-        repository.set_role(username, role)
+        updated = repository.set_role(username, role)
+        append_audit_event(
+            operation="user_role_changed_cli",
+            timestamp=datetime.now().astimezone(),
+            target_user_id=updated.user_id if updated is not None else existing.user_id,
+            outcome=role.value,
+            audit_dir=SETTINGS.task_archive_dir,
+        )
         print(f"用户角色已调整为 {role.value}，旧 Token 已失效：{username}")
         return
 
@@ -505,7 +527,14 @@ def _manage_user(args: argparse.Namespace) -> None:
     if existing.is_active == is_active:
         print(f"用户已经处于{'启用' if is_active else '禁用'}状态：{username}")
         return
-    repository.set_active(username, is_active)
+    updated = repository.set_active(username, is_active)
+    append_audit_event(
+        operation="user_status_changed_cli",
+        timestamp=datetime.now().astimezone(),
+        target_user_id=updated.user_id if updated is not None else existing.user_id,
+        outcome="enabled" if is_active else "disabled",
+        audit_dir=SETTINGS.task_archive_dir,
+    )
     if is_active:
         print(f"用户已启用：{username}")
     else:

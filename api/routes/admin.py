@@ -195,6 +195,7 @@ def reset_user_password(
         timestamp=datetime.now(timezone.utc),
         actor_user_id=current_admin.user_id,
         target_user_id=target.user_id,
+        outcome="success",
         audit_dir=SETTINGS.task_archive_dir,
     )
     return AdminPasswordResetResponse(

@@ -2,11 +2,47 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
+from threading import Lock
+from typing import Iterator
 
 from core.settings import SETTINGS
+
+
+_AUDIT_THREAD_LOCK = Lock()
+
+
+@contextmanager
+def _audit_file_lock(lock_path: Path) -> Iterator[None]:
+    '''使用独立锁文件串行化同一主机上的多进程审计写入'''
+    lock_descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            if os.fstat(lock_descriptor).st_size == 0:
+                os.write(lock_descriptor, b"\0")
+            os.lseek(lock_descriptor, 0, os.SEEK_SET)
+            msvcrt.locking(lock_descriptor, msvcrt.LK_LOCK, 1)
+            try:
+                yield
+            finally:
+                os.lseek(lock_descriptor, 0, os.SEEK_SET)
+                msvcrt.locking(lock_descriptor, msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(lock_descriptor, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock_descriptor, fcntl.LOCK_UN)
+    finally:
+        os.close(lock_descriptor)
 
 
 def _normalize_timestamp(value: datetime) -> datetime:
@@ -22,6 +58,8 @@ def append_audit_event(
     actor_user_id: str | None = None,
     target_user_id: str | None = None,
     task_id: str | None = None,
+    outcome: str | None = None,
+    source_ip: str | None = None,
     audit_dir: Path = SETTINGS.task_archive_dir,
 ) -> None:
     '''记录操作者、目标用户和任务，不记录密码等敏感内容。'''
@@ -36,8 +74,25 @@ def append_audit_event(
         entry["target_user_id"] = target_user_id
     if task_id is not None:
         entry["task_id"] = task_id
-    with (audit_dir / "audit.jsonl").open("a", encoding="utf-8") as audit_file:
-        audit_file.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    if outcome is not None:
+        entry["outcome"] = outcome
+    if source_ip is not None:
+        entry["source_ip"] = source_ip
+    encoded_entry = (json.dumps(entry, ensure_ascii=False) + "\n").encode("utf-8")
+    flags = os.O_APPEND | os.O_CREAT | os.O_WRONLY
+    if hasattr(os, "O_BINARY"):
+        flags |= os.O_BINARY
+    with _AUDIT_THREAD_LOCK, _audit_file_lock(audit_dir / "audit.lock"):
+        file_descriptor = os.open(audit_dir / "audit.jsonl", flags, 0o600)
+        try:
+            remaining = memoryview(encoded_entry)
+            while remaining:
+                written = os.write(file_descriptor, remaining)
+                if written <= 0:
+                    raise OSError("审计日志未完整写入")
+                remaining = remaining[written:]
+        finally:
+            os.close(file_descriptor)
 
 
 def list_audit_events(
@@ -75,7 +130,13 @@ def list_audit_events(
                 raise ValueError
             optional_fields = {
                 field: raw_event.get(field)
-                for field in ("actor_user_id", "target_user_id", "task_id")
+                for field in (
+                    "actor_user_id",
+                    "target_user_id",
+                    "task_id",
+                    "outcome",
+                    "source_ip",
+                )
             }
             if any(
                 value is not None and not isinstance(value, str)

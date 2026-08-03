@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 import json
 import os
@@ -636,6 +637,10 @@ class TaskHttpEndpointTests(unittest.TestCase):
                     "api.routes.tasks.enqueue_task_run",
                     return_value=(queued_job, False),
                 ),
+                patch(
+                    "api.routes.tasks.user_quota_lock",
+                    return_value=nullcontext(),
+                ) as quota_lock,
                 patch("api.routes.tasks.reconcile_task_job", return_value=record),
                 TestClient(app) as client,
             ):
@@ -658,6 +663,7 @@ class TaskHttpEndpointTests(unittest.TestCase):
         self.assertEqual(created.status_code, status.HTTP_201_CREATED)
         self.assertEqual(created.json()["task_id"], task_dir.name)
         self.assertEqual(enqueued.status_code, status.HTTP_202_ACCEPTED)
+        quota_lock.assert_called_once_with(TEST_USER.user_id)
         self.assertEqual(enqueued.json()["job"]["id"], "job-http-001")
         self.assertEqual(task_status.status_code, status.HTTP_200_OK)
         self.assertEqual(task_status.json()["status"], "succeeded")

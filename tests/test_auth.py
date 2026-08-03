@@ -36,7 +36,11 @@ class AuthenticationTests(unittest.TestCase):
         self.temporary_directory = TemporaryDirectory()
         self.root = Path(self.temporary_directory.name)
         self.repository = SqliteTaskRepository(self.root / "tasks.db")
-        self.registration_settings = replace(SETTINGS, registration_enabled=True)
+        self.registration_settings = replace(
+            SETTINGS,
+            registration_enabled=True,
+            task_archive_dir=self.root / "archive",
+        )
         self.admin_settings = replace(
             SETTINGS,
             output_dir=self.root / "output",
@@ -266,10 +270,17 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(restored.status_code, status.HTTP_200_OK)
         self.assertTrue(task_dir.is_dir())
         self.assertEqual(audit_response.status_code, status.HTTP_200_OK)
-        self.assertEqual(audit_response.json()["total"], 3)
+        self.assertEqual(audit_response.json()["total"], 6)
         self.assertEqual(
             [item["operation"] for item in audit_response.json()["items"]],
-            ["restore_api", "archive_api", "admin_password_reset"],
+            [
+                "restore_api",
+                "archive_api",
+                "password_changed",
+                "auth_login_succeeded",
+                "admin_password_reset",
+                "user_registered",
+            ],
         )
         audit_text = (
             self.admin_settings.task_archive_dir / "audit.jsonl"
@@ -279,6 +290,8 @@ class AuthenticationTests(unittest.TestCase):
         self.assertIn('"operation": "restore_api"', audit_text)
         self.assertIn(f'"actor_user_id": "{admin["user_id"]}"', audit_text)
         self.assertIn(f'"target_user_id": "{bob["user_id"]}"', audit_text)
+        self.assertIn('"source_ip": "testclient"', audit_text)
+        self.assertIn('"outcome": "success"', audit_text)
         self.assertNotIn("temporary-password", audit_text)
 
     def test_protected_endpoint_without_token_returns_unauthorized(self) -> None:
@@ -289,13 +302,20 @@ class AuthenticationTests(unittest.TestCase):
 
     def test_duplicate_username_returns_conflict(self) -> None:
         with TestClient(app) as client:
-            self._register(client, "alice")
+            registered = self._register(client, "Alice")
             duplicate = client.post(
                 "/auth/register",
                 json={"username": "alice", "password": "safe-password"},
             )
+            login = client.post(
+                "/auth/login",
+                json={"username": "ALICE", "password": "safe-password"},
+            )
 
         self.assertEqual(duplicate.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(login.status_code, status.HTTP_200_OK)
+        self.assertEqual(login.json()["user_id"], registered["user_id"])
+        self.assertEqual(login.json()["username"], "Alice")
 
     def test_other_user_cannot_access_any_task_action(self) -> None:
         task_dir = self.root / "task-owned-by-alice"
