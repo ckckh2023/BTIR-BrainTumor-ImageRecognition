@@ -393,6 +393,7 @@ def _run_full_volume_inference(
     overlap: float,
     progress: bool,
     progress_callback: Callable[[float], None] | None = None,
+    cancel_callback: Callable[[], None] | None = None,
 ) -> np.ndarray:
     _validate_roi_size(roi_size)
     if not 0 <= overlap < 1:
@@ -406,23 +407,30 @@ def _run_full_volume_inference(
     )
 
     predictor = model
+    window_counter = {"done": 0}
+    reported_fraction = {"value": 0.0}
+    total_windows = 0
     if progress_callback is not None:
         total_windows = _count_sliding_windows(images.shape[:3], roi_size, overlap)
-        if total_windows > 0:
-            window_counter = {"done": 0}
 
-            def progress_predictor(
-                patch_data: torch.Tensor,
-                *args: Any,
-                **kwargs: Any,
-            ) -> torch.Tensor:
+    if progress_callback is not None or cancel_callback is not None:
+        def monitored_predictor(
+            patch_data: torch.Tensor,
+            *args: Any,
+            **kwargs: Any,
+        ) -> torch.Tensor:
+            if cancel_callback is not None:
+                cancel_callback()
+            result = model(patch_data, *args, **kwargs)
+            if progress_callback is not None and total_windows > 0:
                 window_counter["done"] += 1
-                progress_callback(
-                    min(window_counter["done"], total_windows) / total_windows
-                )
-                return model(patch_data, *args, **kwargs)
+                fraction = min(window_counter["done"], total_windows) / total_windows
+                if fraction > reported_fraction["value"]:
+                    reported_fraction["value"] = fraction
+                    progress_callback(fraction)
+            return result
 
-            predictor = progress_predictor
+        predictor = monitored_predictor
 
     def infer(output_device: torch.device) -> torch.Tensor:
         return sliding_window_inference(
@@ -444,6 +452,7 @@ def _run_full_volume_inference(
             if accumulator_device.type != "cuda":
                 raise
             torch.cuda.empty_cache()
+            window_counter["done"] = 0
             logits = infer(torch.device("cpu"))
 
     expected_shape = (1, 4, *images.shape[:3])
@@ -564,6 +573,7 @@ def predict(
     seed: int = 0,
     progress: bool = False,
     progress_callback: Callable[[float], None] | None = None,
+    cancel_callback: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     """Run deterministic full-volume segmentation for one BraTS subject.
 
@@ -596,6 +606,7 @@ def predict(
         overlap=overlap,
         progress=progress,
         progress_callback=progress_callback,
+        cancel_callback=cancel_callback,
     )
     model_inference_ms = (time.perf_counter() - started_at) * 1000
 

@@ -133,6 +133,7 @@ def segment_volume(
     output_dir: Path,
     *,
     progress_callback: Callable[[float], None] | None = None,
+    cancel_callback: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     '''执行四模态完整体积 SuperLightNet 分割'''
 
@@ -154,6 +155,7 @@ def segment_volume(
         weights_path=SETTINGS.segmenter_3d_model,
         overlap=SETTINGS.segmenter_3d_overlap,
         progress_callback=progress_callback,
+        cancel_callback=cancel_callback,
     )
     return {
         "model": "models/segmentation3d/superlightnet",

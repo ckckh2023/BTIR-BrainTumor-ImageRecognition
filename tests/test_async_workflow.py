@@ -39,7 +39,7 @@ from services.task_state import (
     record_model_completion,
     update_task_execution_status,
 )
-from workers.inference_jobs import run_task_job
+from workers.inference_jobs import _record_job_progress, run_task_job
 from workers import run_worker
 
 
@@ -364,7 +364,7 @@ class AsyncQueueTests(unittest.TestCase):
 
         self.assertEqual(canceled.status, TaskStatus.CANCELED)
 
-    def test_running_task_is_canceled_immediately_with_worker_flag(self) -> None:
+    def test_running_task_waits_for_worker_confirmation_with_cancel_flag(self) -> None:
         record = deepcopy(self.record)
         record.status = TaskStatus.RUNNING
         record.job = TaskJobRecord(
@@ -384,10 +384,26 @@ class AsyncQueueTests(unittest.TestCase):
         ):
             canceled = cancel_task_run(self.task_dir)
 
-        self.assertEqual(canceled.status, TaskStatus.CANCELED)
-        self.assertEqual(canceled.job.status, JobStatus.CANCELED)
+        self.assertEqual(canceled.status, TaskStatus.CANCEL_REQUESTED)
+        self.assertEqual(canceled.job.status, JobStatus.RUNNING)
         self.assertTrue(rq_job.meta["cancel_requested"])
         rq_job.save_meta.assert_called_once_with()
+
+    def test_progress_update_refreshes_and_preserves_cancel_flag(self) -> None:
+        job = SimpleNamespace(id="job-progress-cancel", meta={})
+
+        def refresh() -> None:
+            job.meta = {"cancel_requested": True}
+
+        job.refresh = Mock(side_effect=refresh)
+        job.save_meta = Mock()
+
+        _record_job_progress(job, "task-progress-cancel", "3D 分割推理中", 50)
+
+        self.assertTrue(job.meta["cancel_requested"])
+        self.assertEqual(job.meta["progress"], 50)
+        job.refresh.assert_called_once_with()
+        job.save_meta.assert_called_once_with()
 
     def test_job_progress_is_read_from_rq_meta(self) -> None:
         record = deepcopy(self.record)
@@ -469,6 +485,7 @@ class TaskRunnerTests(unittest.TestCase):
             modality_paths=modality_paths,
             output_dir=run_dir,
             progress_callback=None,
+            cancel_callback=None,
         )
         self.assertEqual(
             persist_result.call_args_list[0].kwargs["model_name"],
@@ -533,7 +550,12 @@ class TaskRunnerTests(unittest.TestCase):
         }
         progress_events: list[tuple[str, int]] = []
 
-        def capture_progress(modality_paths, output_dir, progress_callback=None):
+        def capture_progress(
+            modality_paths,
+            output_dir,
+            progress_callback=None,
+            cancel_callback=None,
+        ):
             progress_callback(0.5)
             return {"mask_path": run_dir / "prediction.nii.gz"}
 
@@ -569,6 +591,45 @@ class TaskRunnerTests(unittest.TestCase):
         self.assertIn(("3D 分类推理中", 6), progress_events)
         self.assertIn(("3D 分类完成，开始 3D 分割", 12), progress_events)
         self.assertIn(("3D 分割推理中", 56), progress_events)
+
+    def test_runner_cancels_between_segmentation_windows(self) -> None:
+        task_dir = Path("output") / "task-runner-window-cancel"
+        modality_paths = {
+            modality: task_dir / "input" / f"{modality}.nii.gz"
+            for modality in ("flair", "t1ce", "t1", "t2")
+        }
+        cancel_counter = {"calls": 0}
+
+        def should_cancel() -> bool:
+            cancel_counter["calls"] += 1
+            return cancel_counter["calls"] >= 3
+
+        def segment_until_canceled(
+            modality_paths,
+            output_dir,
+            progress_callback=None,
+            cancel_callback=None,
+        ):
+            cancel_callback()
+            self.fail("取消回调应在首个分割窗口开始前中断")
+
+        with (
+            patch("services.task_runner.load_task_modalities", return_value=modality_paths),
+            patch(
+                "services.task_runner.classify_volume",
+                return_value={"classification": {"class": "yes"}},
+            ),
+            patch("services.task_runner.create_run_dir", return_value=task_dir / "runs"),
+            patch("services.task_runner.segment_volume", side_effect=segment_until_canceled),
+            patch(
+                "services.task_runner.persist_model_result",
+                return_value={"model_result_path": "classification.json"},
+            ) as persist_result,
+            self.assertRaisesRegex(TaskCancellationRequested, "分割窗口之间取消"),
+        ):
+            run_task_models(task_dir, should_cancel=should_cancel)
+
+        persist_result.assert_called_once()
 
 
 class InferenceWorkerTests(unittest.TestCase):

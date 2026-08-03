@@ -149,6 +149,7 @@ class RqIntegrationTests(unittest.TestCase):
                 patch("services.task_queue.get_task_queue", return_value=self.queue),
                 patch("services.task_state.task_repository", repository),
                 patch("workers.inference_jobs.SETTINGS", settings),
+                patch("workers.inference_jobs.task_repository", repository),
                 patch("workers.inference_jobs.run_task_models", side_effect=fake_run_models),
                 TestClient(app) as client,
             ):
