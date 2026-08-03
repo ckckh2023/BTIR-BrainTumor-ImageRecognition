@@ -106,6 +106,14 @@ BTIR_VIT_CLASSIFIER_MAX_SLICES=25
 BTIR_VIT_CLASSIFIER_BATCH_SIZE=25
 BTIR_VIT_CLASSIFIER_THRESHOLD=0.5
 BTIR_3D_CLASSIFIER_MODALITY=flair
+BTIR_SUPPLEMENTARY_ANALYSIS_ENABLED=false
+BTIR_DEEPSEEK_API_KEY=仅部署环境设置，不提交到仓库
+BTIR_DEEPSEEK_BASE_URL=https://api.deepseek.com
+BTIR_DEEPSEEK_MODEL=deepseek-v4-flash
+BTIR_SUPPLEMENTARY_ANALYSIS_TIMEOUT_SECONDS=20
+BTIR_SUPPLEMENTARY_ANALYSIS_MAX_RETRIES=1
+BTIR_SUPPLEMENTARY_ANALYSIS_MAX_TOKENS=700
+BTIR_SUPPLEMENTARY_ANALYSIS_TEMPERATURE=0.2
 ```
 
 可以生成 JWT 密钥：
@@ -147,6 +155,17 @@ BTIR_CORS_ORIGINS=https://你的前端域名
 路径相对于项目根目录解析。前后端分离时，`BTIR_CORS_ORIGINS` 应明确列出
 允许访问 API 的前端来源。输出目录与归档目录必须位于同一磁盘卷，任务软删除
 和定期归档才能通过完整目录移动保证一致性。
+
+### 可选 DeepSeek 综合分析
+
+默认 `BTIR_SUPPLEMENTARY_ANALYSIS_ENABLED=false`，因此不会产生任何外部请求。启用后在
+部署机器的 `.env` 中设置 `BTIR_DEEPSEEK_API_KEY`，密钥不得写入代码、前端或提交到仓库。
+服务只发送白名单字段：本地分类的类别/概率/阈值/切片摘要，以及分割区域的体素数、体积和
+占比；不会发送原始 MRI、NIfTI、文件名、任务 ID、用户名或服务器路径。
+
+DeepSeek 超时、限流、网络错误、空响应或不符合协议的 JSON 都会被记录为“综合分析暂不可用”，
+不会影响本地分类和分割任务的成功状态。结果仅为实验性模型输出的辅助说明，不构成医学诊断、
+分型、分期或治疗建议。
 
 ## 启动 Redis
 

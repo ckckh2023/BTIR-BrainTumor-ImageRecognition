@@ -100,12 +100,39 @@ def _persist_model_result_unlocked(
     return result
 
 
+def persist_supplementary_analysis(
+    task_dir: Path,
+    analysis: dict[str, Any],
+) -> dict[str, Any]:
+    """Attach non-blocking external synthesis to the existing frontend result."""
+    with task_write_lock(task_dir.name):
+        task_record = task_repository.load(task_dir)
+        input_files = (
+            {
+                modality: Path(file_data.path).name
+                for modality, file_data in task_record.input.modalities.items()
+            }
+            if task_record.input.modalities
+            else None
+        )
+        frontend_data = build_frontend_result(
+            task_dir,
+            input_files=input_files,
+            supplementary_analysis=analysis,
+        )
+        frontend_path = write_json(task_dir / TaskArtifact.FRONTEND_RESULT, frontend_data)
+        result = dict(analysis)
+        result["frontend_result_path"] = task_relative_path(task_dir, frontend_path)
+        return result
+
+
 def build_frontend_result(
     task_dir: Path,
     *,
     input_files: dict[str, str] | None = None,
     classification: dict[str, Any] | None = None,
     segmentation: dict[str, Any] | None = None,
+    supplementary_analysis: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     '''构建不包含绝对路径的统一前端结果数据'''
     frontend_path = task_dir / TaskArtifact.FRONTEND_RESULT
@@ -147,6 +174,8 @@ def build_frontend_result(
             "spatial": segmentation["spatial"],
             "labels": segmentation["labels"],
             "regions": segmentation["regions"],
+            "composites": segmentation.get("composites", {}),
+            "morphology": segmentation.get("morphology", {}),
             "mask_file": mask_file,
         }
         result["result_files"]["segmentation"] = TaskArtifact.SEGMENTATION_RESULT
@@ -155,6 +184,8 @@ def build_frontend_result(
             f"{segmentation['run_directory']}/{TaskArtifact.RUN_RESULT}"
         )
         _set_model_timing(result, "segmentation", segmentation)
+    if supplementary_analysis is not None:
+        _set_supplementary_analysis(result, supplementary_analysis)
     completed_models = [
         name for name in ModelName if name.value in result
     ]
@@ -184,3 +215,14 @@ def _set_model_timing(
     }
     if breakdown:
         frontend_result["timing"][f"{model}_breakdown"] = breakdown
+
+
+def _set_supplementary_analysis(
+    frontend_result: dict[str, Any],
+    analysis: dict[str, Any],
+) -> None:
+    """Keep the optional analysis outside completed_models and model-run history."""
+    frontend_result["supplementary_analysis"] = dict(analysis)
+    duration_ms = analysis.get("duration_ms")
+    if isinstance(duration_ms, (int, float)) and not isinstance(duration_ms, bool):
+        frontend_result.setdefault("timing", {})["supplementary_analysis_ms"] = duration_ms

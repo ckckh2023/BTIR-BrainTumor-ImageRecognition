@@ -475,6 +475,10 @@ class TaskRunnerTests(unittest.TestCase):
                 "services.task_runner.persist_model_result",
                 side_effect=[classification_result, segmentation_result],
             ) as persist_result,
+            patch(
+                "services.task_runner.run_supplementary_analysis",
+                return_value={"status": "disabled"},
+            ),
         ):
             result = run_task_models(task_dir)
 
@@ -579,6 +583,10 @@ class TaskRunnerTests(unittest.TestCase):
                     {"model_result_path": "classification.json"},
                     {"model_result_path": "segmentation.json"},
                 ],
+            ),
+            patch(
+                "services.task_runner.run_supplementary_analysis",
+                return_value={"status": "disabled"},
             ),
         ):
             run_task_models(

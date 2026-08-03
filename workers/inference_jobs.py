@@ -101,6 +101,11 @@ def run_task_job(task_id: str) -> dict[str, Any]:
     result_payload["classification_result_file"] = (
         run_result.classification_result["model_result_path"]
     )
+    supplementary_analysis = getattr(run_result, "supplementary_analysis", {})
+    result_payload["supplementary_analysis_status"] = supplementary_analysis.get(
+        "status",
+        "disabled",
+    )
     return result_payload
 
 

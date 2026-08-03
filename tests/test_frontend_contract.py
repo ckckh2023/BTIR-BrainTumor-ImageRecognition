@@ -74,6 +74,24 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("analysisProgressPercent", self.html)
         self.assertIn("resultData.progress_stage", self.html)
 
+    def test_supplementary_analysis_is_rendered_as_escaped_text(self) -> None:
+        self.assertIn("supplementaryAnalysis", self.html)
+        self.assertIn("supplementary_analysis", self.html)
+        self.assertIn("analysisConsistencyLabel", self.html)
+        self.assertIn("分析模型：", self.html)
+        self.assertIn("supplementaryRecommendation(supplementaryAnalysis)", self.html)
+        self.assertIn("supplementaryRecommendation(analysis)", self.html)
+        self.assertIn("result-analysis-provider", self.html)
+        self.assertNotIn("v-html=\"supplementaryAnalysis", self.html)
+
+    def test_result_panel_keeps_overview_separate_from_details(self) -> None:
+        self.assertIn('class="result-overview"', self.html)
+        self.assertIn('class="result-details"', self.html)
+        self.assertIn("查看详细数据", self.html)
+        self.assertIn("模型观察", self.html)
+        self.assertIn("提示肿瘤相关异常", self.html)
+        self.assertIn("未发现明显异常", self.html)
+
     def test_upload_phase_is_included_in_inference_progress(self) -> None:
         self.assertIn("uploadTaskFiles", self.html)
         self.assertIn("xhr.upload.onprogress", self.html)

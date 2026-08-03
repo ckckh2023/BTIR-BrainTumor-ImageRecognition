@@ -207,6 +207,39 @@
             margin-bottom: 12px;
         }
 
+        .result-overview {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+
+        .result-summary-card {
+            padding: 12px;
+            background: #ffffff;
+            border: 1px solid #dbe7f5;
+            border-radius: 8px;
+        }
+
+        .result-summary-card-label {
+            margin-bottom: 5px;
+            color: #64748b;
+            font-size: 12px;
+        }
+
+        .result-summary-card-value {
+            color: #1e3c72;
+            font-size: 15px;
+            font-weight: 600;
+            line-height: 1.45;
+        }
+
+        .result-summary-card-meta {
+            margin-top: 4px;
+            color: #64748b;
+            font-size: 12px;
+        }
+
         .result-regions {
             display: grid;
             gap: 7px;
@@ -237,6 +270,68 @@
             font-size: 14px;
             word-break: break-all;
             font-family: 'Consolas', 'Monaco', monospace;
+        }
+
+        .result-analysis {
+            display: grid;
+            gap: 6px;
+            line-height: 1.55;
+            font-family: inherit;
+        }
+
+        .result-analysis-provider {
+            margin-top: 2px;
+            color: #4b668f;
+            font-size: 12px;
+        }
+
+        .result-details {
+            margin-top: 12px;
+            border-top: 1px solid #dbe7f5;
+            padding-top: 10px;
+        }
+
+        .result-details summary {
+            width: fit-content;
+            color: #2a5298;
+            font-size: 13px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .result-details-content {
+            display: grid;
+            gap: 12px;
+            margin-top: 12px;
+            padding: 12px;
+            background: #ffffff;
+            border: 1px solid #dbe7f5;
+            border-radius: 8px;
+        }
+
+        .result-details-group {
+            display: grid;
+            gap: 6px;
+        }
+
+        .result-details-heading {
+            color: #4a5568;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .result-detail-list {
+            display: grid;
+            gap: 5px;
+            color: #334155;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        @media (max-width: 620px) {
+            .result-overview {
+                grid-template-columns: 1fr;
+            }
         }
 
         .result-item-status-row {
@@ -1027,34 +1122,73 @@
                                 </span>
                             </div>
                         </div>
-                        <div class="result-item" v-if="taskId">
-                            <div class="result-label">任务ID：</div>
-                            <div class="result-value">{{ taskId }}</div>
-                        </div>
-                        <div class="result-item" v-if="classificationLabel">
-                            <div class="result-label">分类结果：</div>
-                            <div class="result-value">
-                                <span :class="['result-highlight', classificationLabel === '肿瘤 detected' ? 'detected' : '']">
-                                    {{ classificationLabel }}
-                                </span>
-                                <span v-if="confidence">（置信度：{{ (confidence * 100).toFixed(1) }}%）</span>
-                            </div>
-                        </div>
-                        <div class="result-item" v-if="tumorArea !== null">
-                            <div class="result-label">
-                                非背景分割占比：
-                            </div>
-                            <div class="result-value">{{ (tumorArea * 100).toFixed(2) }}%</div>
-                        </div>
-                        <div class="result-item" v-if="regionStats.length">
-                            <div class="result-label">BraTS 区域体积：</div>
-                            <div class="result-regions">
-                                <div class="result-region-row" v-for="region in regionStats" :key="region.label">
-                                    <span>{{ region.label }} · {{ region.name }}</span>
-                                    <span>{{ formatVolume(region.volumeMm3) }} mm³</span>
+                        <div class="result-overview" v-if="classificationLabel || tumorArea !== null">
+                            <div class="result-summary-card" v-if="classificationLabel">
+                                <div class="result-summary-card-label">分类模型</div>
+                                <div :class="['result-summary-card-value', 'result-highlight', classificationLabel === '肿瘤 detected' ? 'detected' : '']">
+                                    {{ classificationLabel === '肿瘤 detected' ? '提示肿瘤相关异常' : '未发现明显异常' }}
                                 </div>
+                                <div class="result-summary-card-meta" v-if="confidence">置信度 {{ (confidence * 100).toFixed(1) }}%</div>
+                            </div>
+                            <div class="result-summary-card" v-if="tumorArea !== null">
+                                <div class="result-summary-card-label">分割模型</div>
+                                <div class="result-summary-card-value">
+                                    {{ tumorArea > 0 ? '检出非背景区域' : '未检出非背景区域' }}
+                                </div>
+                                <div class="result-summary-card-meta">区域占比 {{ (tumorArea * 100).toFixed(2) }}%</div>
                             </div>
                         </div>
+                        <div
+                            class="result-item"
+                            v-if="supplementaryAnalysis && supplementaryAnalysis.status !== 'disabled'"
+                        >
+                            <div class="result-label">模型综合结论：</div>
+                            <div class="result-value result-analysis">
+                                <template v-if="supplementaryAnalysis.status === 'succeeded'">
+                                    <div>{{ supplementaryAnalysis.content.summary }}</div>
+                                    <div><strong>建议：</strong>{{ supplementaryRecommendation(supplementaryAnalysis) }}</div>
+                                    <div class="result-analysis-provider">
+                                        分析模型：{{ supplementaryAnalysis.provider === 'deepseek' ? 'DeepSeek' : supplementaryAnalysis.provider }} · {{ supplementaryAnalysis.model }}
+                                    </div>
+                                </template>
+                                <template v-else>
+                                    {{ supplementaryAnalysis.message || '综合分析服务暂不可用；本地结果不受影响。' }}
+                                </template>
+                            </div>
+                        </div>
+                        <details class="result-details" v-if="taskId || regionStats.length || supplementaryAnalysis?.status === 'succeeded'">
+                            <summary>查看详细数据</summary>
+                            <div class="result-details-content">
+                                <div class="result-details-group" v-if="taskId">
+                                    <div class="result-details-heading">任务信息</div>
+                                    <div class="result-value">任务 ID：{{ taskId }}</div>
+                                </div>
+                                <div class="result-details-group" v-if="regionStats.length">
+                                    <div class="result-details-heading">BraTS 区域体积</div>
+                                    <div class="result-regions">
+                                        <div class="result-region-row" v-for="region in regionStats" :key="region.label">
+                                            <span>{{ region.label }} · {{ region.name }}</span>
+                                            <span>{{ formatVolume(region.volumeMm3) }} mm³</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <template v-if="supplementaryAnalysis?.status === 'succeeded'">
+                                    <div class="result-details-group" v-if="supplementaryAnalysis.content.observations?.length">
+                                        <div class="result-details-heading">模型观察</div>
+                                        <div class="result-detail-list">
+                                            <div v-for="(item, index) in supplementaryAnalysis.content.observations" :key="`analysis-observation-${index}`">· {{ item }}</div>
+                                        </div>
+                                    </div>
+                                    <div class="result-details-group" v-if="supplementaryAnalysis.content.consistency !== 'consistent' || supplementaryAnalysis.content.uncertainties?.length">
+                                        <div class="result-details-heading">证据说明</div>
+                                        <div class="result-detail-list">
+                                            <div v-if="supplementaryAnalysis.content.consistency !== 'consistent'">{{ analysisConsistencyLabel(supplementaryAnalysis.content.consistency) }}</div>
+                                            <div v-if="supplementaryAnalysis.content.uncertainties?.length">{{ supplementaryAnalysis.content.uncertainties.join('；') }}</div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </details>
                     </div>
                 </div>
             </div>
@@ -1375,6 +1509,7 @@
                     confidence: 0,
                     tumorArea: null,
                     regionStats: [],
+                    supplementaryAnalysis: null,
                     fileList: [],
                     downloadFiles: [],
                     selectedFilePath: '',
@@ -1540,6 +1675,29 @@
                     return `${(milliseconds / 1000).toLocaleString('zh-CN', {
                         maximumFractionDigits: 2,
                     })} s`
+                },
+                analysisConsistencyLabel(value) {
+                    const labels = {
+                        consistent: '分类与分割证据大致一致',
+                        inconclusive: '证据不足，无法得出稳定综合说明',
+                        conflicting: '分类与分割证据存在不一致',
+                    }
+                    return labels[value] || '未说明'
+                },
+                supplementaryRecommendation(analysis) {
+                    const followUp = analysis?.content?.follow_up
+                    if (typeof followUp === 'string' && followUp.trim()) {
+                        return followUp.trim()
+                    }
+                    const hasSegmentedRegion = this.tumorArea !== null && this.tumorArea > 0
+                    const classificationPositive = this.classificationLabel === '肿瘤 detected'
+                    if (classificationPositive && hasSegmentedRegion) {
+                        return '结合原始多模态 MRI 和分割掩码进行针对性影像复核；如有既往检查，可进行同部位对比。'
+                    }
+                    if (!classificationPositive && !hasSegmentedRegion) {
+                        return '结合当前症状和既往检查进行常规随访；症状持续或加重时，可进一步进行专业影像评估。'
+                    }
+                    return '优先核查分割掩码、高概率切片和输入质量；必要时补充人工影像评估。'
                 },
                 taskInputSummary(task) {
                     if (task.input?.files) {
@@ -1818,6 +1976,7 @@
                     this.confidence = 0
                     this.tumorArea = null
                     this.regionStats = []
+                    this.supplementaryAnalysis = null
                 },
                 buildFileList(resultData = {}, taskData = null) {
                     const files = []
@@ -2073,6 +2232,7 @@
                     this.confidence = 0
                     this.tumorArea = null
                     this.regionStats = []
+                    this.supplementaryAnalysis = resultData.supplementary_analysis || null
                     if (resultData.classification) {
                         const classification = resultData.classification
                         this.classificationLabel = classification.class === 'yes'

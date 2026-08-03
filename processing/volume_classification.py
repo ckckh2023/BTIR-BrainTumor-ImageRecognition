@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from statistics import median, pstdev
 from typing import Any, Mapping, Sequence
 
 import nibabel as nib
@@ -90,11 +91,13 @@ def aggregate_mean_slice_predictions(
     yes_probability = sum(yes_scores) / len(yes_scores)
     no_probability = 1.0 - yes_probability
     predicted_tumor = yes_probability >= threshold
+    positive_slice_count = sum(score >= 0.5 for score in yes_scores)
     ranked_positions = sorted(
         range(len(predictions)),
         key=yes_scores.__getitem__,
         reverse=True,
     )
+    positive_runs = _positive_slice_runs(yes_scores, threshold)
     return {
         "class": "yes" if predicted_tumor else "no",
         "class_id": 1 if predicted_tumor else 0,
@@ -113,7 +116,38 @@ def aggregate_mean_slice_predictions(
         "modality": modality,
         "axis": "axial",
         "evaluated_slices": len(predictions),
-        "positive_slices": sum(score >= 0.5 for score in yes_scores),
+        "positive_slices": positive_slice_count,
+        "probability_statistics": {
+            "mean_yes_probability": round(yes_probability, 6),
+            "stddev_yes_probability": round(pstdev(yes_scores), 6),
+            "min_yes_probability": round(min(yes_scores), 6),
+            "max_yes_probability": round(max(yes_scores), 6),
+            "median_yes_probability": round(float(median(yes_scores)), 6),
+            "positive_slice_ratio": round(
+                positive_slice_count / len(yes_scores),
+                6,
+            ),
+        },
+        "threshold_margin": round(yes_probability - threshold, 6),
+        "positive_slice_structure": {
+            "positive_runs": len(positive_runs),
+            "longest_positive_run_samples": max(positive_runs, default=0),
+            "positive_span_samples": (
+                max((index for index, score in enumerate(yes_scores) if score >= threshold), default=-1)
+                - min((index for index, score in enumerate(yes_scores) if score >= threshold), default=0)
+                + 1
+                if positive_runs
+                else 0
+            ),
+        },
+        "probability_histogram": _probability_histogram(yes_scores),
+        "slice_probability_series": [
+            {
+                "slice_index": int(slice_index),
+                "yes_probability": round(score, 6),
+            }
+            for slice_index, score in zip(slice_indices, yes_scores, strict=True)
+        ],
         "aggregation": "mean_probability",
         "evidence_slices": [
             {
@@ -130,6 +164,35 @@ def _sample_evenly(indices: np.ndarray, limit: int) -> np.ndarray:
         return indices
     positions = np.linspace(0, indices.size - 1, num=limit)
     return indices[np.rint(positions).astype(np.int64)]
+
+
+def _probability_histogram(yes_scores: Sequence[float]) -> list[dict[str, float | int]]:
+    edges = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
+    return [
+        {
+            "lower": lower,
+            "upper": upper,
+            "count": sum(
+                lower <= score < upper if upper < 1.0 else lower <= score <= upper
+                for score in yes_scores
+            ),
+        }
+        for lower, upper in zip(edges, edges[1:])
+    ]
+
+
+def _positive_slice_runs(yes_scores: Sequence[float], threshold: float) -> list[int]:
+    runs: list[int] = []
+    current_run = 0
+    for score in yes_scores:
+        if score >= threshold:
+            current_run += 1
+        elif current_run:
+            runs.append(current_run)
+            current_run = 0
+    if current_run:
+        runs.append(current_run)
+    return runs
 
 
 def _yes_probability(prediction: Mapping[str, Any]) -> float:

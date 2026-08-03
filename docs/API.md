@@ -359,6 +359,22 @@ GET /tasks/{task_id}
     "regions": {},
     "mask_file": "runs/segmentation/<run_id>/prediction.nii.gz"
   },
+  "supplementary_analysis": {
+    "status": "succeeded",
+    "provider": "deepseek",
+    "model": "deepseek-v4-flash",
+    "prompt_version": "deepseek-supplementary-v1",
+    "generated_at": "2026-08-03T12:00:00+08:00",
+    "duration_ms": 830.1,
+    "usage": {"prompt_tokens": 320, "completion_tokens": 180, "total_tokens": 500},
+    "content": {
+      "summary": "模型结果提示存在肿瘤相关异常区域，分类阳性概率和分割总体积见下方指标。",
+      "observations": ["..."],
+      "consistency": "inconclusive",
+      "uncertainties": [],
+      "follow_up": "建议结合原始多模态 MRI 和分割掩码进行针对性影像复核；如有既往检查，可进行同部位对比。"
+    }
+  },
   "result_files": {},
   "latest_runs": {},
   "timing": {
@@ -413,6 +429,23 @@ GET /tasks/{task_id}
 - `spatial`：原始 shape、spacing、orientation 等空间信息；
 - `labels`：输出标签定义，采用 BraTS 标签 `0/1/2/4`；
 - `regions`：各标签的体素数、体积与占比。
+
+`frontend_result.supplementary_analysis` 是可选的 DeepSeek 综合说明，不属于
+`completed_models`，也不会改变任务的 `status`。外部服务未启用时字段不存在；服务不可用时
+字段为 `{"status":"unavailable", "message":"..."}`，本地分类和分割仍可正常展示。
+成功结果中只保存已校验的结构化文字、模型标识、提示词版本、耗时和 token 用量。`summary` 优先提供
+直接的模型综合结论；仅在分类和分割冲突、置信度接近阈值或数值缺失时填写 `uncertainties`。前端按普通
+文本渲染，不把模型输出作为 HTML 注入。发送给外部服务的数据仅包括经白名单提取的分类概率/阈值/切片
+摘要、各区域定量数据和非背景总体素数/体积/占比，以及连通域数、最大连通域、包围盒尺度和归一化
+质心等形态摘要，不包含原始影像、文件名、任务 ID、用户资料或服务器路径。页面在结论末尾显示实际
+提供综合分析的服务及模型名称。
+
+为提升综合说明的可解释性，证据包还包括全部已采样切片的阳性概率曲线、概率分布及距阈值的差值、
+阳性切片连续性、输入体积覆盖度，以及 BraTS 的 WT、TC、ET 复合区域定量数据。这些都是本地推理
+派生的数值摘要，不含任何原始图像像素。
+
+该字段仅用于实验性辅助说明，不构成医学诊断、肿瘤分型、分期或治疗建议；分类、分割和综合说明均
+应由具备资质的医生结合原始影像与临床资料复核。
 
 输出 `prediction.nii.gz` 保持原始 shape 和 affine。本地 ViT 患者级分类按实验性
 模型返回；上述分类、分割及定量统计都不是肿瘤类型诊断、脑叶定位或临床结论。

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+import logging
 from pathlib import Path
 from time import perf_counter
 from collections.abc import Callable
@@ -19,7 +20,12 @@ from services.task_files import (
 )
 from services.task_results import (
     persist_model_result,
+    persist_supplementary_analysis,
 )
+from services.supplementary_analysis import run_supplementary_analysis
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -29,6 +35,9 @@ class TaskRunResult:
     classification_result: dict[str, Any]
     segmentation_result: dict[str, Any]
     total_inference_ms: float
+    supplementary_analysis: dict[str, Any] = field(
+        default_factory=lambda: {"status": "disabled"}
+    )
 
 
 class TaskCancellationRequested(RuntimeError):
@@ -114,11 +123,35 @@ def run_task_models(
     if should_cancel is not None and should_cancel():
         raise TaskCancellationRequested("任务已在 3D 分割完成后取消")
     if progress_callback is not None:
-        progress_callback("3D 分割完成", 100)
+        progress_callback("正在生成综合分析", 99)
+    supplementary_analysis = run_supplementary_analysis(
+        classification_result,
+        segmentation_result,
+    )
+    if supplementary_analysis["status"] != "disabled":
+        supplementary_analysis = persist_supplementary_analysis(
+            task_dir,
+            supplementary_analysis,
+        )
+    logger.info(
+        "supplementary analysis completed task_id=%s status=%s provider=%s model=%s prompt_version=%s duration_ms=%s usage=%s",
+        task_dir.name,
+        supplementary_analysis.get("status"),
+        supplementary_analysis.get("provider"),
+        supplementary_analysis.get("model"),
+        supplementary_analysis.get("prompt_version"),
+        supplementary_analysis.get("duration_ms"),
+        supplementary_analysis.get("usage"),
+    )
+    if should_cancel is not None and should_cancel():
+        raise TaskCancellationRequested("任务已在综合分析完成后取消")
+    if progress_callback is not None:
+        progress_callback("3D 分割与综合分析完成", 100)
     return TaskRunResult(
         classification_result=classification_result,
         segmentation_result=segmentation_result,
         total_inference_ms=_elapsed_ms(started_at),
+        supplementary_analysis=supplementary_analysis,
     )
 
 

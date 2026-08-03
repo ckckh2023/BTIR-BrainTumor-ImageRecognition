@@ -94,6 +94,32 @@ def validate_frontend_result(payload: dict[str, Any]) -> None:
                 + ", ".join(missing_mode_fields)
             )
 
+    supplementary_analysis = payload.get("supplementary_analysis")
+    if supplementary_analysis is not None:
+        _validate_supplementary_analysis(supplementary_analysis)
+
+
+def _validate_supplementary_analysis(value: Any) -> None:
+    if not isinstance(value, dict):
+        raise ValueError("supplementary_analysis 必须是对象")
+    status = value.get("status")
+    if status not in {"disabled", "unavailable", "succeeded"}:
+        raise ValueError("supplementary_analysis.status 无效")
+    if status != "succeeded":
+        return
+    for key in ("provider", "model", "prompt_version", "generated_at"):
+        _require_nonempty_string(value, key, "supplementary_analysis")
+    content = value.get("content")
+    if not isinstance(content, dict):
+        raise ValueError("supplementary_analysis.content 必须是对象")
+    for key in ("summary", "observations", "consistency", "uncertainties", "follow_up"):
+        if key not in content:
+            raise ValueError(f"supplementary_analysis.content 缺少字段：{key}")
+    if content["consistency"] not in {"consistent", "inconclusive", "conflicting"}:
+        raise ValueError("supplementary_analysis.content.consistency 无效")
+    if not isinstance(content["observations"], list) or not isinstance(content["uncertainties"], list):
+        raise ValueError("supplementary_analysis.content 列表字段无效")
+
 
 def _require_nonempty_string(
     payload: dict[str, Any],

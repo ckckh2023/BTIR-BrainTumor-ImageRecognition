@@ -23,6 +23,7 @@ from typing import Any
 
 import nibabel as nib
 import numpy as np
+from scipy import ndimage
 import torch
 from monai.inferers import sliding_window_inference
 
@@ -55,6 +56,11 @@ BRATS_CLASS_NAMES = {
     1: "NCR/NET",
     2: "ED",
     4: "ET",
+}
+BRATS_COMPOSITE_REGIONS = {
+    "WT": (1, 2, 4),
+    "TC": (1, 4),
+    "ET": (4,),
 }
 
 
@@ -511,6 +517,7 @@ def _region_statistics(
 ) -> dict[str, dict[str, float | int | str]]:
     voxel_volume_mm3 = abs(float(np.linalg.det(reference.affine[:3, :3])))
     total_voxels = int(segmentation.size)
+    non_background_voxels = int(np.count_nonzero(segmentation))
     regions: dict[str, dict[str, float | int | str]] = {}
 
     for label, name in BRATS_CLASS_NAMES.items():
@@ -520,8 +527,87 @@ def _region_statistics(
             "voxels": count,
             "volume_mm3": round(count * voxel_volume_mm3, 3),
             "ratio": round(count / total_voxels, 8),
+            "share_of_non_background": round(
+                count / non_background_voxels,
+                8,
+            ) if non_background_voxels else 0.0,
         }
     return regions
+
+
+def _composite_region_statistics(
+    segmentation: np.ndarray,
+    reference: nib.spatialimages.SpatialImage,
+) -> dict[str, dict[str, float | int | list[int]]]:
+    voxel_volume_mm3 = abs(float(np.linalg.det(reference.affine[:3, :3])))
+    total_voxels = int(segmentation.size)
+    non_background_voxels = int(np.count_nonzero(segmentation))
+    composites: dict[str, dict[str, float | int | list[int]]] = {}
+    for name, labels in BRATS_COMPOSITE_REGIONS.items():
+        count = int(np.count_nonzero(np.isin(segmentation, labels)))
+        composites[name] = {
+            "labels": list(labels),
+            "voxels": count,
+            "volume_mm3": round(count * voxel_volume_mm3, 3),
+            "ratio": round(count / total_voxels, 8),
+            "share_of_non_background": round(
+                count / non_background_voxels,
+                8,
+            ) if non_background_voxels else 0.0,
+        }
+    return composites
+
+
+def _morphology_statistics(
+    segmentation: np.ndarray,
+    reference: nib.spatialimages.SpatialImage,
+) -> dict[str, int | float | list[int] | list[float]]:
+    """Summarize non-background connected components without exposing image data."""
+    foreground = segmentation != 0
+    foreground_voxels = int(np.count_nonzero(foreground))
+    empty = {
+        "connected_components": 0,
+        "largest_component_voxels": 0,
+        "largest_component_volume_mm3": 0.0,
+        "largest_component_ratio": 0.0,
+        "bounding_box_size_voxels": [0, 0, 0],
+        "bounding_box_size_mm": [0.0, 0.0, 0.0],
+        "bounding_box_fill_ratio": 0.0,
+        "centroid_normalized": [0.0, 0.0, 0.0],
+    }
+    if foreground_voxels == 0:
+        return empty
+
+    components, component_count = ndimage.label(foreground)
+    component_sizes = np.bincount(components.ravel())
+    component_sizes[0] = 0
+    largest_component = int(component_sizes.argmax())
+    largest_voxels = int(component_sizes[largest_component])
+    bounding_boxes = ndimage.find_objects(components)
+    bounding_box = bounding_boxes[largest_component - 1]
+    if bounding_box is None:
+        return empty
+    bbox_size = [int(axis_slice.stop - axis_slice.start) for axis_slice in bounding_box]
+    spacing = reference.header.get_zooms()[:3]
+    voxel_volume_mm3 = abs(float(np.linalg.det(reference.affine[:3, :3])))
+    centroid = ndimage.center_of_mass(foreground, components, largest_component)
+    normalized_centroid = [
+        round(float(value) / max(1, segmentation.shape[index] - 1), 6)
+        for index, value in enumerate(centroid)
+    ]
+    return {
+        "connected_components": int(component_count),
+        "largest_component_voxels": largest_voxels,
+        "largest_component_volume_mm3": round(largest_voxels * voxel_volume_mm3, 3),
+        "largest_component_ratio": round(largest_voxels / foreground_voxels, 6),
+        "bounding_box_size_voxels": bbox_size,
+        "bounding_box_size_mm": [
+            round(size * float(axis_spacing), 3)
+            for size, axis_spacing in zip(bbox_size, spacing, strict=True)
+        ],
+        "bounding_box_fill_ratio": round(largest_voxels / int(np.prod(bbox_size)), 6),
+        "centroid_normalized": normalized_centroid,
+    }
 
 
 def _save_segmentation(
@@ -613,6 +699,8 @@ def predict(
     started_at = time.perf_counter()
     segmentation = _to_brats_labels(internal_labels)
     regions = _region_statistics(segmentation, reference)
+    composites = _composite_region_statistics(segmentation, reference)
+    morphology = _morphology_statistics(segmentation, reference)
     postprocess_ms = (time.perf_counter() - started_at) * 1000
 
     result: dict[str, Any] = {
@@ -643,6 +731,8 @@ def predict(
             },
         },
         "regions": regions,
+        "composites": composites,
+        "morphology": morphology,
     }
 
     save_ms = 0.0

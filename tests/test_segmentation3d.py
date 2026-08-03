@@ -184,6 +184,31 @@ class Segmentation3DTests(unittest.TestCase):
             np.asarray([0, 1, 2, 4], dtype=np.uint8),
         )
 
+    def test_morphology_statistics_summarizes_components_without_image_data(self) -> None:
+        segmentation = np.zeros((8, 8, 8), dtype=np.uint8)
+        segmentation[1:3, 1:3, 1:3] = 1
+        segmentation[5, 5, 5] = 4
+
+        reference = nib.Nifti1Image(
+            np.zeros(segmentation.shape, dtype=np.float32),
+            np.diag([1.0, 2.0, 3.0, 1.0]),
+        )
+        result = inference._morphology_statistics(segmentation, reference)
+
+        self.assertEqual(result["connected_components"], 2)
+        self.assertEqual(result["largest_component_voxels"], 8)
+        self.assertEqual(result["largest_component_volume_mm3"], 48.0)
+        self.assertEqual(result["largest_component_ratio"], 0.888889)
+        self.assertEqual(result["bounding_box_size_voxels"], [2, 2, 2])
+        self.assertEqual(result["bounding_box_size_mm"], [2.0, 4.0, 6.0])
+        self.assertEqual(result["bounding_box_fill_ratio"], 1.0)
+        self.assertEqual(result["centroid_normalized"], [0.214286, 0.214286, 0.214286])
+
+        composites = inference._composite_region_statistics(segmentation, reference)
+        self.assertEqual(composites["WT"]["voxels"], 9)
+        self.assertEqual(composites["TC"]["volume_mm3"], 54.0)
+        self.assertEqual(composites["ET"]["share_of_non_background"], 0.11111111)
+
     def test_evaluation_direction_is_independent_of_random_generator(self) -> None:
         block = THPAEncFR3(in_channels=8, expr=2)
         block.inference_direction = 2

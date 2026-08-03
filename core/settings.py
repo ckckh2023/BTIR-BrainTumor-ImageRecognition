@@ -91,6 +91,13 @@ def _get_nonnegative_float(name: str, default: float) -> float:
     return value
 
 
+def _get_bounded_float(name: str, default: float, *, minimum: float, maximum: float) -> float:
+    value = float(os.getenv(name, str(default)))
+    if not minimum <= value <= maximum:
+        raise ValueError(f"{name} 必须位于 [{minimum}, {maximum}]")
+    return value
+
+
 def _get_overlap(name: str, default: float) -> float:
     value = float(os.getenv(name, str(default)))
     if not 0 <= value < 1:
@@ -169,6 +176,14 @@ class Settings:
     auth_registration_window_seconds: int
     max_tasks_per_user: int
     max_active_tasks_per_user: int
+    supplementary_analysis_enabled: bool
+    deepseek_api_key: str
+    deepseek_base_url: str
+    deepseek_model: str
+    supplementary_analysis_timeout_seconds: int
+    supplementary_analysis_max_retries: int
+    supplementary_analysis_max_tokens: int
+    supplementary_analysis_temperature: float
 
 def _build_settings() -> Settings:
     '''构建 Settings 实例，读取 .env 文件和环境变量'''
@@ -300,6 +315,37 @@ def _build_settings() -> Settings:
         max_active_tasks_per_user=_get_positive_int(
             "BTIR_MAX_ACTIVE_TASKS_PER_USER",
             2,
+        ),
+        supplementary_analysis_enabled=_get_bool(
+            "BTIR_SUPPLEMENTARY_ANALYSIS_ENABLED",
+            False,
+        ),
+        deepseek_api_key=os.getenv("BTIR_DEEPSEEK_API_KEY", "").strip(),
+        deepseek_base_url=os.getenv(
+            "BTIR_DEEPSEEK_BASE_URL",
+            "https://api.deepseek.com",
+        ).strip().rstrip("/"),
+        deepseek_model=os.getenv(
+            "BTIR_DEEPSEEK_MODEL",
+            "deepseek-v4-flash",
+        ).strip(),
+        supplementary_analysis_timeout_seconds=_get_positive_int(
+            "BTIR_SUPPLEMENTARY_ANALYSIS_TIMEOUT_SECONDS",
+            20,
+        ),
+        supplementary_analysis_max_retries=_get_nonnegative_int(
+            "BTIR_SUPPLEMENTARY_ANALYSIS_MAX_RETRIES",
+            1,
+        ),
+        supplementary_analysis_max_tokens=_get_positive_int(
+            "BTIR_SUPPLEMENTARY_ANALYSIS_MAX_TOKENS",
+            700,
+        ),
+        supplementary_analysis_temperature=_get_bounded_float(
+            "BTIR_SUPPLEMENTARY_ANALYSIS_TEMPERATURE",
+            0.2,
+            minimum=0.0,
+            maximum=2.0,
         ),
     )
 
