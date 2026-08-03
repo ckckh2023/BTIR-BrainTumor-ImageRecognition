@@ -15,6 +15,7 @@ from core.task_definitions import ACTIVE_ASYNC_TASK_STATUSES, TaskStatus
 from core.task_records import TaskRecord
 from repositories.task_repository_contracts import (
     TaskNotFoundError,
+    TaskQuotaExceededError,
     TaskRepositoryUnavailableError,
 )
 
@@ -207,6 +208,39 @@ def _migration_011_add_user_password_change_flag(connection: sqlite3.Connection)
         )
 
 
+def _migration_012_add_normalized_username(connection: sqlite3.Connection) -> None:
+    columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(users)").fetchall()
+    }
+    if "normalized_username" not in columns:
+        connection.execute("ALTER TABLE users ADD COLUMN normalized_username TEXT")
+    connection.execute(
+        "UPDATE users SET normalized_username = LOWER(username) "
+        "WHERE normalized_username IS NULL"
+    )
+    duplicate = connection.execute(
+        """
+        SELECT normalized_username, GROUP_CONCAT(username, ', ') AS usernames
+        FROM users
+        GROUP BY normalized_username
+        HAVING COUNT(*) > 1
+        LIMIT 1
+        """
+    ).fetchone()
+    if duplicate is not None:
+        raise TaskRepositoryUnavailableError(
+            "SQLite 用户数据库存在仅大小写不同的重复用户名："
+            f"{duplicate['usernames']}；请先人工合并账号"
+        )
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_users_normalized_username
+        ON users (normalized_username)
+        """
+    )
+
+
 # 创建迁移清单
 SCHEMA_MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (1, "create_tasks_table", _migration_001_create_tasks_table),
@@ -220,6 +254,7 @@ SCHEMA_MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (9, "add_user_token_version", _migration_009_add_user_token_version),
     (10, "add_user_role", _migration_010_add_user_role),
     (11, "add_user_password_change_flag", _migration_011_add_user_password_change_flag),
+    (12, "add_normalized_username", _migration_012_add_normalized_username),
 )
 CURRENT_SCHEMA_VERSION = SCHEMA_MIGRATIONS[-1][0]
 
@@ -312,12 +347,25 @@ class SqliteTaskRepository:
         except (ValidationError, ValueError) as exc:
             raise ValueError("任务元数据格式无效") from exc
 
-    def save(self, task_dir: Path, record: TaskRecord, user_id: str | None = None) -> Path:
+    def save(
+        self,
+        task_dir: Path,
+        record: TaskRecord,
+        user_id: str | None = None,
+        *,
+        max_tasks_per_user: int | None = None,
+    ) -> Path:
         if record.task_id != task_dir.name:
             raise ValueError("任务 ID 与任务目录不一致")
+        if max_tasks_per_user is not None and user_id is None:
+            raise ValueError("按用户保存任务时缺少用户标识")
 
         record_json = record.model_dump_json(exclude_none=True)
         with self._connect() as connection:
+            if max_tasks_per_user is not None:
+                # SQLite 的 IMMEDIATE 事务会在统计与插入之间保留写锁，避免
+                # 两个并发上传同时通过配额检查。
+                connection.execute("BEGIN IMMEDIATE")
             existing = connection.execute(
                 "SELECT user_id FROM tasks WHERE task_id = ?",
                 (record.task_id,),
@@ -325,6 +373,15 @@ class SqliteTaskRepository:
             effective_user_id = user_id
             if existing is not None and existing["user_id"] is not None:
                 effective_user_id = existing["user_id"]
+            if existing is None and max_tasks_per_user is not None:
+                total = connection.execute(
+                    "SELECT COUNT(*) AS total FROM tasks WHERE user_id = ?",
+                    (user_id,),
+                ).fetchone()["total"]
+                if int(total) >= max_tasks_per_user:
+                    raise TaskQuotaExceededError(
+                        "当前账号保存的任务数已达到上限，请先归档并等待管理员清理"
+                    )
             connection.execute(
                 """
                 INSERT INTO tasks (

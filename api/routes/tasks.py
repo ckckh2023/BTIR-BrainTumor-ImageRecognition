@@ -33,7 +33,10 @@ from core.settings import SETTINGS
 from core.task_definitions import ModelName, TaskArtifact, TaskStatus
 from core.user_records import UserRecord
 from repositories.task_repository import task_repository
-from repositories.task_repository_contracts import TaskNotFoundError
+from repositories.task_repository_contracts import (
+    TaskNotFoundError,
+    TaskQuotaExceededError,
+)
 from services.archive_service import archive_task, restore_task
 from services.task_files import (
     create_task_dir,
@@ -46,6 +49,7 @@ from services.task_queue import (
     get_task_job_progress,
     reconcile_task_job,
 )
+from services.task_lock import user_quota_lock
 
 router = APIRouter(prefix="/tasks", tags=["任务"])
 
@@ -233,7 +237,15 @@ def create_3d_task_from_upload(
             },
             name=name,
             user_id=current_user.user_id,
+            max_tasks_per_user=SETTINGS.max_tasks_per_user,
         )
+    except TaskQuotaExceededError as exc:
+        if task_dir is not None:
+            shutil.rmtree(task_dir, ignore_errors=True)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+        ) from exc
     except ValueError as exc:
         if task_dir is not None:
             shutil.rmtree(task_dir, ignore_errors=True)
@@ -483,11 +495,12 @@ def enqueue_task(
     '''将完整推理提交到 RQ 队列，并立即返回作业信息'''
     verify_task_owner(task_id, current_user)
     task_dir = require_task_dir(task_id)
-    enforce_active_task_limit(task_id, current_user)
-    try:
-        job, reused = enqueue_task_run(task_dir)
-    except ValueError as exc:
-        raise bad_request_http_error(exc) from exc
+    with user_quota_lock(current_user.user_id):
+        enforce_active_task_limit(task_id, current_user)
+        try:
+            job, reused = enqueue_task_run(task_dir)
+        except ValueError as exc:
+            raise bad_request_http_error(exc) from exc
 
     return TaskEnqueuedResponse(
         task_id=task_id,
@@ -531,14 +544,15 @@ def retry_failed_task(
     '''手动重新提交一项最终失败的推理任务'''
     verify_task_owner(task_id, current_user)
     task_dir = require_task_dir(task_id)
-    enforce_active_task_limit(task_id, current_user)
-    try:
-        job, reused = enqueue_task_run(
-            task_dir,
-            retry_failed_only=True,
-        )
-    except ValueError as exc:
-        raise bad_request_http_error(exc) from exc
+    with user_quota_lock(current_user.user_id):
+        enforce_active_task_limit(task_id, current_user)
+        try:
+            job, reused = enqueue_task_run(
+                task_dir,
+                retry_failed_only=True,
+            )
+        except ValueError as exc:
+            raise bad_request_http_error(exc) from exc
 
     return TaskEnqueuedResponse(
         task_id=task_id,

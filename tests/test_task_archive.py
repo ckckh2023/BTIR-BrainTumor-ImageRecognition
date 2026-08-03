@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -15,6 +16,7 @@ from core.task_definitions import TaskStatus
 from core.task_records import StoredTaskInput, TaskRecord
 from repositories.sqlite_task_repository import SqliteTaskRepository
 from repositories.task_repository_contracts import TaskNotFoundError
+from services.audit_service import append_audit_event, list_audit_events
 from services.archive_service import (
     archive_expired_tasks,
     archive_task,
@@ -266,6 +268,32 @@ class TaskArchiveTests(unittest.TestCase):
             )
 
         self.assertTrue(task_dir.is_dir())
+
+    def test_concurrent_audit_events_remain_valid_json_lines(self) -> None:
+        def write_event(index: int) -> None:
+            append_audit_event(
+                operation="concurrent_test",
+                timestamp=self.now + timedelta(microseconds=index),
+                actor_user_id=f"user-{index}",
+                outcome="success",
+                source_ip="127.0.0.1",
+                audit_dir=self.archive_dir,
+            )
+
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            list(executor.map(write_event, range(50)))
+
+        events, total, invalid_lines = list_audit_events(
+            audit_dir=self.archive_dir,
+            limit=100,
+            offset=0,
+            operation="concurrent_test",
+        )
+        self.assertEqual(total, 50)
+        self.assertEqual(len(events), 50)
+        self.assertEqual(invalid_lines, 0)
+        self.assertTrue(all(event["outcome"] == "success" for event in events))
+        self.assertTrue(all(event["source_ip"] == "127.0.0.1" for event in events))
 
     def test_purge_removes_only_expired_archived_task(self) -> None:
         task_id = "task-purge-apply"

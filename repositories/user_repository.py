@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Iterator
 
-from core.user_records import UserRecord, UserRole
+from core.user_records import UserRecord, UserRole, normalize_username
 from repositories.sqlite_task_repository import SqliteTaskRepository
 from repositories.task_repository_contracts import TaskRepositoryUnavailableError
 
@@ -64,19 +64,21 @@ class SqliteUserRepository:
             created_at=now,
             updated_at=now,
         )
+        normalized_username = normalize_username(record.username)
         try:
             with self._connect() as connection:
                 connection.execute(
                     """
                     INSERT INTO users (
-                        user_id, username, hashed_password, role, is_active,
+                        user_id, username, normalized_username, hashed_password, role, is_active,
                         must_change_password, token_version, created_at, updated_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         record.user_id,
                         record.username,
+                        normalized_username,
                         record.hashed_password,
                         record.role.value,
                         1 if record.is_active else 0,
@@ -87,7 +89,10 @@ class SqliteUserRepository:
                     ),
                 )
         except sqlite3.IntegrityError as exc:
-            if "users.username" in str(exc):
+            if (
+                "users.username" in str(exc)
+                or "users.normalized_username" in str(exc)
+            ):
                 raise UsernameAlreadyExistsError(
                     f"用户名 '{username}' 已被注册"
                 ) from exc
@@ -97,8 +102,8 @@ class SqliteUserRepository:
     def get_by_username(self, username: str) -> UserRecord | None:
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT * FROM users WHERE username = ?",
-                (username,),
+                "SELECT * FROM users WHERE normalized_username = ?",
+                (normalize_username(username),),
             ).fetchone()
         if row is None:
             return None
@@ -185,11 +190,12 @@ class SqliteUserRepository:
         }
 
     def set_role(self, username: str, role: UserRole) -> UserRecord | None:
+        normalized_username = normalize_username(username)
         now = datetime.now(timezone.utc)
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT * FROM users WHERE username = ?",
-                (username,),
+                "SELECT * FROM users WHERE normalized_username = ?",
+                (normalized_username,),
             ).fetchone()
             if row is None:
                 return None
@@ -199,18 +205,19 @@ class SqliteUserRepository:
                 """
                 UPDATE users
                 SET role = ?, token_version = token_version + 1, updated_at = ?
-                WHERE username = ?
+                WHERE normalized_username = ?
                 """,
-                (role.value, now.isoformat(), username),
+                (role.value, now.isoformat(), normalized_username),
             )
         return self.get_by_username(username)
 
     def set_active(self, username: str, is_active: bool) -> UserRecord | None:
+        normalized_username = normalize_username(username)
         now = datetime.now(timezone.utc)
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT * FROM users WHERE username = ?",
-                (username,),
+                "SELECT * FROM users WHERE normalized_username = ?",
+                (normalized_username,),
             ).fetchone()
             if row is None:
                 return None
@@ -222,9 +229,14 @@ class SqliteUserRepository:
                 """
                 UPDATE users
                 SET is_active = ?, token_version = ?, updated_at = ?
-                WHERE username = ?
+                WHERE normalized_username = ?
                 """,
-                (1 if is_active else 0, token_version, now.isoformat(), username),
+                (
+                    1 if is_active else 0,
+                    token_version,
+                    now.isoformat(),
+                    normalized_username,
+                ),
             )
         return self.get_by_username(username)
 
@@ -235,6 +247,7 @@ class SqliteUserRepository:
         *,
         must_change_password: bool = False,
     ) -> UserRecord | None:
+        normalized_username = normalize_username(username)
         now = datetime.now(timezone.utc)
         with self._connect() as connection:
             cursor = connection.execute(
@@ -242,13 +255,13 @@ class SqliteUserRepository:
                 UPDATE users
                 SET hashed_password = ?, must_change_password = ?,
                     token_version = token_version + 1, updated_at = ?
-                WHERE username = ?
+                WHERE normalized_username = ?
                 """,
                 (
                     hashed_password,
                     1 if must_change_password else 0,
                     now.isoformat(),
-                    username,
+                    normalized_username,
                 ),
             )
             if cursor.rowcount == 0:

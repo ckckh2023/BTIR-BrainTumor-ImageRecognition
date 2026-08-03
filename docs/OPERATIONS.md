@@ -62,6 +62,7 @@ Redis 同时用于：
 
 - RQ 异步任务队列
 - 任务结果写回锁
+- 同一用户活动任务配额的并发锁
 - Worker 注册和队列状态
 
 所有任务进入 `BTIR_TASK_QUEUE_NAME` 指定的 3D 推理队列。同一任务的去重、
@@ -260,7 +261,8 @@ POST /admin/users/{user_id}/tasks/{task_id}/restore
 永久清除后文件和 SQLite 记录都不存在，无法恢复。
 
 管理员可使用 `GET /admin/audit` 按操作、管理员、目标用户、任务和时间范围筛选
-`audit.jsonl`，接口只返回结构化审计字段，不返回密码或任务文件内容。
+`audit.jsonl`，接口只返回结构化审计字段，不返回密码或任务文件内容。认证事件还会记录
+操作结果和来源 IP。审计追加使用跨进程文件锁，锁文件为同目录下的 `audit.lock`。
 
 ### 自动永久清除建议
 
@@ -314,7 +316,7 @@ python Main.py clear
 - `BTIR_TASK_ARCHIVE_DIR` 下的归档任务、待清除目录和归档审计；
 - SQLite 中的全部任务记录；
 - `BTIR_TASK_QUEUE_NAME` 对应的 RQ 队列、作业注册表、作业结果及
-  `btir:task:*:write` 任务锁；
+  `btir:task:*:write` 任务锁、`btir:user:*:quota` 用户配额锁；
 - Python 与工具缓存。
 
 清理后业务数据与首次启动前一致，需要重新注册账号；数据库表结构、`.env`、

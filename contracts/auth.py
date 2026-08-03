@@ -111,6 +111,8 @@ class AdminAuditEventResponse(BaseModel):
     actor_user_id: str | None = None
     target_user_id: str | None = None
     task_id: str | None = None
+    outcome: str | None = None
+    source_ip: str | None = None
 
 
 class AdminAuditListResponse(BaseModel):

@@ -94,7 +94,8 @@ Content-Type: application/json
 Authorization: Bearer <access_token>
 ```
 
-用户名长度为 3～32，只允许字母、数字、下划线和连字符。注册是否开放由
+用户名长度为 3～32，只允许字母、数字、下划线和连字符。账号匹配不区分字母大小写，
+但响应会保留注册时的显示形式，因此 `Alice` 和 `alice` 不能注册为两个账号。注册是否开放由
 `BTIR_REGISTRATION_ENABLED` 控制。任务列表只返回当前用户的数据；访问其他
 用户、无归属或不存在的任务统一返回 `404`，避免泄露任务是否存在。
 
@@ -190,7 +191,10 @@ GET /admin/audit?operation=archive_api&target_user_id=<user_id>&limit=50
 Authorization: Bearer <admin_access_token>
 ```
 
-结果按时间倒序返回。无法解析的历史损坏行不会阻断查询，会计入 `invalid_lines`。
+结果按时间倒序返回。审计项除操作者、目标用户和任务外，还可能包含 `outcome` 与
+`source_ip`。当前记录注册成功/冲突、登录成功/失败、密码修改、管理员密码重置、
+用户终端管理以及任务归档/恢复等安全事件；不会写入密码、Token 或密码哈希。
+无法解析的历史损坏行不会阻断查询，会计入 `invalid_lines`。
 
 ## 上传并创建 3D 任务
 

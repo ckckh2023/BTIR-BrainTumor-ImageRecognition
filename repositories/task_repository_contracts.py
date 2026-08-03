@@ -18,6 +18,10 @@ class TaskRepositoryUnavailableError(RuntimeError):
     '''任务元数据存储不可用'''
 
 
+class TaskQuotaExceededError(RuntimeError):
+    '''用户任务数量已达到配置上限'''
+
+
 class TaskRepository(Protocol):
     '''任务元数据存储的最小契约'''
 
@@ -27,7 +31,14 @@ class TaskRepository(Protocol):
     def load(self, task_dir: Path) -> TaskRecord:
         '''读取一条任务元数据'''
 
-    def save(self, task_dir: Path, record: TaskRecord, user_id: str | None = None) -> Path:
+    def save(
+        self,
+        task_dir: Path,
+        record: TaskRecord,
+        user_id: str | None = None,
+        *,
+        max_tasks_per_user: int | None = None,
+    ) -> Path:
         '''保存一条任务元数据'''
 
     def count(self, user_id: str | None = None) -> int:
