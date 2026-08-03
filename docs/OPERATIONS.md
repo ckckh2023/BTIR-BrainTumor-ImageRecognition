@@ -347,15 +347,18 @@ python -m unittest discover -s tests -v
 - `/ops/queue` 能看到活动 Worker。
 - 上传、异步运行、轮询和结果读取流程完成一次。
 
-## 3D 分割评估
+## 3D 模型评估
 
 ```powershell
 python Main.py evaluate-3d <BraTS数据集目录>
 ```
 
-该命令按病例计算 WT、TC、ET Dice，并记录各病例耗时与 CUDA 峰值显存。
-默认报告写入 `output/evaluations/segmentation3d-report.json`。比较不同设备或
-模型版本时，应使用相同的病例集合、模型权重和运行配置。
+该命令按病例计算 WT、TC、ET Dice；默认还运行病例级分类，输出混淆矩阵、敏感度、
+特异度、F1、Brier 分数和概率分桶，并记录各病例耗时与 CUDA 峰值显存。报告会同时
+列出真值阳性和阴性病例数，BraTS 全阳性子集不应被当作完整分类准确率。默认报告写入
+`output/evaluations/segmentation3d-report.json`。仅需分割基线时使用
+`--skip-classification`。比较不同设备或模型版本时，应使用相同的病例集合、模型权重和
+运行配置。
 
 ## 常见现象
 

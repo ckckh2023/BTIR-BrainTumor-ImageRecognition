@@ -398,6 +398,16 @@ class TaskStorageTests(unittest.TestCase):
         parsed = parser.parse_args(["run", "--task-id", "task-001"])
         self.assertEqual(parsed.task_id, "task-001")
 
+    def test_evaluation_command_supports_skipping_the_classifier(self) -> None:
+        parser = _build_parser()
+        parsed = parser.parse_args([
+            "evaluate-3d",
+            "dataset",
+            "--skip-classification",
+        ])
+
+        self.assertTrue(parsed.skip_classification)
+
     def test_unavailable_database_raises_storage_error(self) -> None:
         blocked_parent = self.project_root / "not-a-directory"
         blocked_parent.write_text("blocked", encoding="utf-8")

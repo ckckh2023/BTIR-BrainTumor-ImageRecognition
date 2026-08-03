@@ -139,6 +139,7 @@ class Settings:
     segmenter_3d_script: Path
     segmenter_3d_model: Path
     segmenter_3d_overlap: float
+    segmenter_3d_fast_inference: bool
     volume_classifier_modality: str
     vit_classifier_model_dir: Path
     vit_classifier_max_slices: int
@@ -207,6 +208,10 @@ def _build_settings() -> Settings:
             str(segmenter_3d_dir / "model" / "model_epoch_297.pth"),
         ),
         segmenter_3d_overlap=_get_overlap("BTIR_3D_SEGMENTER_OVERLAP", 0.5),
+        segmenter_3d_fast_inference=_get_bool(
+            "BTIR_3D_FAST_INFERENCE",
+            True,
+        ),
         volume_classifier_modality=_get_volume_classifier_modality(),
         vit_classifier_model_dir=_get_path(
             "BTIR_VIT_CLASSIFIER_MODEL_DIR",

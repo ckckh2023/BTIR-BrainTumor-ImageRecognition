@@ -110,6 +110,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "evaluate-3d":
             from services.segmentation_evaluation import (
                 evaluate_brats_segmentation,
+                run_project_classifier,
             )
 
             progress = ConsoleProgress()
@@ -117,6 +118,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.dataset_dir,
                 predictions_dir=args.predictions_dir,
                 limit=args.limit,
+                classifier=None if args.skip_classification else run_project_classifier,
                 progress_callback=progress.update,
             )
             report_path = write_json(args.report.resolve(), result)
@@ -277,7 +279,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     evaluate_3d = commands.add_parser(
         "evaluate-3d",
-        help="用带 seg 标签的 BraTS 数据集评测 3D 分割 Dice、耗时和显存",
+        help="用带 seg 标签的 BraTS 数据集评测分割 Dice、分类检测指标、耗时和显存",
     )
     evaluate_3d.add_argument(
         "dataset_dir",
@@ -301,6 +303,11 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=range(1, 10001),
         metavar="1-10000",
         help="可选；仅评测排序后的前 N 个病例",
+    )
+    evaluate_3d.add_argument(
+        "--skip-classification",
+        action="store_true",
+        help="仅运行分割 Dice 评测，不运行本地分类器",
     )
     evaluate_3d.add_argument(
         "--json",
@@ -348,7 +355,7 @@ def _print_3d_evaluation_report(
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:
         print(
-            "3D 分割评测："
+            "3D 模型评测："
             f"成功 {report['successful_subjects']} 例，"
             f"失败 {report['failed_subjects']} 例"
         )
@@ -367,6 +374,20 @@ def _print_3d_evaluation_report(
         memory = report["summary"]["peak_gpu_memory_mb"]
         if memory["max"] is not None:
             print(f"  GPU 峰值显存：{memory['max']:.1f} MiB")
+        classification = report["summary"].get("classification")
+        if classification is not None:
+            metrics = classification["metrics"]
+            accuracy = metrics["accuracy"]
+            accuracy_text = "不可评估" if accuracy is None else f"{accuracy:.4f}"
+            print(
+                f"  分类准确率：{accuracy_text}"
+                f"（阳性 {classification['ground_truth_positive_cases']} 例，"
+                f"阴性 {classification['ground_truth_negative_cases']} 例）"
+            )
+            sensitivity = metrics["sensitivity"]
+            brier = metrics["brier_score"]
+            sensitivity_text = "不可评估" if sensitivity is None else f"{sensitivity:.4f}"
+            print(f"  分类敏感度：{sensitivity_text}；Brier：{brier:.4f}")
     print(f"完整报告：{report_path}")
 
 
