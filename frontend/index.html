@@ -1357,7 +1357,6 @@
                     analysisProgress: null,
                     statusText: '等待识别...',
                     taskId: '',
-                    jsonPath: '',
                     jsonData: '',
                     volumeModalities: [
                         { key: 'flair', label: 'FLAIR' },
@@ -1805,7 +1804,6 @@
                     }
                     this.statusText = '<span class="loading-spinner"></span>创建任务中...'
                     this.taskId = ''
-                    this.jsonPath = ''
                     this.jsonData = ''
                     this.fileList = []
                     this.downloadFiles = []
@@ -2144,7 +2142,6 @@
 
                             const resultData = await resultResponse.json()
                             if (resultData.status === 'succeeded') {
-                                this.jsonPath = `output/${taskId}/frontend_result.json`
                                 this.presentTaskResult(resultData)
                                 return
                             }

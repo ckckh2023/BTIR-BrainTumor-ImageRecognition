@@ -59,6 +59,7 @@ class FrontendContractTests(unittest.TestCase):
         self.assertNotIn("addDownload('classification.json'", self.html)
         self.assertNotIn("addDownload('segmentation.json'", self.html)
         self.assertNotIn("addDownload('frontend_result.json'", self.html)
+        self.assertNotIn("output/${taskId}/frontend_result.json", self.html)
 
     def test_running_analysis_exposes_cancel_button(self) -> None:
         self.assertIn("cancelCurrentAnalysis", self.html)
