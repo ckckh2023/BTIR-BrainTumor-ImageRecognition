@@ -111,6 +111,12 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("triggerVolumeArchivePicker", self.html)
         self.assertIn("无法读取拖入内容", self.html)
 
+    def test_selected_folder_and_archive_can_be_reviewed_and_cleared(self) -> None:
+        self.assertIn("已选择文件夹", self.html)
+        self.assertIn("selectedVolumeFiles", self.html)
+        self.assertIn("clearVolumeUpload", self.html)
+        self.assertIn("删除已选压缩包", self.html)
+
     def test_upload_controls_collapse_during_and_after_an_active_task(self) -> None:
         self.assertIn('v-if="!loading && !taskId"', self.html)
         self.assertIn('v-else-if="taskId && !loading"', self.html)
