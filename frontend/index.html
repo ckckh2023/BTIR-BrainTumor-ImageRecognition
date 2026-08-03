@@ -114,6 +114,98 @@
             gap: 8px;
         }
 
+        .volume-drop-zone {
+            display: grid;
+            place-items: center;
+            min-height: 108px;
+            margin-bottom: 12px;
+            padding: 16px;
+            color: #47658e;
+            background: #f8fbff;
+            border: 2px dashed #a9c4e3;
+            border-radius: 9px;
+            cursor: pointer;
+            text-align: center;
+        }
+
+        .volume-drop-zone.dragging {
+            color: #1e3c72;
+            background: #edf5ff;
+            border-color: #2a5298;
+        }
+
+        .volume-drop-title {
+            color: #1e3c72;
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .volume-drop-hint {
+            margin-top: 5px;
+            color: #64748b;
+            font-size: 12px;
+        }
+
+        .volume-archive-name {
+            margin: 0 0 10px;
+            padding: 8px 10px;
+            overflow: hidden;
+            color: #1e3c72;
+            background: #eef6ff;
+            border: 1px solid #bfdbfe;
+            border-radius: 7px;
+            font-size: 12px;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .volume-correction-panel {
+            margin-top: 12px;
+            padding: 12px;
+            background: #fffaf0;
+            border: 1px solid #fbd38d;
+            border-radius: 8px;
+            max-height: 182px;
+            overflow-y: auto;
+        }
+
+        .volume-correction-title {
+            color: #9c4221;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .volume-correction-tip {
+            margin: 4px 0 10px;
+            color: #7c5a32;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .volume-file-detail {
+            min-width: 0;
+        }
+
+        .volume-file-reason {
+            color: #b45309;
+            font-size: 11px;
+        }
+
+        .volume-file-confirmed {
+            color: #15803d;
+            font-size: 11px;
+        }
+
+        .volume-candidate-picker {
+            width: 100%;
+            padding: 7px 9px;
+            color: #334155;
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 12px;
+        }
+
         .volume-input-row {
             display: grid;
             grid-template-columns: 58px minmax(0, 1fr) auto;
@@ -1062,6 +1154,35 @@
 
                 <div class="input-group">
                     <label>四模态 NIfTI：</label>
+                    <div
+                        :class="['volume-drop-zone', { dragging: volumeDropActive }]"
+                        @click="triggerVolumeFolderPicker"
+                        @dragenter.prevent="volumeDropActive = true"
+                        @dragover.prevent="volumeDropActive = true"
+                        @dragleave.prevent="volumeDropActive = false"
+                        @drop.prevent="onVolumeDrop"
+                    >
+                        <div>
+                            <div class="volume-drop-title">拖入一个病例文件夹或 ZIP 压缩包</div>
+                            <div class="volume-drop-hint">点击选择病例文件夹，或直接拖入</div>
+                        </div>
+                    </div>
+                    <input
+                        type="file"
+                        id="volume-folder-picker"
+                        accept=".nii,.nii.gz"
+                        webkitdirectory
+                        directory
+                        multiple
+                        style="display: none"
+                        @change="onVolumeFolderSelected"
+                    />
+                    <div class="volume-archive-name" v-if="volumeArchiveFile" :title="volumeArchiveFile.name">
+                        已选择压缩包：{{ volumeArchiveFile.name }}
+                    </div>
+                    <div class="volume-correction-panel" v-if="showVolumeCorrection">
+                        <div class="volume-correction-title">需要补充或确认输入文件</div>
+                        <div class="volume-correction-tip">请为标记项选择生效文件或上传替代文件。</div>
                     <div class="volume-inputs">
                         <div
                             class="volume-input-row"
@@ -1069,11 +1190,33 @@
                             :key="modality.key"
                         >
                             <span class="volume-modality">{{ modality.label }}</span>
-                            <div
-                                :class="['volume-file-name', { empty: !volumeFiles[modality.key] }]"
-                                :title="volumeFiles[modality.key]?.name || ''"
-                            >
-                                {{ volumeFiles[modality.key]?.name || '未选择 .nii / .nii.gz' }}
+                            <div class="volume-file-detail">
+                                <select
+                                    class="volume-candidate-picker"
+                                    v-if="volumeSelectionCandidates[modality.key]?.length > 1 && !volumeFiles[modality.key] && !archiveSelections[modality.key]"
+                                    v-model="volumeCandidateSelections[modality.key]"
+                                    @change="applyVolumeCandidate(modality.key)"
+                                >
+                                    <option value="">请选择生效文件</option>
+                                    <option
+                                        v-for="(candidate, index) in volumeSelectionCandidates[modality.key]"
+                                        :key="candidate.filename || candidate.name || index"
+                                        :value="String(index)"
+                                    >{{ candidate.filename || candidate.name }}</option>
+                                </select>
+                                <div
+                                    v-else
+                                    :class="['volume-file-name', { empty: !volumeFiles[modality.key] && !archiveSelections[modality.key] }]"
+                                    :title="volumeFiles[modality.key]?.name || archiveSelections[modality.key] || ''"
+                                >
+                                    {{ volumeFiles[modality.key]?.name || archiveSelections[modality.key] || '未选择 .nii / .nii.gz' }}
+                                </div>
+                                <span class="volume-file-reason" v-if="volumeSelectionIssues[modality.key]">
+                                    {{ volumeSelectionIssues[modality.key].message }}
+                                </span>
+                                <span class="volume-file-confirmed" v-else-if="volumeFiles[modality.key] || archiveSelections[modality.key]">
+                                    已确认
+                                </span>
                             </div>
                             <button
                                 type="button"
@@ -1089,6 +1232,7 @@
                                 @change="onVolumeFileSelected($event, modality.key)"
                             />
                         </div>
+                    </div>
                     </div>
                 </div>
 
@@ -1504,6 +1648,13 @@
                         t1: null,
                         t2: null,
                     },
+                    volumeArchiveFile: null,
+                    volumeDropActive: false,
+                    volumeSelectionIssues: {},
+                    volumeSelectionCandidates: {},
+                    volumeCandidateSelections: {},
+                    archiveSelections: {},
+                    volumeCorrectionVisible: true,
                     showToast: false,
                     classificationLabel: '',
                     confidence: 0,
@@ -1596,9 +1747,20 @@
                     return token ? { 'Authorization': `Bearer ${token}` } : {}
                 },
                 canRecognize() {
+                    if (this.volumeArchiveFile) {
+                        return this.volumeModalities.every(modality => (
+                            !this.volumeSelectionIssues[modality.key]
+                            || Boolean(this.volumeFiles[modality.key])
+                            || Boolean(this.archiveSelections[modality.key])
+                        ))
+                    }
                     return this.volumeModalities.every(
                         modality => Boolean(this.volumeFiles[modality.key])
                     )
+                },
+                showVolumeCorrection() {
+                    return this.volumeCorrectionVisible
+                        && Object.keys(this.volumeSelectionIssues).length > 0
                 },
                 availableVolumeModalities() {
                     const sources = this.volumeViewerSources?.modalities || {}
@@ -2365,6 +2527,124 @@
                 triggerVolumePicker(modality) {
                     document.getElementById(`volume-file-${modality}`)?.click()
                 },
+                triggerVolumeFolderPicker() {
+                    document.getElementById('volume-folder-picker')?.click()
+                },
+                volumeModalityFromFilename(filename) {
+                    const normalized = filename
+                        .replace(/\.nii(?:\.gz)?$/i, '')
+                        .toLowerCase()
+                    const tokens = new Set(normalized.split(/[_.-]+/).filter(Boolean))
+                    const matches = this.volumeModalities
+                        .map(modality => modality.key)
+                        .filter(modality => tokens.has(modality))
+                    return matches.length === 1 ? matches[0] : null
+                },
+                clearVolumeSelectionState() {
+                    this.volumeSelectionIssues = {}
+                    this.volumeSelectionCandidates = {}
+                    this.volumeCandidateSelections = {}
+                    this.archiveSelections = {}
+                    this.volumeCorrectionVisible = true
+                },
+                confirmVolumeModality(modality) {
+                    const { [modality]: resolvedIssue, ...remainingIssues } = this.volumeSelectionIssues
+                    this.volumeSelectionIssues = remainingIssues
+                    const { [modality]: resolvedCandidates, ...remainingCandidates } = this.volumeSelectionCandidates
+                    this.volumeSelectionCandidates = remainingCandidates
+                    const { [modality]: resolvedSelection, ...remainingSelections } = this.volumeCandidateSelections
+                    this.volumeCandidateSelections = remainingSelections
+                },
+                selectVolumeFiles(files, sourceLabel) {
+                    const candidates = { flair: [], t1ce: [], t1: [], t2: [] }
+                    for (const file of Array.from(files)) {
+                        if (!/\.nii(?:\.gz)?$/i.test(file.name)) continue
+                        const modality = this.volumeModalityFromFilename(file.name)
+                        if (!modality) continue
+                        candidates[modality].push(file)
+                    }
+                    const selected = {}
+                    const issues = {}
+                    for (const modality of this.volumeModalities) {
+                        const options = candidates[modality.key]
+                        selected[modality.key] = options.length === 1 ? options[0] : null
+                        if (!options.length) {
+                            issues[modality.key] = {
+                                reason: 'missing',
+                                message: `${sourceLabel}中未识别到 ${modality.label} 文件`,
+                            }
+                        } else if (options.length > 1) {
+                            issues[modality.key] = {
+                                reason: 'duplicate',
+                                message: `${sourceLabel}中识别到 ${options.length} 个 ${modality.label} 候选文件`,
+                            }
+                        }
+                    }
+                    this.volumeFiles = selected
+                    this.volumeArchiveFile = null
+                    this.volumeSelectionIssues = issues
+                    this.volumeSelectionCandidates = candidates
+                    this.volumeCandidateSelections = {}
+                    this.archiveSelections = {}
+                    this.volumeCorrectionVisible = true
+                    return !Object.keys(issues).length
+                },
+                onVolumeFolderSelected(event) {
+                    this.selectVolumeFiles(event.target.files, '所选文件夹')
+                    event.target.value = ''
+                },
+                async readDroppedEntry(entry) {
+                    if (entry.isFile) {
+                        return new Promise((resolve, reject) => entry.file(resolve, reject))
+                    }
+                    if (!entry.isDirectory) return []
+                    const reader = entry.createReader()
+                    const entries = []
+                    while (true) {
+                        const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject))
+                        if (!batch.length) break
+                        entries.push(...batch)
+                    }
+                    const nested = await Promise.all(entries.map(item => this.readDroppedEntry(item)))
+                    return nested.flat()
+                },
+                async onVolumeDrop(event) {
+                    this.volumeDropActive = false
+                    const droppedFiles = Array.from(event.dataTransfer?.files || [])
+                    if (droppedFiles.length === 1 && /\.zip$/i.test(droppedFiles[0].name)) {
+                        this.setVolumeArchive(droppedFiles[0])
+                        return
+                    }
+                    const entries = Array.from(event.dataTransfer?.items || [])
+                        .map(item => item.webkitGetAsEntry?.())
+                        .filter(Boolean)
+                    const collected = entries.length
+                        ? (await Promise.all(entries.map(entry => this.readDroppedEntry(entry)))).flat()
+                        : droppedFiles
+                    if (collected.length === 1 && /\.zip$/i.test(collected[0].name)) {
+                        this.setVolumeArchive(collected[0])
+                        return
+                    }
+                    this.selectVolumeFiles(collected, '拖入内容')
+                },
+                setVolumeArchive(file) {
+                    this.volumeArchiveFile = file
+                    this.volumeFiles = { flair: null, t1ce: null, t1: null, t2: null }
+                    this.clearVolumeSelectionState()
+                },
+                applyVolumeCandidate(modality) {
+                    const selectedIndex = Number(this.volumeCandidateSelections[modality])
+                    const candidate = this.volumeSelectionCandidates[modality]?.[selectedIndex]
+                    if (!candidate) return
+                    if (this.volumeArchiveFile) {
+                        this.archiveSelections[modality] = candidate.filename
+                        this.volumeFiles[modality] = null
+                        this.confirmVolumeModality(modality)
+                        return
+                    }
+                    this.volumeFiles[modality] = candidate
+                    this.confirmVolumeModality(modality)
+                },
                 onVolumeFileSelected(event, modality) {
                     const file = event.target.files[0]
                     if (!file) return
@@ -2375,6 +2655,10 @@
                         return
                     }
                     this.volumeFiles[modality] = file
+                    this.confirmVolumeModality(modality)
+                    if (!this.volumeArchiveFile) {
+                        this.archiveSelections[modality] = ''
+                    }
                 },
                 async gzipVolumeFileForUpload(file, label) {
                     if (!/\.nii$/i.test(file.name)) return file
@@ -2420,10 +2704,10 @@
                         return file
                     }
                 },
-                uploadTaskFiles(formData) {
+                uploadTaskFiles(formData, endpoint = '/tasks/3d') {
                     return new Promise((resolve, reject) => {
                         const xhr = new XMLHttpRequest()
-                        xhr.open('POST', `${this.API_BASE}/tasks/3d`)
+                        xhr.open('POST', `${this.API_BASE}${endpoint}`)
                         const token = localStorage.getItem('btir_token')
                         if (token) {
                             xhr.setRequestHeader('Authorization', `Bearer ${token}`)
@@ -2454,7 +2738,9 @@
                             const message = typeof detail === 'string'
                                 ? detail
                                 : (detail?.message || `创建任务失败: HTTP ${xhr.status}`)
-                            reject(new Error(message))
+                            const error = new Error(message)
+                            error.payload = payload
+                            reject(error)
                         }
                         xhr.onerror = () => reject(new Error('网络错误，创建任务失败'))
                         xhr.send(formData)
@@ -2463,24 +2749,59 @@
                 async recognizeFromUpload() {
                     if (!this.canRecognize) return
                     this.resetState()
+                    this.volumeCorrectionVisible = false
 
                     try {
                         const formData = new FormData()
-                        for (const modality of this.volumeModalities) {
-                            const uploadFile = await this.gzipVolumeFileForUpload(
-                                this.volumeFiles[modality.key],
-                                modality.label
-                            )
-                            formData.append(modality.key, uploadFile)
+                        let endpoint = '/tasks/3d'
+                        if (this.volumeArchiveFile) {
+                            formData.append('archive', this.volumeArchiveFile)
+                            for (const modality of this.volumeModalities) {
+                                const manualFile = this.volumeFiles[modality.key]
+                                if (manualFile) {
+                                    formData.append(modality.key, manualFile)
+                                }
+                                if (this.archiveSelections[modality.key]) {
+                                    formData.append(
+                                        `${modality.key}_entry`,
+                                        this.archiveSelections[modality.key]
+                                    )
+                                }
+                            }
+                            endpoint = '/tasks/3d/archive'
+                        } else {
+                            for (const modality of this.volumeModalities) {
+                                const uploadFile = await this.gzipVolumeFileForUpload(
+                                    this.volumeFiles[modality.key],
+                                    modality.label
+                                )
+                                formData.append(modality.key, uploadFile)
+                            }
                         }
                         formData.append('name', 'web-3d-analysis')
                         this.statusText =
                             '<span class="loading-spinner"></span>正在上传...'
 
-                        const createData = await this.uploadTaskFiles(formData)
+                        const createData = await this.uploadTaskFiles(formData, endpoint)
                         this.taskId = createData.task_id
                         await this.runAndGetResult(this.taskId)
                     } catch (error) {
+                        const selectionDetail = error.payload?.detail
+                        if (selectionDetail?.code === 'archive_modality_selection_required') {
+                            this.volumeSelectionIssues = selectionDetail.modalities || {}
+                            this.volumeSelectionCandidates = Object.fromEntries(
+                                this.volumeModalities.map(modality => [
+                                    modality.key,
+                                    selectionDetail.modalities?.[modality.key]?.candidates || [],
+                                ])
+                            )
+                            this.volumeCandidateSelections = {}
+                            this.archiveSelections = {}
+                            this.volumeCorrectionVisible = true
+                            this.statusText = '<span class="status-error">需要确认或补充模态文件后再提交。</span>'
+                            this.analysisProgress = null
+                            return
+                        }
                         this.statusText = `<span class="status-error">✗ ${this.escapeHtml(error.message)}</span>`
                         this.analysisProgress = null
                         console.error('识别错误:', error)

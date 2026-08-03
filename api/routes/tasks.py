@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import shutil
+import zipfile
+from contextlib import ExitStack
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -42,6 +44,9 @@ from services.task_files import (
     create_task_dir,
     get_task_dir,
     initialize_uploaded_volume_task,
+    select_volume_archive_entries,
+    VolumeArchiveSelectionRequired,
+    VOLUME_MODALITIES,
 )
 from services.task_queue import (
     cancel_task_run,
@@ -255,6 +260,119 @@ def create_3d_task_from_upload(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
+        ) from exc
+
+    return VolumeTaskCreatedResponse(
+        task_id=task_dir.name,
+        input_files={
+            modality: path.name
+            for modality, path in stored_files.items()
+        },
+    )
+
+
+@router.post(
+    "/3d/archive",
+    response_model=VolumeTaskCreatedResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_3d_task_from_archive(
+    archive: UploadFile = File(...),
+    name: str | None = Form(default=None),
+    flair: UploadFile | None = File(default=None),
+    t1ce: UploadFile | None = File(default=None),
+    t1: UploadFile | None = File(default=None),
+    t2: UploadFile | None = File(default=None),
+    flair_entry: str | None = Form(default=None),
+    t1ce_entry: str | None = Form(default=None),
+    t1_entry: str | None = Form(default=None),
+    t2_entry: str | None = Form(default=None),
+    current_user: UserRecord = Depends(require_password_changed),
+) -> VolumeTaskCreatedResponse:
+    '''上传病例 ZIP，自动识别其中唯一的一组四模态 NIfTI'''
+
+    archive_name = Path(archive.filename or "").name
+    if not archive_name.lower().endswith(".zip"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="仅支持 .zip 压缩包",
+        )
+    if archive.size is not None and archive.size > SETTINGS.max_3d_upload_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="压缩包大小超过上传限制",
+        )
+
+    enforce_task_storage_limit(current_user)
+    task_dir: Path | None = None
+    try:
+        with zipfile.ZipFile(archive.file) as uploaded_archive, ExitStack() as streams:
+            manual_uploads = {
+                modality: upload
+                for modality, upload in {
+                    "flair": flair,
+                    "t1ce": t1ce,
+                    "t1": t1,
+                    "t2": t2,
+                }.items()
+                if upload is not None and upload.filename
+            }
+            entries = select_volume_archive_entries(
+                uploaded_archive,
+                selected_filenames={
+                    "flair": flair_entry,
+                    "t1ce": t1ce_entry,
+                    "t1": t1_entry,
+                    "t2": t2_entry,
+                },
+                required_modalities=set(VOLUME_MODALITIES) - set(manual_uploads),
+            )
+            task_dir = create_task_dir(SETTINGS.output_dir)
+            stored_files = initialize_uploaded_volume_task(
+                task_dir=task_dir,
+                uploads={
+                    modality: (
+                        manual_uploads[modality].file
+                        if modality in manual_uploads
+                        else streams.enter_context(uploaded_archive.open(entries[modality]))
+                    )
+                    for modality in VOLUME_MODALITIES
+                },
+                filenames={
+                    modality: (
+                        manual_uploads[modality].filename
+                        if modality in manual_uploads
+                        else entries[modality].filename
+                    )
+                    for modality in VOLUME_MODALITIES
+                },
+                name=name,
+                user_id=current_user.user_id,
+                max_tasks_per_user=SETTINGS.max_tasks_per_user,
+            )
+    except TaskQuotaExceededError as exc:
+        if task_dir is not None:
+            shutil.rmtree(task_dir, ignore_errors=True)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+        ) from exc
+    except VolumeArchiveSelectionRequired as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "code": "archive_modality_selection_required",
+                "message": str(exc),
+                "modalities": exc.modalities,
+            },
+        ) from exc
+    except (ValueError, zipfile.BadZipFile) as exc:
+        if task_dir is not None:
+            shutil.rmtree(task_dir, ignore_errors=True)
+        message = str(exc) or "压缩包格式无效"
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=message,
         ) from exc
 
     return VolumeTaskCreatedResponse(

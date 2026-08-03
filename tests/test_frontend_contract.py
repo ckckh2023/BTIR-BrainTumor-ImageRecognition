@@ -98,6 +98,16 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("正在上传数据", self.html)
         self.assertIn("正在压缩/上传数据", self.html)
 
+    def test_volume_upload_starts_with_drop_zone_and_recovers_from_ambiguity(self) -> None:
+        self.assertIn("拖入一个病例文件夹或 ZIP 压缩包", self.html)
+        self.assertIn("onVolumeDrop", self.html)
+        self.assertIn("showVolumeCorrection", self.html)
+        self.assertIn("archive_modality_selection_required", self.html)
+        self.assertIn("请选择生效文件", self.html)
+        self.assertIn("/tasks/3d/archive", self.html)
+        self.assertIn("volumeCorrectionVisible", self.html)
+        self.assertIn("this.volumeCorrectionVisible = false", self.html)
+
 
 if __name__ == "__main__":
     unittest.main()
