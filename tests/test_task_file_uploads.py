@@ -219,6 +219,20 @@ class TaskFileUploadTests(unittest.TestCase):
         self.assertIsNone(volume_modality_from_filename("case_seg.nii"))
         self.assertIsNone(volume_modality_from_filename("case_t1cex.nii"))
 
+    def test_archive_selection_allows_every_modality_to_be_manually_replaced(self) -> None:
+        archive_bytes = BytesIO()
+        with zipfile.ZipFile(archive_bytes, "w") as archive:
+            archive.writestr("case_notes.txt", b"notes")
+
+        archive_bytes.seek(0)
+        with zipfile.ZipFile(archive_bytes) as archive:
+            selected = select_volume_archive_entries(
+                archive,
+                required_modalities=set(),
+            )
+
+        self.assertEqual(selected, {})
+
 
 if __name__ == "__main__":
     unittest.main()

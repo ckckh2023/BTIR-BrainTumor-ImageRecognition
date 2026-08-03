@@ -107,6 +107,9 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("/tasks/3d/archive", self.html)
         self.assertIn("volumeCorrectionVisible", self.html)
         self.assertIn("this.volumeCorrectionVisible = false", self.html)
+        self.assertIn("volumeSourceMenuVisible", self.html)
+        self.assertIn("triggerVolumeArchivePicker", self.html)
+        self.assertIn("无法读取拖入内容", self.html)
 
 
 if __name__ == "__main__":

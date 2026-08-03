@@ -11,7 +11,7 @@ POST /auth/register 或 POST /auth/login
     ↓
 后续请求携带 Authorization: Bearer <access_token>
     ↓
-POST /tasks/3d 上传四模态 3D NIfTI
+POST /tasks/3d 或 /tasks/3d/archive 创建 3D 任务
     ↓
 POST /tasks/{task_id}/run-async 提交异步推理
     ↓
@@ -225,6 +225,11 @@ BraTS 命名规则，模态由表单字段确定。四个文件总大小由
 等标注和其他无关文件会被忽略。缺少模态或同一模态存在多个候选文件时，接口返回
 `422` 和候选文件清单；前端需让用户选择生效项或补充上传相应模态后重新提交，避免混入
 不同病例。ZIP 不会被整体解压到服务端，只会读取被选中的四个文件。
+压缩包必须是未加密且可由标准 ZIP 读取的文件。
+
+校正后仍调用 `/tasks/3d/archive`：可用 `<modality>_entry` 指定 ZIP 内生效条目，
+或使用同名文件字段（`flair`、`t1ce`、`t1`、`t2`）上传替代文件。替代文件优先于
+ZIP 条目，最终四个文件仍执行同一套空间一致性校验。
 
 成功返回 `201 Created`：
 
