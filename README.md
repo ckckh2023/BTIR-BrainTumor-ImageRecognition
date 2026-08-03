@@ -156,7 +156,8 @@ service 中使用 `Environment=` 或 `EnvironmentFile=` 注入，
 1. 调用 `POST /auth/register` 创建账号，或通过 `POST /auth/login` 登录。
 2. 后续任务请求携带 `Authorization: Bearer <access_token>`。
 3. 调用 `POST /tasks/3d`，同时上传 `flair`、`t1ce`、`t1`、`t2` 四个
-   `.nii` 或 `.nii.gz` 文件，并保存返回的 `task_id`。
+   `.nii` 或 `.nii.gz` 文件；也可调用 `POST /tasks/3d/archive` 上传包含一组
+   BraTS 命名四模态的 ZIP。两种方式都会返回 `task_id`。
 4. `POST /tasks/{task_id}/run-async` 提交任务。任务固定执行本地 ViT
    多切片分类，再执行 SuperLightNet 分割。
 5. 轮询 `GET /tasks/{task_id}`，直到状态变为 `succeeded`。

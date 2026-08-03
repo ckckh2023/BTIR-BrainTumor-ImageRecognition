@@ -9,8 +9,10 @@ import hashlib
 import json
 import math
 import os
+import re
 import tempfile
 import uuid
+import zipfile
 from pathlib import Path
 from typing import Any, BinaryIO
 from collections.abc import Mapping
@@ -23,6 +25,15 @@ from core.task_definitions import TaskDirectory, TaskStatus
 
 VOLUME_MODALITIES = ("flair", "t1ce", "t1", "t2")
 UPLOAD_COPY_CHUNK_BYTES = 1024 * 1024
+MAX_VOLUME_ARCHIVE_MEMBERS = 128
+
+
+class VolumeArchiveSelectionRequired(ValueError):
+    '''ZIP 中的模态存在缺失或重复，需要用户确认。'''
+
+    def __init__(self, modalities: dict[str, dict[str, Any]]) -> None:
+        self.modalities = modalities
+        super().__init__("压缩包内的模态文件需要用户确认")
 
 
 def task_relative_path(task_dir: Path, path: Path) -> str:
@@ -253,6 +264,97 @@ def _nifti_suffix(filename: str) -> str | None:
     if lowered.endswith(".nii"):
         return ".nii"
     return None
+
+
+def volume_modality_from_filename(filename: str) -> str | None:
+    '''根据 BraTS 风格文件名识别四个输入模态
+
+    仅识别以 ``_``、``-`` 或 ``.`` 分隔的完整模态词，避免将 ``t1ce``
+    误判为 ``t1``。标注文件（例如 ``*_seg.nii``）不会匹配任何模态
+    '''
+
+    suffix = _nifti_suffix(filename)
+    if suffix is None:
+        return None
+    stem = Path(filename).name[: -len(suffix)].lower()
+    tokens = {token for token in re.split(r"[_.-]+", stem) if token}
+    matches = [modality for modality in VOLUME_MODALITIES if modality in tokens]
+    return matches[0] if len(matches) == 1 else None
+
+
+def volume_archive_candidates(
+    archive: zipfile.ZipFile,
+) -> dict[str, list[zipfile.ZipInfo]]:
+    '''返回 ZIP 中按模态归类的 NIfTI 候选文件，不解压任何文件'''
+    entries = archive.infolist()
+    if len(entries) > MAX_VOLUME_ARCHIVE_MEMBERS:
+        raise ValueError(
+            f"压缩包文件数量超过限制（最多 {MAX_VOLUME_ARCHIVE_MEMBERS} 个）"
+        )
+
+    candidates: dict[str, list[zipfile.ZipInfo]] = {
+        modality: [] for modality in VOLUME_MODALITIES
+    }
+    for entry in entries:
+        if entry.is_dir():
+            continue
+        filename = Path(entry.filename).name
+        modality = volume_modality_from_filename(filename)
+        if modality is None:
+            continue
+        candidates[modality].append(entry)
+    return candidates
+
+
+def select_volume_archive_entries(
+    archive: zipfile.ZipFile,
+    *,
+    selected_filenames: Mapping[str, str | None] | None = None,
+    required_modalities: set[str] | None = None,
+) -> dict[str, zipfile.ZipInfo]:
+    '''选择 ZIP 中的四模态 NIfTI；有歧义时提供候选项供前端确认'''
+
+    candidates = volume_archive_candidates(archive)
+    selected_filenames = selected_filenames or {}
+    required_modalities = required_modalities or set(VOLUME_MODALITIES)
+    selected: dict[str, zipfile.ZipInfo] = {}
+    issues: dict[str, dict[str, Any]] = {}
+
+    for modality in VOLUME_MODALITIES:
+        if modality not in required_modalities:
+            continue
+        entries = candidates[modality]
+        requested_filename = selected_filenames.get(modality)
+        if requested_filename:
+            selected_entry = next(
+                (entry for entry in entries if entry.filename == requested_filename),
+                None,
+            )
+            if selected_entry is not None:
+                selected[modality] = selected_entry
+                continue
+        if len(entries) == 1:
+            selected[modality] = entries[0]
+            continue
+        if not entries:
+            issues[modality] = {
+                "reason": "missing",
+                "message": f"压缩包中未识别到 {modality.upper()} 文件",
+                "candidates": [],
+            }
+            continue
+        issues[modality] = {
+            "reason": "duplicate",
+            "message": f"压缩包中识别到 {len(entries)} 个 {modality.upper()} 候选文件",
+            "candidates": [
+                {"filename": entry.filename, "size_bytes": entry.file_size}
+                for entry in entries
+            ],
+        }
+
+    if issues:
+        raise VolumeArchiveSelectionRequired(issues)
+    return selected
 
 
 def _validate_volume_headers(paths: Mapping[str, Path]) -> None:

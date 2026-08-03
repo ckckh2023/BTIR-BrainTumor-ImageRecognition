@@ -10,12 +10,18 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
+import zipfile
 
 import nibabel as nib
 import numpy as np
 
 from core.settings import SETTINGS
-from services.task_files import initialize_uploaded_volume_task
+from services.task_files import (
+    initialize_uploaded_volume_task,
+    select_volume_archive_entries,
+    VolumeArchiveSelectionRequired,
+    volume_modality_from_filename,
+)
 
 
 class TaskFileUploadTests(unittest.TestCase):
@@ -177,6 +183,41 @@ class TaskFileUploadTests(unittest.TestCase):
             stored_names,
             {f"{modality}.nii.gz" for modality in ("flair", "t1ce", "t1", "t2")},
         )
+
+    def test_archive_selection_finds_modalities_and_ignores_ground_truth_mask(self) -> None:
+        archive_bytes = BytesIO()
+        with zipfile.ZipFile(archive_bytes, "w") as archive:
+            for modality in ("flair", "t1ce", "t1", "t2"):
+                archive.writestr(f"BraTS19_case/BraTS19_case_{modality}.nii", b"nifti")
+            archive.writestr("BraTS19_case/BraTS19_case_seg.nii", b"ground-truth")
+
+        archive_bytes.seek(0)
+        with zipfile.ZipFile(archive_bytes) as archive:
+            selected = select_volume_archive_entries(archive)
+
+        self.assertEqual(set(selected), {"flair", "t1ce", "t1", "t2"})
+        self.assertEqual(selected["t1ce"].filename, "BraTS19_case/BraTS19_case_t1ce.nii")
+
+    def test_archive_selection_rejects_duplicate_modality(self) -> None:
+        archive_bytes = BytesIO()
+        with zipfile.ZipFile(archive_bytes, "w") as archive:
+            for modality in ("flair", "t1ce", "t1", "t2"):
+                archive.writestr(f"case_{modality}.nii", b"nifti")
+            archive.writestr("case_repeat_flair.nii", b"nifti")
+
+        archive_bytes.seek(0)
+        with zipfile.ZipFile(archive_bytes) as archive:
+            with self.assertRaises(VolumeArchiveSelectionRequired) as captured:
+                select_volume_archive_entries(archive)
+
+        self.assertEqual(captured.exception.modalities["flair"]["reason"], "duplicate")
+        self.assertEqual(len(captured.exception.modalities["flair"]["candidates"]), 2)
+
+    def test_filename_recognition_requires_a_complete_modality_token(self) -> None:
+        self.assertEqual(volume_modality_from_filename("case_t1ce.nii.gz"), "t1ce")
+        self.assertEqual(volume_modality_from_filename("case_t1.nii"), "t1")
+        self.assertIsNone(volume_modality_from_filename("case_seg.nii"))
+        self.assertIsNone(volume_modality_from_filename("case_t1cex.nii"))
 
 
 if __name__ == "__main__":

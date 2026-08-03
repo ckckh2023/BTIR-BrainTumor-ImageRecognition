@@ -59,6 +59,7 @@ POST /tasks/{task_id}/restore 恢复所选任务
 | `POST` | `/admin/users/{user_id}/tasks/{task_id}/restore` | 管理员恢复指定用户归档任务 |
 | `GET` | `/admin/audit` | 管理员分页、筛选安全审计记录 |
 | `POST` | `/tasks/3d` | 上传四模态 NIfTI 并创建 3D 任务 |
+| `POST` | `/tasks/3d/archive` | 上传病例 ZIP，自动识别四模态 NIfTI |
 | `GET` | `/tasks` | 分页、筛选历史任务 |
 | `GET` | `/tasks/archived` | 分页、筛选尚未永久清除的归档任务 |
 | `GET` | `/tasks/{task_id}` | 查询任务状态与最新结果 |
@@ -217,6 +218,13 @@ Content-Type: multipart/form-data
 BraTS 命名规则，模态由表单字段确定。四个文件总大小由
 `BTIR_MAX_3D_UPLOAD_BYTES` 限制，解压后的单个体积还受
 `BTIR_MAX_3D_VOXELS` 限制。
+
+也可使用 `POST /tasks/3d/archive`，提交字段 `archive`（`.zip`）和可选的
+`name`。服务会只按 BraTS 风格文件名中的完整模态词自动选取唯一的
+`FLAIR`、`T1CE`、`T1`、`T2` 文件；目录结构可以存在，`*_seg.nii[.gz]`
+等标注和其他无关文件会被忽略。缺少模态或同一模态存在多个候选文件时，接口返回
+`422` 和候选文件清单；前端需让用户选择生效项或补充上传相应模态后重新提交，避免混入
+不同病例。ZIP 不会被整体解压到服务端，只会读取被选中的四个文件。
 
 成功返回 `201 Created`：
 

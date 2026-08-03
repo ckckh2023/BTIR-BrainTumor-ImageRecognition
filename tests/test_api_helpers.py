@@ -10,6 +10,8 @@ import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+import zipfile
+from io import BytesIO
 
 from fastapi import HTTPException, status
 from fastapi.testclient import TestClient
@@ -271,6 +273,8 @@ class TaskHttpEndpointTests(unittest.TestCase):
         self.assertEqual(set(paths["/tasks"]), {"get"})
         self.assertIn("/tasks/3d", paths)
         self.assertEqual(set(paths["/tasks/3d"]), {"post"})
+        self.assertIn("/tasks/3d/archive", paths)
+        self.assertEqual(set(paths["/tasks/3d/archive"]), {"post"})
         self.assertIn("/tasks/{task_id}/run-async", paths)
         self.assertNotIn(
             "requestBody",
@@ -323,6 +327,66 @@ class TaskHttpEndpointTests(unittest.TestCase):
             set(initialize_volume.call_args.kwargs["uploads"]),
             {"flair", "t1ce", "t1", "t2"},
         )
+
+    def test_create_3d_task_accepts_a_case_zip(self) -> None:
+        archive_bytes = BytesIO()
+        with zipfile.ZipFile(archive_bytes, "w") as archive:
+            for modality in ("flair", "t1ce", "t1", "t2"):
+                archive.writestr(f"BraTS19_case/BraTS19_case_{modality}.nii", b"nifti-data")
+            archive.writestr("BraTS19_case/BraTS19_case_seg.nii", b"ground-truth")
+        archive_bytes.seek(0)
+
+        with TemporaryDirectory() as directory:
+            task_dir = Path(directory) / "task-http-3d-archive-001"
+            task_dir.mkdir()
+            stored = {
+                modality: task_dir / "input" / f"{modality}.nii.gz"
+                for modality in ("flair", "t1ce", "t1", "t2")
+            }
+            with (
+                patch("api.routes.tasks.task_repository.count", return_value=0),
+                patch("api.routes.tasks.create_task_dir", return_value=task_dir),
+                patch(
+                    "api.routes.tasks.initialize_uploaded_volume_task",
+                    return_value=stored,
+                ) as initialize_volume,
+                TestClient(app) as client,
+            ):
+                response = client.post(
+                    "/tasks/3d/archive",
+                    files={"archive": ("BraTS19_case.zip", archive_bytes.getvalue(), "application/zip")},
+                    data={"name": "ZIP patient"},
+                )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(set(response.json()["input_files"]), {"flair", "t1ce", "t1", "t2"})
+        self.assertEqual(
+            set(initialize_volume.call_args.kwargs["uploads"]),
+            {"flair", "t1ce", "t1", "t2"},
+        )
+
+    def test_case_zip_returns_selectable_candidates_when_a_modality_is_duplicated(self) -> None:
+        archive_bytes = BytesIO()
+        with zipfile.ZipFile(archive_bytes, "w") as archive:
+            for modality in ("flair", "t1ce", "t1", "t2"):
+                archive.writestr(f"case_a_{modality}.nii", b"nifti-data")
+            archive.writestr("case_b_flair.nii", b"nifti-data")
+        archive_bytes.seek(0)
+
+        with (
+            patch("api.routes.tasks.task_repository.count", return_value=0),
+            TestClient(app) as client,
+        ):
+            response = client.post(
+                "/tasks/3d/archive",
+                files={"archive": ("two-cases.zip", archive_bytes.getvalue(), "application/zip")},
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_422_UNPROCESSABLE_CONTENT)
+        detail = response.json()["detail"]
+        self.assertEqual(detail["code"], "archive_modality_selection_required")
+        self.assertEqual(detail["modalities"]["flair"]["reason"], "duplicate")
+        self.assertEqual(len(detail["modalities"]["flair"]["candidates"]), 2)
 
     def test_task_list_forwards_search_and_time_filters(self) -> None:
         with (
