@@ -366,6 +366,13 @@ def create_3d_task_from_archive(
                 "modalities": exc.modalities,
             },
         ) from exc
+    except RuntimeError as exc:
+        if task_dir is not None:
+            shutil.rmtree(task_dir, ignore_errors=True)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="压缩包中的文件无法读取，请使用未加密的标准 ZIP 文件",
+        ) from exc
     except (ValueError, zipfile.BadZipFile) as exc:
         if task_dir is not None:
             shutil.rmtree(task_dir, ignore_errors=True)

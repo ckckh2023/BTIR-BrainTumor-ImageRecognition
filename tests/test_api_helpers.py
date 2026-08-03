@@ -388,6 +388,68 @@ class TaskHttpEndpointTests(unittest.TestCase):
         self.assertEqual(detail["modalities"]["flair"]["reason"], "duplicate")
         self.assertEqual(len(detail["modalities"]["flair"]["candidates"]), 2)
 
+    def test_case_zip_accepts_manual_replacements_for_every_modality(self) -> None:
+        archive_bytes = BytesIO()
+        with zipfile.ZipFile(archive_bytes, "w") as archive:
+            archive.writestr("case_notes.txt", b"notes")
+        archive_bytes.seek(0)
+
+        with TemporaryDirectory() as directory:
+            task_dir = Path(directory) / "task-http-3d-archive-manual-001"
+            task_dir.mkdir()
+            stored = {
+                modality: task_dir / "input" / f"{modality}.nii.gz"
+                for modality in ("flair", "t1ce", "t1", "t2")
+            }
+            with (
+                patch("api.routes.tasks.task_repository.count", return_value=0),
+                patch("api.routes.tasks.create_task_dir", return_value=task_dir),
+                patch(
+                    "api.routes.tasks.initialize_uploaded_volume_task",
+                    return_value=stored,
+                ) as initialize_volume,
+                TestClient(app) as client,
+            ):
+                response = client.post(
+                    "/tasks/3d/archive",
+                    files={
+                        "archive": ("case.zip", archive_bytes.getvalue(), "application/zip"),
+                        **{
+                            modality: (f"manual_{modality}.nii", b"nifti-data", "application/octet-stream")
+                            for modality in stored
+                        },
+                    },
+                )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(
+            set(initialize_volume.call_args.kwargs["uploads"]),
+            {"flair", "t1ce", "t1", "t2"},
+        )
+
+    def test_case_zip_returns_a_client_error_when_an_entry_cannot_be_read(self) -> None:
+        archive_bytes = BytesIO()
+        with zipfile.ZipFile(archive_bytes, "w") as archive:
+            for modality in ("flair", "t1ce", "t1", "t2"):
+                archive.writestr(f"case_{modality}.nii", b"nifti-data")
+        archive_bytes.seek(0)
+
+        with (
+            patch("api.routes.tasks.task_repository.count", return_value=0),
+            patch(
+                "api.routes.tasks.initialize_uploaded_volume_task",
+                side_effect=RuntimeError("File is encrypted, password required"),
+            ),
+            TestClient(app) as client,
+        ):
+            response = client.post(
+                "/tasks/3d/archive",
+                files={"archive": ("encrypted.zip", archive_bytes.getvalue(), "application/zip")},
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("无法读取", response.json()["detail"])
+
     def test_task_list_forwards_search_and_time_filters(self) -> None:
         with (
             patch(

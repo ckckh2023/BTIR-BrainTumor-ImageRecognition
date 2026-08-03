@@ -316,7 +316,8 @@ def select_volume_archive_entries(
 
     candidates = volume_archive_candidates(archive)
     selected_filenames = selected_filenames or {}
-    required_modalities = required_modalities or set(VOLUME_MODALITIES)
+    if required_modalities is None:
+        required_modalities = set(VOLUME_MODALITIES)
     selected: dict[str, zipfile.ZipInfo] = {}
     issues: dict[str, dict[str, Any]] = {}
 
