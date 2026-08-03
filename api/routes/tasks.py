@@ -53,7 +53,8 @@ from services.task_lock import user_quota_lock
 
 router = APIRouter(prefix="/tasks", tags=["任务"])
 
-PRIVATE_PATH_FIELDS = {
+PRIVATE_JSON_FIELDS = {
+    "detail",
     "frontend_result_path",
     "history_result_path",
     "image_path",
@@ -62,16 +63,18 @@ PRIVATE_PATH_FIELDS = {
     "path",
     "source_path",
     "task_dir",
+    "traceback",
 }
+PRIVATE_TASK_FILENAMES = {TaskArtifact.LEGACY_METADATA, "error.json"}
 
 
 def sanitize_public_payload(value):
-    '''移除结果 JSON 中可能存在的本机路径字段'''
+    '''移除结果 JSON 中可能暴露服务端路径或诊断信息的字段'''
     if isinstance(value, dict):
         return {
             key: sanitize_public_payload(item)
             for key, item in value.items()
-            if key not in PRIVATE_PATH_FIELDS
+            if key not in PRIVATE_JSON_FIELDS
         }
     if isinstance(value, list):
         return [sanitize_public_payload(item) for item in value]
@@ -464,7 +467,7 @@ def get_task_file(
             detail="任务文件不存在",
         ) from exc
 
-    if not file.is_file() or file.name == TaskArtifact.LEGACY_METADATA:
+    if not file.is_file() or file.name in PRIVATE_TASK_FILENAMES:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="任务文件不存在",

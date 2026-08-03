@@ -652,7 +652,8 @@ GET /tasks/{task_id}/files/{file_path}
 GET /tasks/{task_id}/files/frontend_result.json
 ```
 
-后端会校验路径范围，并移除 JSON 中的内部本机路径字段。前端一般优先读取
+后端会校验路径范围，并移除 JSON 中的内部本机路径、异常详情和堆栈字段；内部
+`error.json` 与旧元数据文件不通过该接口开放。前端一般优先读取
 `GET /tasks/{task_id}` 返回的 `frontend_result`，只有明确需要独立文件时才调用
 文件接口。
 

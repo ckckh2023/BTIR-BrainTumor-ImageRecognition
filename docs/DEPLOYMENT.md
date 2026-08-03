@@ -40,15 +40,15 @@ models/segmentation3d/model/model_epoch_297.pth
 建议使用独立的 Python 3.11 虚拟环境。以下为 CMD 示例：
 
 ```cmd
-py -3.11 -m venv E:\btir311
-E:\btir311\Scripts\activate.bat
-cd /d E:\code-content\code-content\programme\BTIR-BrainTumor-ImageRecognition
+cd /d X:\path\to\BTIR-BrainTumor-ImageRecognition
+py -3.11 -m venv .venv
+.venv\Scripts\activate.bat
 python --version
 python -m pip install -r requirements.txt
 ```
 
-提示符显示 `(btir311)` 且 `python --version` 为 Python 3.11 后，再执行
-项目命令。
+提示符显示 `(.venv)` 且 `python --version` 为 Python 3.11 后，再执行项目命令。
+虚拟环境也可以放在项目目录之外；激活后不要在脚本中写死其绝对路径。
 
 ## Linux 服务器环境
 

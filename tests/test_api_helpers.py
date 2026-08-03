@@ -21,6 +21,7 @@ from api.app import app
 from api.auth import get_current_user
 from api.routes.tasks import (
     bad_request_http_error,
+    sanitize_public_payload,
     task_input_data,
     task_summary_data,
 )
@@ -96,6 +97,23 @@ class TaskRouteHelperTests(unittest.TestCase):
 
         self.assertEqual(summary["error"]["code"], "inference_failed")
         self.assertNotIn("detail", summary["error"])
+
+    def test_public_json_sanitizer_removes_paths_and_diagnostics(self) -> None:
+        sanitized = sanitize_public_payload(
+            {
+                "result": {"class": "yes", "path": "C:/private/result.json"},
+                "error": {
+                    "message": "任务失败",
+                    "detail": "模型位于 C:/private/model",
+                },
+                "traceback": "File C:/private/service.py, line 1",
+            }
+        )
+
+        self.assertEqual(
+            sanitized,
+            {"result": {"class": "yes"}, "error": {"message": "任务失败"}},
+        )
 
     def test_3d_task_input_exposes_named_files_without_fake_filename(self) -> None:
         now = datetime.fromisoformat("2026-01-01T00:00:00+00:00")
@@ -711,6 +729,22 @@ class TaskHttpEndpointTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
         self.assertEqual(response.json()["detail"], "仅排队或运行中的任务可以取消")
+
+    def test_internal_error_file_is_not_downloadable(self) -> None:
+        with TemporaryDirectory() as directory:
+            task_dir = Path(directory) / "task-with-private-error"
+            task_dir.mkdir()
+            (task_dir / "error.json").write_text(
+                json.dumps({"traceback": "File C:/private/service.py"}),
+                encoding="utf-8",
+            )
+            with (
+                patch("api.routes.tasks.require_task_dir", return_value=task_dir),
+                TestClient(app) as client,
+            ):
+                response = client.get(f"/tasks/{task_dir.name}/files/error.json")
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 
 if __name__ == "__main__":

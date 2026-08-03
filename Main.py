@@ -34,11 +34,6 @@ from services.task_files import (
 from services.task_runner import run_task_models
 
 
-# 统一使用项目配置中的路径
-PROJECT_ROOT = SETTINGS.project_root
-DEFAULT_OUTPUT_DIR = SETTINGS.output_dir
-
-
 def main(argv: list[str] | None = None) -> int:
     '''主函数，解析命令行参数并执行相应操作'''
     command_args = list(sys.argv[1:] if argv is None else argv)
@@ -60,7 +55,7 @@ def main(argv: list[str] | None = None) -> int:
             queue_report = clear_task_queue_state(dry_run=args.dry_run)
             _print_queue_reset_report(queue_report, dry_run=args.dry_run)
             clear_generated_files(
-                PROJECT_ROOT,
+                SETTINGS.project_root,
                 SETTINGS.output_dir,
                 SETTINGS.task_archive_dir,
                 dry_run=args.dry_run,
@@ -73,14 +68,14 @@ def main(argv: list[str] | None = None) -> int:
             queue_report = clear_task_queue_state(dry_run=args.dry_run)
             _print_queue_reset_report(queue_report, dry_run=args.dry_run)
             clear_generated_files(
-                PROJECT_ROOT,
+                SETTINGS.project_root,
                 SETTINGS.output_dir,
                 SETTINGS.task_archive_dir,
                 dry_run=args.dry_run,
                 task_repository=task_repository,
                 user_repository=SqliteUserRepository(task_repository),
             )
-            purge_logs_and_data(PROJECT_ROOT, dry_run=args.dry_run)
+            purge_logs_and_data(SETTINGS.project_root, dry_run=args.dry_run)
             return 0
 
         if args.command == "archive-tasks":
@@ -292,7 +287,7 @@ def _build_parser() -> argparse.ArgumentParser:
     evaluate_3d.add_argument(
         "--report",
         type=Path,
-        default=DEFAULT_OUTPUT_DIR / "evaluations" / "segmentation3d-report.json",
+        default=SETTINGS.output_dir / "evaluations" / "segmentation3d-report.json",
         help="JSON 报告路径，默认 output/evaluations/segmentation3d-report.json",
     )
     evaluate_3d.add_argument(
@@ -316,7 +311,7 @@ def _build_parser() -> argparse.ArgumentParser:
     run = commands.add_parser("run", help="运行已有 3D 任务的分类与分割流程")
     run.add_argument("--json", action="store_true", help="输出完整 JSON 结果")
     run.add_argument("--task-id", required=True, help="要运行的已有 3D 任务 ID")
-    run.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    run.add_argument("--output-dir", type=Path, default=SETTINGS.output_dir)
     return parser
 
 

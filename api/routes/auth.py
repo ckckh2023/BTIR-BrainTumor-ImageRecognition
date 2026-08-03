@@ -15,7 +15,7 @@ from contracts.auth import (
     UserInfoResponse,
 )
 from api.auth import get_current_user, get_user_repository
-from core.user_records import UserRecord
+from core.user_records import UserRecord, normalize_username
 from core.settings import SETTINGS
 from repositories.user_repository import UsernameAlreadyExistsError
 from services.auth_service import create_access_token, hash_password, verify_password
@@ -62,7 +62,7 @@ def _consume_rate_limit(
 
 def _clear_login_user_limit(username: str) -> None:
     try:
-        clear_auth_rate_limit("login-user", username.casefold())
+        clear_auth_rate_limit("login-user", normalize_username(username))
     except RedisError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -86,6 +86,19 @@ def _append_auth_audit_event(
         outcome=outcome,
         source_ip=_client_identity(http_request),
         audit_dir=SETTINGS.task_archive_dir,
+    )
+
+
+def _build_auth_response(user: UserRecord) -> AuthResponse:
+    token = create_access_token(
+        data={"sub": user.user_id, "ver": user.token_version}
+    )
+    return AuthResponse(
+        access_token=token,
+        user_id=user.user_id,
+        username=user.username,
+        role=user.role,
+        must_change_password=user.must_change_password,
     )
 
 
@@ -127,21 +140,12 @@ def register(request: RegisterRequest, http_request: Request) -> AuthResponse:
         target_user_id=user.user_id,
         outcome="success",
     )
-    token = create_access_token(
-        data={"sub": user.user_id, "ver": user.token_version}
-    )
-    return AuthResponse(
-        access_token=token,
-        user_id=user.user_id,
-        username=user.username,
-        role=user.role,
-        must_change_password=user.must_change_password,
-    )
+    return _build_auth_response(user)
 
 
 @router.post("/login", response_model=AuthResponse)
 def login(request: LoginRequest, http_request: Request) -> AuthResponse:
-    username_identity = request.username.casefold()
+    username_identity = normalize_username(request.username)
     _consume_rate_limit(
         "login-user",
         username_identity,
@@ -194,16 +198,7 @@ def login(request: LoginRequest, http_request: Request) -> AuthResponse:
         target_user_id=user.user_id,
         outcome="success",
     )
-    token = create_access_token(
-        data={"sub": user.user_id, "ver": user.token_version}
-    )
-    return AuthResponse(
-        access_token=token,
-        user_id=user.user_id,
-        username=user.username,
-        role=user.role,
-        must_change_password=user.must_change_password,
-    )
+    return _build_auth_response(user)
 
 
 @router.get("/me", response_model=UserInfoResponse)
@@ -266,13 +261,4 @@ def change_password(
         target_user_id=updated.user_id,
         outcome="success",
     )
-    token = create_access_token(
-        data={"sub": updated.user_id, "ver": updated.token_version}
-    )
-    return AuthResponse(
-        access_token=token,
-        user_id=updated.user_id,
-        username=updated.username,
-        role=updated.role,
-        must_change_password=updated.must_change_password,
-    )
+    return _build_auth_response(updated)
