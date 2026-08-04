@@ -15,6 +15,8 @@ from core.settings import SETTINGS
 
 
 _AUDIT_THREAD_LOCK = Lock()
+_AUDIT_LOG_FILENAME = "audit.jsonl"
+_ROTATED_AUDIT_LOG_GLOB = "audit.*.jsonl"
 
 
 @contextmanager
@@ -52,6 +54,60 @@ def _normalize_timestamp(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+def _rotated_audit_log_paths(audit_dir: Path) -> list[Path]:
+    paths: list[tuple[int, str, Path]] = []
+    for path in audit_dir.glob(_ROTATED_AUDIT_LOG_GLOB):
+        try:
+            if path.is_file():
+                paths.append((path.stat().st_mtime_ns, path.name, path))
+        except OSError:
+            continue
+    return [path for _, _, path in sorted(paths)]
+
+
+def _prune_rotated_audit_logs(
+    audit_dir: Path,
+    *,
+    retention_days: int,
+    max_rotated_files: int,
+) -> None:
+    '''清理超过保留期或份数上限的审计日志分片'''
+    paths = _rotated_audit_log_paths(audit_dir)
+    cutoff_timestamp = datetime.now(timezone.utc).timestamp() - retention_days * 86400
+    retained_paths: list[Path] = []
+    for path in paths:
+        if path.stat().st_mtime < cutoff_timestamp:
+            path.unlink(missing_ok=True)
+        else:
+            retained_paths.append(path)
+
+    overflow = len(retained_paths) - max_rotated_files
+    for path in retained_paths[: max(overflow, 0)]:
+        path.unlink(missing_ok=True)
+
+
+def _rotate_audit_log(audit_dir: Path) -> None:
+    audit_path = audit_dir / _AUDIT_LOG_FILENAME
+    if not audit_path.is_file() or audit_path.stat().st_size == 0:
+        return
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    candidate = audit_dir / f"audit.{timestamp}.jsonl"
+    sequence = 1
+    while candidate.exists():
+        candidate = audit_dir / f"audit.{timestamp}.{sequence}.jsonl"
+        sequence += 1
+    audit_path.replace(candidate)
+
+
+def _audit_log_paths(audit_dir: Path) -> list[Path]:
+    paths = _rotated_audit_log_paths(audit_dir)
+    audit_path = audit_dir / _AUDIT_LOG_FILENAME
+    if audit_path.is_file():
+        paths.append(audit_path)
+    return paths
+
+
 def append_audit_event(
     *,
     operation: str,
@@ -62,8 +118,24 @@ def append_audit_event(
     outcome: str | None = None,
     source_ip: str | None = None,
     audit_dir: Path = SETTINGS.task_archive_dir,
+    max_bytes: int | None = None,
+    retention_days: int | None = None,
+    max_rotated_files: int | None = None,
 ) -> None:
     '''记录安全审计事件'''
+    max_bytes = SETTINGS.audit_log_max_bytes if max_bytes is None else max_bytes
+    retention_days = (
+        SETTINGS.audit_log_retention_days
+        if retention_days is None
+        else retention_days
+    )
+    max_rotated_files = (
+        SETTINGS.audit_log_max_rotated_files
+        if max_rotated_files is None
+        else max_rotated_files
+    )
+    if max_bytes <= 0 or retention_days < 0 or max_rotated_files < 0:
+        raise ValueError("审计日志轮转配置无效")
     audit_dir.mkdir(parents=True, exist_ok=True)
     entry = {
         "operation": operation,
@@ -84,7 +156,24 @@ def append_audit_event(
     if hasattr(os, "O_BINARY"):
         flags |= os.O_BINARY
     with _AUDIT_THREAD_LOCK, _audit_file_lock(audit_dir / "audit.lock"):
-        file_descriptor = os.open(audit_dir / "audit.jsonl", flags, 0o600)
+        _prune_rotated_audit_logs(
+            audit_dir,
+            retention_days=retention_days,
+            max_rotated_files=max_rotated_files,
+        )
+        audit_path = audit_dir / _AUDIT_LOG_FILENAME
+        if (
+            audit_path.is_file()
+            and audit_path.stat().st_size + len(encoded_entry) > max_bytes
+        ):
+            _rotate_audit_log(audit_dir)
+            _prune_rotated_audit_logs(
+                audit_dir,
+                retention_days=retention_days,
+                max_rotated_files=max_rotated_files,
+            )
+
+        file_descriptor = os.open(audit_path, flags, 0o600)
         try:
             remaining = memoryview(encoded_entry)
             while remaining:
@@ -109,75 +198,81 @@ def list_audit_events(
     created_to: datetime | None = None,
 ) -> tuple[list[dict[str, object]], int, int]:
     '''读取并筛选审计日志'''
-    audit_path = audit_dir / "audit.jsonl"
-    if not audit_path.is_file():
+    audit_paths = _audit_log_paths(audit_dir)
+    if not audit_paths:
         return [], 0, 0
 
     normalized_from = _normalize_timestamp(created_from) if created_from else None
     normalized_to = _normalize_timestamp(created_to) if created_to else None
     page_size = offset + limit
-    selected: list[tuple[datetime, int, dict[str, object]]] = []
+    selected: list[tuple[datetime, int, int, dict[str, object]]] = []
     matching_count = 0
     invalid_lines = 0
-    with audit_path.open(encoding="utf-8") as audit_file:
-        for line_number, raw_line in enumerate(audit_file, 1):
-            try:
-                raw_event = json.loads(raw_line)
-                event_operation = raw_event["operation"]
-                timestamp = _normalize_timestamp(
-                    datetime.fromisoformat(raw_event["timestamp"])
-                )
-                if not isinstance(event_operation, str):
-                    raise ValueError
-                optional_fields = {
-                    field: raw_event.get(field)
-                    for field in (
-                        "actor_user_id",
-                        "target_user_id",
-                        "task_id",
-                        "outcome",
-                        "source_ip",
+    for file_index, audit_path in enumerate(audit_paths):
+        try:
+            audit_file = audit_path.open(encoding="utf-8")
+        except OSError:
+            continue
+        with audit_file:
+            for line_number, raw_line in enumerate(audit_file, 1):
+                try:
+                    raw_event = json.loads(raw_line)
+                    event_operation = raw_event["operation"]
+                    timestamp = _normalize_timestamp(
+                        datetime.fromisoformat(raw_event["timestamp"])
                     )
-                }
-                if any(
-                    value is not None and not isinstance(value, str)
-                    for value in optional_fields.values()
-                ):
-                    raise ValueError
-            except (json.JSONDecodeError, KeyError, TypeError, ValueError):
-                invalid_lines += 1
-                continue
+                    if not isinstance(event_operation, str):
+                        raise ValueError
+                    optional_fields = {
+                        field: raw_event.get(field)
+                        for field in (
+                            "actor_user_id",
+                            "target_user_id",
+                            "task_id",
+                            "outcome",
+                            "source_ip",
+                        )
+                    }
+                    if any(
+                        value is not None and not isinstance(value, str)
+                        for value in optional_fields.values()
+                    ):
+                        raise ValueError
+                except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+                    invalid_lines += 1
+                    continue
 
-            if operation is not None and event_operation != operation:
-                continue
-            if actor_user_id is not None and optional_fields["actor_user_id"] != actor_user_id:
-                continue
-            if target_user_id is not None and optional_fields["target_user_id"] != target_user_id:
-                continue
-            if task_id is not None and optional_fields["task_id"] != task_id:
-                continue
-            if normalized_from is not None and timestamp < normalized_from:
-                continue
-            if normalized_to is not None and timestamp > normalized_to:
-                continue
+                if operation is not None and event_operation != operation:
+                    continue
+                if actor_user_id is not None and optional_fields["actor_user_id"] != actor_user_id:
+                    continue
+                if target_user_id is not None and optional_fields["target_user_id"] != target_user_id:
+                    continue
+                if task_id is not None and optional_fields["task_id"] != task_id:
+                    continue
+                if normalized_from is not None and timestamp < normalized_from:
+                    continue
+                if normalized_to is not None and timestamp > normalized_to:
+                    continue
 
-            matching_count += 1
-            entry = (
-                timestamp,
-                line_number,
-                {
-                    "operation": event_operation,
-                    "timestamp": timestamp,
-                    **optional_fields,
-                },
-            )
-            if page_size <= 0:
-                continue
-            if len(selected) < page_size:
-                heapq.heappush(selected, entry)
-            elif entry[:2] > selected[0][:2]:
-                heapq.heapreplace(selected, entry)
+                matching_count += 1
+                entry = (
+                    timestamp,
+                    file_index,
+                    line_number,
+                    {
+                        "operation": event_operation,
+                        "timestamp": timestamp,
+                        **optional_fields,
+                    },
+                )
+                if page_size <= 0:
+                    continue
+                if len(selected) < page_size:
+                    heapq.heappush(selected, entry)
+                elif entry[:3] > selected[0][:3]:
+                    heapq.heapreplace(selected, entry)
 
-    selected.sort(key=lambda item: (item[0], item[1]), reverse=True)
-    page = [event for _, _, event in selected[offset:]]
+    selected.sort(key=lambda item: item[:3], reverse=True)
+    page = [event for _, _, _, event in selected[offset:]]
     return page, matching_count, invalid_lines

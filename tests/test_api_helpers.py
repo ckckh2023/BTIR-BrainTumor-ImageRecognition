@@ -592,7 +592,10 @@ class TaskHttpEndpointTests(unittest.TestCase):
 
         with (
             patch("api.routes.tasks.require_task_dir", return_value=task_dir),
-            patch("api.routes.tasks.task_repository.load", return_value=record),
+            patch(
+                "api.routes.tasks.task_repository.load_for_user",
+                return_value=record,
+            ) as load_for_user,
             TestClient(app) as client,
         ):
             response = client.get(
@@ -601,6 +604,7 @@ class TaskHttpEndpointTests(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        load_for_user.assert_called_once_with(task_dir.name, TEST_USER.user_id)
         payload = response.json()
         self.assertEqual(payload["total"], 2)
         self.assertEqual(payload["items"][0]["run_id"], "classification-new")
@@ -785,7 +789,14 @@ class TaskHttpEndpointTests(unittest.TestCase):
                     "api.routes.tasks.user_quota_lock",
                     return_value=nullcontext(),
                 ) as quota_lock,
-                patch("api.routes.tasks.reconcile_task_job", return_value=record),
+                patch(
+                    "api.routes.tasks.task_repository.load_for_user",
+                    return_value=record,
+                ),
+                patch(
+                    "api.routes.tasks.reconcile_task_job",
+                    return_value=record,
+                ) as reconcile_task_job,
                 TestClient(app) as client,
             ):
                 created = client.post(
@@ -810,6 +821,7 @@ class TaskHttpEndpointTests(unittest.TestCase):
         quota_lock.assert_called_once_with(TEST_USER.user_id)
         self.assertEqual(enqueued.json()["job"]["id"], "job-http-001")
         self.assertEqual(task_status.status_code, status.HTTP_200_OK)
+        reconcile_task_job.assert_called_once_with(task_dir, record=record)
         self.assertEqual(task_status.json()["status"], "succeeded")
         self.assertEqual(
             task_status.json()["frontend_result"]["timing"]["classification_inference_ms"],
@@ -838,6 +850,10 @@ class TaskHttpEndpointTests(unittest.TestCase):
             )
             with (
                 patch("api.routes.tasks.require_task_dir", return_value=task_dir),
+                patch(
+                    "api.routes.tasks.task_repository.load_for_user",
+                    return_value=record,
+                ),
                 patch("api.routes.tasks.reconcile_task_job", return_value=record),
                 TestClient(app) as client,
             ):
@@ -861,6 +877,10 @@ class TaskHttpEndpointTests(unittest.TestCase):
             task_dir.mkdir()
             with (
                 patch("api.routes.tasks.require_task_dir", return_value=task_dir),
+                patch(
+                    "api.routes.tasks.task_repository.load_for_user",
+                    return_value=record,
+                ),
                 patch("api.routes.tasks.reconcile_task_job", return_value=record),
                 patch("api.routes.tasks.get_task_job_progress") as get_progress,
                 TestClient(app) as client,

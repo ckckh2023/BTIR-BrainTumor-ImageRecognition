@@ -78,6 +78,21 @@ class TaskStorageTests(unittest.TestCase):
         with self.assertRaises(TaskNotFoundError):
             self.repository.load(self.output_dir / "missing-task")
 
+    def test_load_for_user_enforces_task_ownership(self) -> None:
+        task_dir = self.output_dir / "owned-load-task"
+        task_dir.mkdir(parents=True)
+        self.repository.save(
+            task_dir,
+            self._record(task_dir.name),
+            user_id="owner-a",
+        )
+
+        record = self.repository.load_for_user(task_dir.name, "owner-a")
+
+        self.assertEqual(record.task_id, task_dir.name)
+        with self.assertRaises(TaskNotFoundError):
+            self.repository.load_for_user(task_dir.name, "owner-b")
+
     def test_task_owner_is_preserved_across_regular_updates(self) -> None:
         task_dir = self.output_dir / "owned-task"
         task_dir.mkdir(parents=True)
@@ -452,6 +467,8 @@ class TaskStorageTests(unittest.TestCase):
                 "idx_tasks_status_created_at_task_id",
                 "idx_tasks_status_updated_at_task_id",
                 "idx_tasks_archived_at_task_id",
+                "idx_tasks_user_status_created",
+                "idx_tasks_user_status_updated",
             }.issubset(index_names)
         )
 

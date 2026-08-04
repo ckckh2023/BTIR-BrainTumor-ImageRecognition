@@ -267,6 +267,22 @@ POST /admin/users/{user_id}/tasks/{task_id}/restore
 `audit.jsonl`，接口只返回结构化审计字段，不返回密码或任务文件内容。认证事件还会记录
 操作结果和来源 IP。审计追加使用跨进程文件锁，锁文件为同目录下的 `audit.lock`。
 
+### 审计日志轮转与保留
+
+`audit.jsonl` 是当前写入文件。每次追加前会在同一把跨进程锁下检查容量：超过
+`BTIR_AUDIT_LOG_MAX_BYTES` 时，当前文件会重命名为带 UTC 时间戳的
+`audit.<timestamp>.jsonl`，再继续写入新的 `audit.jsonl`。查询接口会同时读取当前文件和仍被保留的历史分片。
+
+默认保留策略如下：
+
+```text
+BTIR_AUDIT_LOG_MAX_BYTES=10485760
+BTIR_AUDIT_LOG_RETENTION_DAYS=90
+BTIR_AUDIT_LOG_MAX_ROTATED_FILES=30
+```
+
+历史分片会在后续审计事件写入时清理：超过保留天数，或超出最大份数时，最旧的分片先删除。`0` 天或 `0` 份表示不保留历史分片；当前 `audit.jsonl` 不会因该策略被删除。生产环境仍应将归档目录纳入备份。
+
 ### 自动永久清除建议
 
 当前程序不会仅因到达 `purge_eligible_at` 就自行永久删除。生产环境建议由

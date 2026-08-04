@@ -308,9 +308,14 @@ def reconcile_active_tasks(
     )
 
 
-def reconcile_task_job(task_dir: Path) -> TaskRecord:
+def reconcile_task_job(
+    task_dir: Path,
+    *,
+    record: TaskRecord | None = None,
+) -> TaskRecord:
     '''将本地活动任务与 RQ 作业状态对账，修复异常中断后的悬挂状态'''
-    record = task_repository.load(task_dir)
+    if record is None:
+        record = task_repository.load(task_dir)
     if record.status not in ACTIVE_ASYNC_TASK_STATUSES or record.job is None:
         return record
 

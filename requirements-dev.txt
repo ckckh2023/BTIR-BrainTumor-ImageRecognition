@@ -2,3 +2,6 @@
 
 # FastAPI TestClient 的 HTTP 端到端测试依赖
 httpx2>=2.0,<3.0
+
+# 浏览器端到端测试依赖
+playwright>=1.55,<2.0
