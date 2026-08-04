@@ -11,6 +11,7 @@ from typing import Callable, Iterator
 
 from pydantic import ValidationError
 
+from core.settings import SETTINGS
 from core.task_definitions import ACTIVE_ASYNC_TASK_STATUSES, TaskStatus
 from core.task_records import TaskRecord
 from repositories.task_repository_contracts import (
@@ -86,13 +87,13 @@ def _migration_004_normalize_completed_status(connection: sqlite3.Connection) ->
         except json.JSONDecodeError:
             record_data = None
         if isinstance(record_data, dict):
-            record_data["status"] = "succeeded"
+            record_data["status"] = TaskStatus.SUCCEEDED.value
             record_json = json.dumps(record_data, ensure_ascii=False, separators=(",", ":"))
         else:
             record_json = row["record_json"]
         connection.execute(
             "UPDATE tasks SET status = ?, record_json = ? WHERE task_id = ?",
-            ("succeeded", record_json, row["task_id"]),
+            (TaskStatus.SUCCEEDED.value, record_json, row["task_id"]),
         )
 
 
@@ -289,9 +290,14 @@ class SqliteTaskRepository:
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
         try:
-            connection = sqlite3.connect(self.database_path, timeout=5)
+            connection = sqlite3.connect(
+                self.database_path,
+                timeout=SETTINGS.sqlite_busy_timeout_seconds,
+            )
             connection.row_factory = sqlite3.Row
-            connection.execute("PRAGMA busy_timeout = 5000")
+            connection.execute(
+                f"PRAGMA busy_timeout = {SETTINGS.sqlite_busy_timeout_seconds * 1000}"
+            )
         except sqlite3.Error as exc:
             raise TaskRepositoryUnavailableError("SQLite 任务数据库不可用") from exc
 
@@ -579,7 +585,7 @@ class SqliteTaskRepository:
         self,
         *,
         succeeded_before: datetime,
-        failed_before: datetime,
+        canceled_before: datetime,
         limit: int,
         user_id: str | None = None,
     ) -> list[TaskRecord]:
@@ -587,9 +593,8 @@ class SqliteTaskRepository:
         params: list[object] = [
             TaskStatus.SUCCEEDED.value,
             succeeded_before.isoformat(),
-            TaskStatus.FAILED.value,
             TaskStatus.CANCELED.value,
-            failed_before.isoformat(),
+            canceled_before.isoformat(),
         ]
         if user_id is not None:
             params.append(user_id)
@@ -599,7 +604,7 @@ class SqliteTaskRepository:
                 SELECT record_json FROM tasks
                 WHERE archived_at IS NULL AND (
                     (status = ? AND updated_at < ?) OR
-                    (status IN (?, ?) AND updated_at < ?)
+                    (status = ? AND updated_at < ?)
                 ) {extra_cond}
                 ORDER BY updated_at ASC, task_id ASC
                 LIMIT ?

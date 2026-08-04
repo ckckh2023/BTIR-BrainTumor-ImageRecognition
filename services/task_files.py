@@ -20,12 +20,7 @@ from collections.abc import Mapping
 from core.settings import SETTINGS
 from core.task_records import StoredTaskInput, StoredTaskModality, TaskRecord
 from repositories.task_repository import task_repository
-from core.task_definitions import TaskDirectory, TaskStatus
-
-
-VOLUME_MODALITIES = ("flair", "t1ce", "t1", "t2")
-UPLOAD_COPY_CHUNK_BYTES = 1024 * 1024
-MAX_VOLUME_ARCHIVE_MEMBERS = 128
+from core.task_definitions import TaskDirectory, TaskStatus, VOLUME_MODALITIES
 
 
 class VolumeArchiveSelectionRequired(ValueError):
@@ -210,7 +205,7 @@ def _gzip_stage_to_destination(source: Path, destination: Path) -> tuple[int, st
     '''把未压缩的阶段文件压缩为 ``.nii.gz``，返回最终文件大小与哈希'''
     with source.open("rb") as raw, destination.open("wb") as output:
         with gzip.GzipFile(filename="", mode="wb", fileobj=output, mtime=0) as gzip_stream:
-            while chunk := raw.read(UPLOAD_COPY_CHUNK_BYTES):
+            while chunk := raw.read(SETTINGS.upload_copy_chunk_bytes):
                 gzip_stream.write(chunk)
     return destination.stat().st_size, sha256(destination)
 
@@ -287,9 +282,10 @@ def volume_archive_candidates(
 ) -> dict[str, list[zipfile.ZipInfo]]:
     '''返回 ZIP 中按模态归类的 NIfTI 候选文件，不解压任何文件'''
     entries = archive.infolist()
-    if len(entries) > MAX_VOLUME_ARCHIVE_MEMBERS:
+    if len(entries) > SETTINGS.max_volume_archive_members:
         raise ValueError(
-            f"压缩包文件数量超过限制（最多 {MAX_VOLUME_ARCHIVE_MEMBERS} 个）"
+            "压缩包文件数量超过限制"
+            f"（最多 {SETTINGS.max_volume_archive_members} 个）"
         )
 
     candidates: dict[str, list[zipfile.ZipInfo]] = {
@@ -438,7 +434,7 @@ def _copy_upload_with_limit(
     '''分块写入并同步计算哈希，避免保存后再次完整读取文件'''
     written_bytes = 0
     digest = hashlib.sha256()
-    while chunk := upload.read(UPLOAD_COPY_CHUNK_BYTES):
+    while chunk := upload.read(SETTINGS.upload_copy_chunk_bytes):
         written_bytes += len(chunk)
         if written_bytes > max_upload_bytes:
             raise ValueError(

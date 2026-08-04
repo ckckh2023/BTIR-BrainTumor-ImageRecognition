@@ -37,6 +37,7 @@ from core.task_definitions import (
     ModelName,
     TaskArtifact,
     TaskStatus,
+    VOLUME_MODALITIES,
 )
 from core.user_records import UserRecord
 from repositories.task_repository import task_repository
@@ -51,7 +52,6 @@ from services.task_files import (
     initialize_uploaded_volume_task,
     select_volume_archive_entries,
     VolumeArchiveSelectionRequired,
-    VOLUME_MODALITIES,
 )
 from services.task_queue import (
     cancel_task_run,
@@ -75,7 +75,7 @@ PRIVATE_JSON_FIELDS = {
     "task_dir",
     "traceback",
 }
-PRIVATE_TASK_FILENAMES = {TaskArtifact.LEGACY_METADATA, "error.json"}
+PRIVATE_TASK_FILENAMES = {TaskArtifact.LEGACY_METADATA, TaskArtifact.ERROR}
 
 
 def sanitize_public_payload(value):

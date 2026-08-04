@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from enum import StrEnum
+from types import MappingProxyType
 
 
 class TaskStatus(StrEnum):
@@ -29,6 +30,15 @@ class JobStatus(StrEnum):
     CANCELED = "canceled"
 
 
+class VolumeModality(StrEnum):
+    '''病例输入的固定 MRI 模态'''
+
+    FLAIR = "flair"
+    T1CE = "t1ce"
+    T1 = "t1"
+    T2 = "t2"
+
+
 class ModelName(StrEnum):
     '''当前支持的推理模型名称'''
 
@@ -37,11 +47,19 @@ class ModelName(StrEnum):
 
 
 ALL_MODELS = frozenset(ModelName)
+VOLUME_MODALITIES = tuple(VolumeModality)
 ACTIVE_ASYNC_TASK_STATUSES = frozenset(
     {
         TaskStatus.QUEUED,
         TaskStatus.RUNNING,
         TaskStatus.CANCEL_REQUESTED,
+    }
+)
+RETRYABLE_TASK_STATUSES = frozenset({TaskStatus.FAILED})
+ARCHIVABLE_TASK_STATUSES = frozenset(
+    {
+        TaskStatus.SUCCEEDED,
+        TaskStatus.CANCELED,
     }
 )
 
@@ -81,9 +99,19 @@ class TaskArtifact(StrEnum):
     SEGMENTATION_RESULT = "segmentation.json"
     FRONTEND_RESULT = "frontend_result.json"
     RUN_RESULT = "result.json"
+    SEGMENTATION_MASK = "prediction.nii.gz"
+    ERROR = "error.json"
     LEGACY_METADATA = "task.json"
+
+
+MODEL_RESULT_ARTIFACTS = MappingProxyType(
+    {
+        ModelName.CLASSIFICATION: TaskArtifact.CLASSIFICATION_RESULT,
+        ModelName.SEGMENTATION: TaskArtifact.SEGMENTATION_RESULT,
+    }
+)
 
 
 def model_result_filename(model_name: ModelName) -> str:
     '''返回指定模型对应的最新结果文件名'''
-    return f"{model_name.value}.json"
+    return MODEL_RESULT_ARTIFACTS[model_name].value

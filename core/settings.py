@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from accelerator import validate_device
+from core.task_definitions import VOLUME_MODALITIES
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -114,7 +115,7 @@ def _get_fraction(name: str, default: float) -> float:
 
 def _get_volume_classifier_modality() -> str:
     value = os.getenv("BTIR_3D_CLASSIFIER_MODALITY", "flair").strip().lower()
-    allowed = {"flair", "t1ce", "t1", "t2"}
+    allowed = {modality.value for modality in VOLUME_MODALITIES}
     if value not in allowed:
         raise ValueError(
             "BTIR_3D_CLASSIFIER_MODALITY 必须是 flair、t1ce、t1 或 t2"
@@ -140,6 +141,7 @@ class Settings:
     segmenter_3d_model: Path
     segmenter_3d_overlap: float
     segmenter_3d_fast_inference: bool
+    segmenter_3d_cuda_accumulator_reserve_mb: int
     volume_classifier_modality: str
     vit_classifier_model_dir: Path
     vit_classifier_max_slices: int
@@ -152,6 +154,10 @@ class Settings:
     max_3d_voxels: int
     cors_origins: list[str]
     redis_url: str
+    redis_socket_timeout_seconds: int
+    sqlite_busy_timeout_seconds: int
+    upload_copy_chunk_bytes: int
+    max_volume_archive_members: int
     task_lock_timeout_seconds: int
     task_lock_wait_seconds: float
     task_cancel_check_interval_seconds: float
@@ -165,7 +171,7 @@ class Settings:
     linux_worker_mode: str
     task_cleanup_enabled: bool
     succeeded_task_retention_days: int
-    failed_task_retention_days: int
+    canceled_task_retention_days: int
     task_archive_grace_days: int
     audit_log_max_bytes: int
     audit_log_retention_days: int
@@ -216,6 +222,10 @@ def _build_settings() -> Settings:
             "BTIR_3D_FAST_INFERENCE",
             True,
         ),
+        segmenter_3d_cuda_accumulator_reserve_mb=_get_nonnegative_int(
+            "BTIR_3D_CUDA_ACCUMULATOR_RESERVE_MB",
+            2048,
+        ),
         volume_classifier_modality=_get_volume_classifier_modality(),
         vit_classifier_model_dir=_get_path(
             "BTIR_VIT_CLASSIFIER_MODEL_DIR",
@@ -247,6 +257,22 @@ def _build_settings() -> Settings:
             "BTIR_REDIS_URL",
             "redis://127.0.0.1:6379/0",
         ).strip(),
+        redis_socket_timeout_seconds=_get_positive_int(
+            "BTIR_REDIS_SOCKET_TIMEOUT_SECONDS",
+            3,
+        ),
+        sqlite_busy_timeout_seconds=_get_positive_int(
+            "BTIR_SQLITE_BUSY_TIMEOUT_SECONDS",
+            5,
+        ),
+        upload_copy_chunk_bytes=_get_positive_int(
+            "BTIR_UPLOAD_COPY_CHUNK_BYTES",
+            1024 * 1024,
+        ),
+        max_volume_archive_members=_get_positive_int(
+            "BTIR_MAX_VOLUME_ARCHIVE_MEMBERS",
+            128,
+        ),
         task_lock_timeout_seconds=_get_positive_int(
             "BTIR_TASK_LOCK_TIMEOUT_SECONDS",
             30,
@@ -287,8 +313,8 @@ def _build_settings() -> Settings:
             "BTIR_SUCCEEDED_TASK_RETENTION_DAYS",
             30,
         ),
-        failed_task_retention_days=_get_nonnegative_int(
-            "BTIR_FAILED_TASK_RETENTION_DAYS",
+        canceled_task_retention_days=_get_nonnegative_int(
+            "BTIR_CANCELED_TASK_RETENTION_DAYS",
             7,
         ),
         task_archive_grace_days=_get_nonnegative_int(

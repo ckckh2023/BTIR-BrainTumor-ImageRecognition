@@ -9,7 +9,7 @@ import shutil
 from typing import Literal
 
 from core.settings import SETTINGS
-from core.task_definitions import ACTIVE_ASYNC_TASK_STATUSES, TaskStatus
+from core.task_definitions import ARCHIVABLE_TASK_STATUSES, ACTIVE_ASYNC_TASK_STATUSES, TaskStatus
 from core.task_records import TaskRecord
 from repositories.task_repository import task_repository
 from repositories.task_repository_contracts import TaskNotFoundError, TaskRepository
@@ -146,7 +146,7 @@ def archive_expired_tasks(
     now = now or datetime.now().astimezone()
     candidates = repository.list_archive_candidates(
         succeeded_before=now - timedelta(days=SETTINGS.succeeded_task_retention_days),
-        failed_before=now - timedelta(days=SETTINGS.failed_task_retention_days),
+        canceled_before=now - timedelta(days=SETTINGS.canceled_task_retention_days),
         limit=limit,
     )
     report = ArchiveReport(operation="archive", dry_run=dry_run)
@@ -250,12 +250,12 @@ def purge_expired_archives(
 
 
 def _is_archive_eligible(record: TaskRecord, now: datetime) -> bool:
-    if record.archived_at is not None:
+    if record.archived_at is not None or record.status not in ARCHIVABLE_TASK_STATUSES:
         return False
     if record.status is TaskStatus.SUCCEEDED:
         retention_days = SETTINGS.succeeded_task_retention_days
-    elif record.status in {TaskStatus.FAILED, TaskStatus.CANCELED}:
-        retention_days = SETTINGS.failed_task_retention_days
+    elif record.status is TaskStatus.CANCELED:
+        retention_days = SETTINGS.canceled_task_retention_days
     else:
         return False
     return record.updated_at <= now - timedelta(days=retention_days)
