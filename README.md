@@ -189,7 +189,8 @@ python Main.py user enable <username>
 python Main.py user reset-password <username>
 ```
 
-角色变更、禁用账号或重置密码都会撤销该用户已经签发的旧 Token；密码被重置后，
+角色变更、禁用账号或重置密码都会撤销该用户已经签发的旧 Token；管理员通过 API
+重置密码、归档或恢复其他用户任务时，需先按接口返回的确认动作二次提交；密码被重置后，
 用户必须调用 `POST /auth/change-password` 修改临时密码才能继续操作任务。管理员可通过
 `GET /admin/users` 和 `GET /admin/tasks` 查询跨用户摘要，还可以重置指定用户密码
 或安全删除、恢复其指定任务，并通过 `GET /admin/audit` 查询审计记录；管理员接口

@@ -75,6 +75,13 @@ class AuthenticationTests(unittest.TestCase):
     def _headers(auth: dict) -> dict[str, str]:
         return {"Authorization": f"Bearer {auth['access_token']}"}
 
+    @staticmethod
+    def _confirmed_headers(auth: dict, action: str) -> dict[str, str]:
+        return {
+            **AuthenticationTests._headers(auth),
+            "X-BTIR-Confirm-Action": action,
+        }
+
     def _record(self, task_id: str) -> TaskRecord:
         now = datetime.now(timezone.utc)
         return TaskRecord(
@@ -160,6 +167,46 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(task_item["owner_user_id"], bob["user_id"])
         self.assertEqual(task_item["owner_username"], "bob")
 
+    def test_users_can_only_list_and_read_their_own_tasks(self) -> None:
+        output_dir = self.admin_settings.output_dir
+        output_dir.mkdir()
+        with TestClient(app) as client:
+            alice = self._register(client, "alice")
+            bob = self._register(client, "bob")
+            alice_task_dir = output_dir / "task-owned-by-alice"
+            bob_task_dir = output_dir / "task-owned-by-bob"
+            alice_task_dir.mkdir()
+            bob_task_dir.mkdir()
+            self.repository.save(
+                alice_task_dir,
+                self._record(alice_task_dir.name),
+                user_id=alice["user_id"],
+            )
+            self.repository.save(
+                bob_task_dir,
+                self._record(bob_task_dir.name),
+                user_id=bob["user_id"],
+            )
+
+            alice_tasks = client.get("/tasks", headers=self._headers(alice))
+            bob_tasks = client.get("/tasks", headers=self._headers(bob))
+            alice_reads_bob = client.get(
+                f"/tasks/{bob_task_dir.name}",
+                headers=self._headers(alice),
+            )
+
+        self.assertEqual(alice_tasks.status_code, status.HTTP_200_OK)
+        self.assertEqual(bob_tasks.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            [item["task_id"] for item in alice_tasks.json()["items"]],
+            [alice_task_dir.name],
+        )
+        self.assertEqual(
+            [item["task_id"] for item in bob_tasks.json()["items"]],
+            [bob_task_dir.name],
+        )
+        self.assertEqual(alice_reads_bob.status_code, status.HTTP_404_NOT_FOUND)
+
     def test_registration_can_be_disabled(self) -> None:
         with (
             patch("api.routes.auth.SETTINGS", replace(SETTINGS, registration_enabled=False)),
@@ -194,6 +241,14 @@ class AuthenticationTests(unittest.TestCase):
             reset = client.post(
                 f"/admin/users/{bob['user_id']}/reset-password",
                 headers=admin_headers,
+                json={"new_password": "temporary-password"},
+            )
+            confirmed_reset = client.post(
+                f"/admin/users/{bob['user_id']}/reset-password",
+                headers=self._confirmed_headers(
+                    login.json(),
+                    f"reset-password:{bob['user_id']}",
+                ),
                 json={"new_password": "temporary-password"},
             )
             old_bob_token = client.get("/auth/me", headers=self._headers(bob))
@@ -240,13 +295,27 @@ class AuthenticationTests(unittest.TestCase):
                 "services.archive_service.task_write_lock",
                 side_effect=lambda _: nullcontext(),
             ):
+                confirmation_required_for_archive = client.delete(
+                    f"/admin/users/{bob['user_id']}/tasks/{task_dir.name}",
+                    headers=admin_headers,
+                )
                 archived = client.delete(
                     f"/admin/users/{bob['user_id']}/tasks/{task_dir.name}",
+                    headers=self._confirmed_headers(
+                        login.json(),
+                        f"archive-task:{task_dir.name}",
+                    ),
+                )
+                confirmation_required_for_restore = client.post(
+                    f"/admin/users/{bob['user_id']}/tasks/{task_dir.name}/restore",
                     headers=admin_headers,
                 )
                 restored = client.post(
                     f"/admin/users/{bob['user_id']}/tasks/{task_dir.name}/restore",
-                    headers=admin_headers,
+                    headers=self._confirmed_headers(
+                        login.json(),
+                        f"restore-task:{task_dir.name}",
+                    ),
                 )
             audit_response = client.get(
                 f"/admin/audit?target_user_id={bob['user_id']}",
@@ -254,8 +323,13 @@ class AuthenticationTests(unittest.TestCase):
             )
 
         self.assertEqual(forbidden_reset.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertEqual(reset.status_code, status.HTTP_200_OK)
-        self.assertTrue(reset.json()["token_revoked"])
+        self.assertEqual(reset.status_code, status.HTTP_428_PRECONDITION_REQUIRED)
+        self.assertEqual(
+            reset.json()["detail"]["confirmation_action"],
+            f"reset-password:{bob['user_id']}",
+        )
+        self.assertEqual(confirmed_reset.status_code, status.HTTP_200_OK)
+        self.assertTrue(confirmed_reset.json()["token_revoked"])
         self.assertEqual(old_bob_token.status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertEqual(new_bob_login.status_code, status.HTTP_200_OK)
         self.assertTrue(new_bob_login.json()["must_change_password"])
@@ -266,7 +340,15 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(expired_temporary_token.status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertEqual(usable_task_list.status_code, status.HTTP_200_OK)
         self.assertEqual(wrong_owner.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(
+            confirmation_required_for_archive.status_code,
+            status.HTTP_428_PRECONDITION_REQUIRED,
+        )
         self.assertEqual(archived.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            confirmation_required_for_restore.status_code,
+            status.HTTP_428_PRECONDITION_REQUIRED,
+        )
         self.assertEqual(restored.status_code, status.HTTP_200_OK)
         self.assertTrue(task_dir.is_dir())
         self.assertEqual(audit_response.status_code, status.HTTP_200_OK)

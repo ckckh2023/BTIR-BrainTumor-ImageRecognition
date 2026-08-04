@@ -128,6 +128,11 @@ Content-Type: application/json
 管理员接口使用同一个 Bearer Token，仅 `role=admin` 的启用账号可以调用；普通
 账号返回 `403`。查询接口只返回脱敏摘要，不开放跨用户运行或文件下载。
 
+管理员重置密码、归档和恢复其他用户任务均需要显式二次确认。首次请求不携带
+`X-BTIR-Confirm-Action` 时返回 `428`，响应会给出本次请求所需的
+`confirmation_action`；确认后使用该值作为同名请求头重新提交。确认值分别为
+`reset-password:<user_id>`、`archive-task:<task_id>`、`restore-task:<task_id>`。
+
 ```http
 GET /admin/users?limit=50&offset=0&q=alice&role=user&is_active=true
 Authorization: Bearer <admin_access_token>
@@ -156,6 +161,7 @@ python Main.py user set-role <username> admin
 ```http
 POST /admin/users/{user_id}/reset-password
 Authorization: Bearer <admin_access_token>
+X-BTIR-Confirm-Action: reset-password:<user_id>
 Content-Type: application/json
 
 {"new_password": "temporary-password"}
@@ -170,6 +176,7 @@ Content-Type: application/json
 ```http
 DELETE /admin/users/{user_id}/tasks/{task_id}
 Authorization: Bearer <admin_access_token>
+X-BTIR-Confirm-Action: archive-task:<task_id>
 ```
 
 后端会严格复核任务归属；任务不属于路径中的用户时返回 `404`。成功后执行软删除，
@@ -182,6 +189,7 @@ Authorization: Bearer <admin_access_token>
 ```http
 POST /admin/users/{user_id}/tasks/{task_id}/restore
 Authorization: Bearer <admin_access_token>
+X-BTIR-Confirm-Action: restore-task:<task_id>
 ```
 
 审计查询支持 `operation`、`actor_user_id`、`target_user_id`、`task_id`、
