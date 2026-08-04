@@ -26,7 +26,9 @@ class FrontendContractTests(unittest.TestCase):
 
     def test_active_task_polling_is_fast_then_backs_off(self) -> None:
         self.assertIn("pollingStartedAt", self.html)
-        self.assertIn("< 15_000 ? 500 : 1000", self.html)
+        self.assertIn("elapsedPollingMs", self.html)
+        self.assertIn("elapsedPollingMs < 15_000", self.html)
+        self.assertIn("elapsedPollingMs < 60_000 ? 1500 : 3000", self.html)
 
     def test_task_manager_exposes_cancel_action(self) -> None:
         self.assertIn("canCancelTask(task.status)", self.html)

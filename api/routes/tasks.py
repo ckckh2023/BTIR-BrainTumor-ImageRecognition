@@ -32,7 +32,12 @@ from contracts.task import (
     VolumeTaskCreatedResponse,
 )
 from core.settings import SETTINGS
-from core.task_definitions import ModelName, TaskArtifact, TaskStatus
+from core.task_definitions import (
+    ACTIVE_ASYNC_TASK_STATUSES,
+    ModelName,
+    TaskArtifact,
+    TaskStatus,
+)
 from core.user_records import UserRecord
 from repositories.task_repository import task_repository
 from repositories.task_repository_contracts import (
@@ -119,6 +124,12 @@ def enforce_task_storage_limit(user: UserRecord) -> None:
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="当前账号保存的任务数已达到上限，请先归档并等待管理员清理",
         )
+
+
+def discard_incomplete_task_dir(task_dir: Path | None) -> None:
+    '''清理创建后但未成功初始化的任务目录'''
+    if task_dir is not None:
+        shutil.rmtree(task_dir, ignore_errors=True)
 
 
 def enforce_active_task_limit(task_id: str, user: UserRecord) -> None:
@@ -248,15 +259,13 @@ def create_3d_task_from_upload(
             max_tasks_per_user=SETTINGS.max_tasks_per_user,
         )
     except TaskQuotaExceededError as exc:
-        if task_dir is not None:
-            shutil.rmtree(task_dir, ignore_errors=True)
+        discard_incomplete_task_dir(task_dir)
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=str(exc),
         ) from exc
     except ValueError as exc:
-        if task_dir is not None:
-            shutil.rmtree(task_dir, ignore_errors=True)
+        discard_incomplete_task_dir(task_dir)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
@@ -351,8 +360,7 @@ def create_3d_task_from_archive(
                 max_tasks_per_user=SETTINGS.max_tasks_per_user,
             )
     except TaskQuotaExceededError as exc:
-        if task_dir is not None:
-            shutil.rmtree(task_dir, ignore_errors=True)
+        discard_incomplete_task_dir(task_dir)
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=str(exc),
@@ -367,15 +375,13 @@ def create_3d_task_from_archive(
             },
         ) from exc
     except RuntimeError as exc:
-        if task_dir is not None:
-            shutil.rmtree(task_dir, ignore_errors=True)
+        discard_incomplete_task_dir(task_dir)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="压缩包中的文件无法读取，请使用未加密的标准 ZIP 文件",
         ) from exc
     except (ValueError, zipfile.BadZipFile) as exc:
-        if task_dir is not None:
-            shutil.rmtree(task_dir, ignore_errors=True)
+        discard_incomplete_task_dir(task_dir)
         message = str(exc) or "压缩包格式无效"
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -466,15 +472,20 @@ def get_task(
     task_data = reconcile_task_job(task_dir)
 
     frontend_path = task_dir / TaskArtifact.FRONTEND_RESULT
-    frontend_result = (
-        json.loads(frontend_path.read_text(encoding="utf-8"))
-        if frontend_path.is_file()
-        else None
-    )
+    frontend_result = None
+    if (
+        task_data.status not in ACTIVE_ASYNC_TASK_STATUSES
+        and frontend_path.is_file()
+    ):
+        frontend_result = json.loads(frontend_path.read_text(encoding="utf-8"))
     if frontend_result is not None:
         frontend_result = sanitize_public_payload(frontend_result)
 
-    progress = get_task_job_progress(task_data)
+    progress = (
+        get_task_job_progress(task_data)
+        if task_data.status in ACTIVE_ASYNC_TASK_STATUSES
+        else None
+    )
     return TaskStatusResponse(
         **task_common_data(task_data),
         frontend_result=frontend_result,

@@ -2639,7 +2639,10 @@
                                     stage: resultData.progress_stage || '',
                                 }
                             }
-                            const pollInterval = Date.now() - pollingStartedAt < 15_000 ? 500 : 1000
+                            const elapsedPollingMs = Date.now() - pollingStartedAt
+                            const pollInterval = elapsedPollingMs < 15_000
+                                ? 500
+                                : (elapsedPollingMs < 60_000 ? 1500 : 3000)
                             await new Promise(resolve => setTimeout(resolve, pollInterval))
                         }
 

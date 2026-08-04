@@ -819,6 +819,58 @@ class TaskHttpEndpointTests(unittest.TestCase):
         self.assertEqual(result_file.status_code, status.HTTP_200_OK)
         self.assertNotIn("image_path", result_file.json())
 
+    def test_active_task_status_skips_intermediate_frontend_result(self) -> None:
+        now = datetime.fromisoformat("2026-01-01T00:00:00+00:00")
+        record = TaskRecord(
+            task_id="task-active-result-001",
+            name="Active result",
+            status=TaskStatus.RUNNING,
+            created_at=now,
+            updated_at=now,
+            input=StoredTaskInput(size_bytes=1, sha256="a" * 64),
+        )
+        with TemporaryDirectory() as directory:
+            task_dir = Path(directory) / record.task_id
+            task_dir.mkdir()
+            (task_dir / "frontend_result.json").write_text(
+                json.dumps({"classification": {"class": "yes"}}),
+                encoding="utf-8",
+            )
+            with (
+                patch("api.routes.tasks.require_task_dir", return_value=task_dir),
+                patch("api.routes.tasks.reconcile_task_job", return_value=record),
+                TestClient(app) as client,
+            ):
+                response = client.get(f"/tasks/{record.task_id}")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNone(response.json()["frontend_result"])
+
+    def test_terminal_task_status_skips_job_progress_lookup(self) -> None:
+        now = datetime.fromisoformat("2026-01-01T00:00:00+00:00")
+        record = TaskRecord(
+            task_id="task-terminal-result-001",
+            name="Terminal result",
+            status=TaskStatus.SUCCEEDED,
+            created_at=now,
+            updated_at=now,
+            input=StoredTaskInput(size_bytes=1, sha256="a" * 64),
+        )
+        with TemporaryDirectory() as directory:
+            task_dir = Path(directory) / record.task_id
+            task_dir.mkdir()
+            with (
+                patch("api.routes.tasks.require_task_dir", return_value=task_dir),
+                patch("api.routes.tasks.reconcile_task_job", return_value=record),
+                patch("api.routes.tasks.get_task_job_progress") as get_progress,
+                TestClient(app) as client,
+            ):
+                response = client.get(f"/tasks/{record.task_id}")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNone(response.json()["progress"])
+        get_progress.assert_not_called()
+
     def test_cancel_endpoint_returns_the_cancellation_state(self) -> None:
         task_dir = Path("output") / "task-http-cancel-001"
         canceled_record = Mock(status=TaskStatus.CANCELED)

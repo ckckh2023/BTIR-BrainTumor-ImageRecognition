@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 import sqlite3
 from threading import Barrier
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from Main import _build_parser, main
 from core.settings import SETTINGS
@@ -381,6 +381,27 @@ class TaskStorageTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         reconcile.assert_called_once_with(limit=2)
         self.assertIn("状态已修复：1 条", stdout.getvalue())
+
+    def test_clear_and_purge_share_project_state_cleanup(self) -> None:
+        for command in ("clear", "purge"):
+            with self.subTest(command=command):
+                with (
+                    patch("Main.clear_task_queue_state", return_value=Mock()) as clear_queue,
+                    patch("Main._print_queue_reset_report") as print_report,
+                    patch("Main.clear_generated_files") as clear_files,
+                    patch("Main.purge_logs_and_data") as purge_logs,
+                    redirect_stdout(StringIO()),
+                ):
+                    exit_code = main([command, "--dry-run"])
+
+                self.assertEqual(exit_code, 0)
+                clear_queue.assert_called_once_with(dry_run=True)
+                print_report.assert_called_once_with(clear_queue.return_value, dry_run=True)
+                clear_files.assert_called_once()
+                if command == "purge":
+                    purge_logs.assert_called_once_with(SETTINGS.project_root, dry_run=True)
+                else:
+                    purge_logs.assert_not_called()
 
     def test_game_command_bypasses_the_regular_command_parser(self) -> None:
         with patch("Main.run_game", return_value=0) as game:

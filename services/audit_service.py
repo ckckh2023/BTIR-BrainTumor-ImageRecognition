@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import datetime, timezone
+import heapq
 import json
 import os
 from pathlib import Path
@@ -114,53 +115,54 @@ def list_audit_events(
 
     normalized_from = _normalize_timestamp(created_from) if created_from else None
     normalized_to = _normalize_timestamp(created_to) if created_to else None
-    matching: list[tuple[datetime, int, dict[str, object]]] = []
+    page_size = offset + limit
+    selected: list[tuple[datetime, int, dict[str, object]]] = []
+    matching_count = 0
     invalid_lines = 0
-    for line_number, raw_line in enumerate(
-        audit_path.read_text(encoding="utf-8").splitlines(),
-        1,
-    ):
-        try:
-            raw_event = json.loads(raw_line)
-            event_operation = raw_event["operation"]
-            timestamp = _normalize_timestamp(
-                datetime.fromisoformat(raw_event["timestamp"])
-            )
-            if not isinstance(event_operation, str):
-                raise ValueError
-            optional_fields = {
-                field: raw_event.get(field)
-                for field in (
-                    "actor_user_id",
-                    "target_user_id",
-                    "task_id",
-                    "outcome",
-                    "source_ip",
+    with audit_path.open(encoding="utf-8") as audit_file:
+        for line_number, raw_line in enumerate(audit_file, 1):
+            try:
+                raw_event = json.loads(raw_line)
+                event_operation = raw_event["operation"]
+                timestamp = _normalize_timestamp(
+                    datetime.fromisoformat(raw_event["timestamp"])
                 )
-            }
-            if any(
-                value is not None and not isinstance(value, str)
-                for value in optional_fields.values()
-            ):
-                raise ValueError
-        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
-            invalid_lines += 1
-            continue
+                if not isinstance(event_operation, str):
+                    raise ValueError
+                optional_fields = {
+                    field: raw_event.get(field)
+                    for field in (
+                        "actor_user_id",
+                        "target_user_id",
+                        "task_id",
+                        "outcome",
+                        "source_ip",
+                    )
+                }
+                if any(
+                    value is not None and not isinstance(value, str)
+                    for value in optional_fields.values()
+                ):
+                    raise ValueError
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+                invalid_lines += 1
+                continue
 
-        if operation is not None and event_operation != operation:
-            continue
-        if actor_user_id is not None and optional_fields["actor_user_id"] != actor_user_id:
-            continue
-        if target_user_id is not None and optional_fields["target_user_id"] != target_user_id:
-            continue
-        if task_id is not None and optional_fields["task_id"] != task_id:
-            continue
-        if normalized_from is not None and timestamp < normalized_from:
-            continue
-        if normalized_to is not None and timestamp > normalized_to:
-            continue
-        matching.append(
-            (
+            if operation is not None and event_operation != operation:
+                continue
+            if actor_user_id is not None and optional_fields["actor_user_id"] != actor_user_id:
+                continue
+            if target_user_id is not None and optional_fields["target_user_id"] != target_user_id:
+                continue
+            if task_id is not None and optional_fields["task_id"] != task_id:
+                continue
+            if normalized_from is not None and timestamp < normalized_from:
+                continue
+            if normalized_to is not None and timestamp > normalized_to:
+                continue
+
+            matching_count += 1
+            entry = (
                 timestamp,
                 line_number,
                 {
@@ -169,8 +171,13 @@ def list_audit_events(
                     **optional_fields,
                 },
             )
-        )
+            if page_size <= 0:
+                continue
+            if len(selected) < page_size:
+                heapq.heappush(selected, entry)
+            elif entry[:2] > selected[0][:2]:
+                heapq.heapreplace(selected, entry)
 
-    matching.sort(key=lambda item: (item[0], item[1]), reverse=True)
-    page = [event for _, _, event in matching[offset : offset + limit]]
-    return page, len(matching), invalid_lines
+    selected.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    page = [event for _, _, event in selected[offset:]]
+    return page, matching_count, invalid_lines

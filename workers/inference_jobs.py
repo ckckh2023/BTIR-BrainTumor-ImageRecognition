@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from time import perf_counter
-from typing import Any
+from time import monotonic, perf_counter
+from typing import Any, Callable
 
 from rq import get_current_job
 
@@ -26,6 +26,7 @@ def run_task_job(task_id: str) -> dict[str, Any]:
         raise RuntimeError("推理作业必须由 RQ worker 执行")
 
     task_dir = get_task_dir(SETTINGS.output_dir, task_id)
+    should_cancel = _build_cancellation_checker(job, task_dir)
     status_kwargs: dict[str, Any] = {
         "job_id": job.id,
         "queue_name": _get_job_queue_name(job),
@@ -33,7 +34,7 @@ def run_task_job(task_id: str) -> dict[str, Any]:
     attempt = _get_job_attempt(job)
     if attempt is not None:
         status_kwargs["attempt"] = attempt
-    if _is_cancellation_requested(job, task_dir):
+    if should_cancel():
         return _finish_canceled_task(task_dir, job, attempt, execution_ms=0.0)
     update_task_execution_status(
         task_dir,
@@ -45,7 +46,7 @@ def run_task_job(task_id: str) -> dict[str, Any]:
     try:
         run_result = run_task_models(
             task_dir,
-            should_cancel=lambda: _is_cancellation_requested(job, task_dir),
+            should_cancel=should_cancel,
             progress_callback=lambda stage, percentage: _record_job_progress(
                 job,
                 task_id,
@@ -135,6 +136,29 @@ def _is_cancellation_requested(job: Any, task_dir: Path | None = None) -> bool:
     }
 
 
+def _build_cancellation_checker(job: Any, task_dir: Path) -> Callable[[], bool]:
+    '''按短间隔刷新取消状态，避免滑窗推理重复访问 Redis 和 SQLite'''
+
+    last_checked_at: float | None = None
+    cancellation_requested = False
+
+    def should_cancel() -> bool:
+        nonlocal last_checked_at, cancellation_requested
+        now = monotonic()
+        if cancellation_requested:
+            return True
+        if (
+            last_checked_at is not None
+            and now - last_checked_at < SETTINGS.task_cancel_check_interval_seconds
+        ):
+            return False
+        last_checked_at = now
+        cancellation_requested = _is_cancellation_requested(job, task_dir)
+        return cancellation_requested
+
+    return should_cancel
+
+
 def _record_job_progress(
     job: Any,
     task_id: str,
@@ -142,6 +166,13 @@ def _record_job_progress(
     percentage: int,
 ) -> None:
     '''将真实阶段写入 worker 日志；RQ 可用时同步保存到作业元数据'''
+    metadata = getattr(job, "meta", None)
+    if (
+        isinstance(metadata, dict)
+        and metadata.get("progress") == percentage
+        and metadata.get("progress_stage") == stage
+    ):
+        return
     refresh = getattr(job, "refresh", None)
     if callable(refresh):
         refresh()

@@ -105,9 +105,12 @@ SQLite 记录通过事务写入；JSON 结果采用临时文件替换的原子�
 ```dotenv
 BTIR_TASK_LOCK_TIMEOUT_SECONDS=30
 BTIR_TASK_LOCK_WAIT_SECONDS=5
+BTIR_TASK_CANCEL_CHECK_INTERVAL_SECONDS=0.5
 ```
 
 锁等待超时后，接口返回 `409 Conflict`，不会绕过锁继续写入。
+滑窗分割会按 `BTIR_TASK_CANCEL_CHECK_INTERVAL_SECONDS` 刷新取消状态，默认 0.5 秒；
+它不会为每个滑窗重复访问 Redis 和 SQLite，取消请求仍会在下一次检查时生效。
 
 ## SQLite 任务数据库
 
