@@ -1,4 +1,4 @@
-"""Regression tests for the optional DeepSeek supplementary-analysis route."""
+'''AI 补充分析回归测试'''
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 from core.settings import SETTINGS
 from services.supplementary_analysis import (
-    DeepSeekProvider,
+    AiAnalysisProvider,
     ProviderResponse,
     build_supplementary_evidence,
     run_supplementary_analysis,
@@ -93,7 +93,7 @@ class SupplementaryAnalysisTests(unittest.TestCase):
             }
         ).encode("utf-8")
         response.headers.get.return_value = "request-123"
-        provider = DeepSeekProvider(
+        provider = AiAnalysisProvider(
             api_key="test-key",
             base_url="https://api.deepseek.example",
             model="deepseek-v4-flash",
@@ -121,14 +121,14 @@ class SupplementaryAnalysisTests(unittest.TestCase):
     def test_unavailable_provider_is_a_public_soft_failure(self) -> None:
         settings = replace(
             SETTINGS,
-            supplementary_analysis_enabled=True,
-            deepseek_api_key="test-key",
-            supplementary_analysis_max_retries=0,
+            ai_analysis_enabled=True,
+            ai_api_key="test-key",
+            ai_max_retries=0,
         )
         with (
             patch("services.supplementary_analysis.SETTINGS", settings),
             patch(
-                "services.supplementary_analysis.DeepSeekProvider.analyze",
+                "services.supplementary_analysis.AiAnalysisProvider.analyze",
                 side_effect=RuntimeError("network should not escape"),
             ),
         ):
@@ -140,8 +140,8 @@ class SupplementaryAnalysisTests(unittest.TestCase):
     def test_successful_response_is_validated_before_it_is_exposed(self) -> None:
         settings = replace(
             SETTINGS,
-            supplementary_analysis_enabled=True,
-            deepseek_api_key="test-key",
+            ai_analysis_enabled=True,
+            ai_api_key="test-key",
         )
         response = ProviderResponse(
             content=json.dumps(
@@ -159,7 +159,7 @@ class SupplementaryAnalysisTests(unittest.TestCase):
         )
         with (
             patch("services.supplementary_analysis.SETTINGS", settings),
-            patch("services.supplementary_analysis.DeepSeekProvider.analyze", return_value=response),
+            patch("services.supplementary_analysis.AiAnalysisProvider.analyze", return_value=response),
         ):
             result = run_supplementary_analysis(self.classification, self.segmentation)
 
@@ -188,7 +188,7 @@ class SupplementaryAnalysisTests(unittest.TestCase):
             },
             supplementary_analysis={
                 "status": "unavailable",
-                "provider": "deepseek",
+                "provider": "ai",
                 "message": "综合分析服务暂不可用；本地分类和分割结果不受影响。",
                 "duration_ms": 2.5,
             },

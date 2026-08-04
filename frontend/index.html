@@ -1419,7 +1419,7 @@
                                     <div>{{ supplementaryAnalysis.content.summary }}</div>
                                     <div><strong>建议：</strong>{{ supplementaryRecommendation(supplementaryAnalysis) }}</div>
                                     <div class="result-analysis-provider">
-                                        分析模型：{{ supplementaryAnalysis.provider === 'deepseek' ? 'DeepSeek' : supplementaryAnalysis.provider }} · {{ supplementaryAnalysis.model }}
+                                        分析模型：{{ supplementaryAnalysis.provider === 'ai' ? 'AI' : supplementaryAnalysis.provider }} · {{ supplementaryAnalysis.model }}
                                     </div>
                                 </template>
                                 <template v-else>

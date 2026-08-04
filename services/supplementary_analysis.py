@@ -1,4 +1,4 @@
-'''DeepSeek 结构化证据分析'''
+'''AI 结构化证据分析'''
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from core.settings import SETTINGS
 from services.model_consensus import build_model_consensus
 
 
-ANALYSIS_PROMPT_VERSION = "deepseek-supplementary-v1"
+ANALYSIS_PROMPT_VERSION = "ai-analysis-v1"
 UNAVAILABLE_MESSAGE = "综合分析服务暂不可用；本地分类和分割结果不受影响。"
 DISABLED_MESSAGE = "未启用外部综合分析服务。"
 logger = logging.getLogger(__name__)
@@ -34,8 +34,8 @@ class ProviderResponse:
     request_id: str | None
 
 
-class DeepSeekProvider:
-    '''DeepSeek 客户端'''
+class AiAnalysisProvider:
+    '''AI 分析客户端'''
 
     def __init__(
         self,
@@ -58,9 +58,9 @@ class DeepSeekProvider:
 
     def analyze(self, evidence: dict[str, Any]) -> ProviderResponse:
         if not self.api_key:
-            raise SupplementaryAnalysisError("DeepSeek API key is not configured")
+            raise SupplementaryAnalysisError("AI API key is not configured")
         if not self.base_url or not self.model:
-            raise SupplementaryAnalysisError("DeepSeek endpoint or model is not configured")
+            raise SupplementaryAnalysisError("AI endpoint or model is not configured")
 
         payload = {
             "model": self.model,
@@ -102,7 +102,7 @@ class DeepSeekProvider:
                 last_error = exc
             if attempt == self.max_retries:
                 break
-        raise SupplementaryAnalysisError("DeepSeek request failed") from last_error
+        raise SupplementaryAnalysisError("AI request failed") from last_error
 
 
 def run_supplementary_analysis(
@@ -110,34 +110,34 @@ def run_supplementary_analysis(
     segmentation_result: dict[str, Any],
 ) -> dict[str, Any]:
     '''生成补充分析结果'''
-    if not SETTINGS.supplementary_analysis_enabled:
+    if not SETTINGS.ai_analysis_enabled:
         return {"status": "disabled", "message": DISABLED_MESSAGE}
 
     started_at = perf_counter()
     try:
         evidence = build_supplementary_evidence(classification_result, segmentation_result)
-        provider = DeepSeekProvider(
-            api_key=SETTINGS.deepseek_api_key,
-            base_url=SETTINGS.deepseek_base_url,
-            model=SETTINGS.deepseek_model,
-            timeout_seconds=SETTINGS.supplementary_analysis_timeout_seconds,
-            max_retries=SETTINGS.supplementary_analysis_max_retries,
-            max_tokens=SETTINGS.supplementary_analysis_max_tokens,
-            temperature=SETTINGS.supplementary_analysis_temperature,
+        provider = AiAnalysisProvider(
+            api_key=SETTINGS.ai_api_key,
+            base_url=SETTINGS.ai_base_url,
+            model=SETTINGS.ai_model,
+            timeout_seconds=SETTINGS.ai_timeout_seconds,
+            max_retries=SETTINGS.ai_max_retries,
+            max_tokens=SETTINGS.ai_max_tokens,
+            temperature=SETTINGS.ai_temperature,
         )
         response = provider.analyze(evidence)
         content = SupplementaryAnalysisContent.model_validate(json.loads(response.content))
     except Exception:
         return {
             "status": "unavailable",
-            "provider": "deepseek",
+            "provider": "ai",
             "message": UNAVAILABLE_MESSAGE,
             "duration_ms": _elapsed_ms(started_at),
         }
 
     result: dict[str, Any] = {
         "status": "succeeded",
-        "provider": "deepseek",
+        "provider": "ai",
         "model": response.model,
         "prompt_version": ANALYSIS_PROMPT_VERSION,
         "generated_at": datetime.now().astimezone().isoformat(),
@@ -147,7 +147,7 @@ def run_supplementary_analysis(
     if response.usage:
         result["usage"] = response.usage
     logger.info(
-        "DeepSeek supplementary analysis succeeded provider=deepseek model=%s prompt_version=%s duration_ms=%s usage=%s request_id=%s",
+        "AI analysis succeeded provider=ai model=%s prompt_version=%s duration_ms=%s usage=%s request_id=%s",
         response.model,
         ANALYSIS_PROMPT_VERSION,
         result["duration_ms"],
@@ -317,11 +317,11 @@ def _system_prompt() -> str:
 def _parse_provider_response(body: dict[str, Any], request_id: str | None) -> ProviderResponse:
     choices = body.get("choices")
     if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
-        raise SupplementaryAnalysisError("DeepSeek response has no choice")
+        raise SupplementaryAnalysisError("AI response has no choice")
     message = choices[0].get("message")
     content = message.get("content") if isinstance(message, dict) else None
     if not isinstance(content, str) or not content.strip():
-        raise SupplementaryAnalysisError("DeepSeek response content is empty")
+        raise SupplementaryAnalysisError("AI response content is empty")
     usage = _numeric_fields(_mapping_or_empty(body.get("usage")), (
         "prompt_tokens",
         "completion_tokens",
