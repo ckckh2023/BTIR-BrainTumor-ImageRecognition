@@ -241,6 +241,25 @@ def _migration_012_add_normalized_username(connection: sqlite3.Connection) -> No
     )
 
 
+def _migration_013_add_user_status_task_indexes(
+    connection: sqlite3.Connection,
+) -> None:
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_tasks_user_status_created
+        ON tasks (user_id, status, created_at DESC, task_id DESC)
+        WHERE archived_at IS NULL
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_tasks_user_status_updated
+        ON tasks (user_id, status, updated_at ASC, task_id ASC)
+        WHERE archived_at IS NULL
+        """
+    )
+
+
 '''迁移清单'''
 SCHEMA_MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (1, "create_tasks_table", _migration_001_create_tasks_table),
@@ -255,6 +274,7 @@ SCHEMA_MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (10, "add_user_role", _migration_010_add_user_role),
     (11, "add_user_password_change_flag", _migration_011_add_user_password_change_flag),
     (12, "add_normalized_username", _migration_012_add_normalized_username),
+    (13, "add_user_status_task_indexes", _migration_013_add_user_status_task_indexes),
 )
 CURRENT_SCHEMA_VERSION = SCHEMA_MIGRATIONS[-1][0]
 
@@ -339,6 +359,19 @@ class SqliteTaskRepository:
                 (task_dir.name,),
             ).fetchone()
 
+        return self._record_from_row(row)
+
+    def load_for_user(self, task_id: str, user_id: str) -> TaskRecord:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT record_json FROM tasks WHERE task_id = ? AND user_id = ?",
+                (task_id, user_id),
+            ).fetchone()
+
+        return self._record_from_row(row)
+
+    @staticmethod
+    def _record_from_row(row: sqlite3.Row | None) -> TaskRecord:
         if row is None:
             raise TaskNotFoundError("任务元数据不存在")
 

@@ -1234,7 +1234,7 @@
                     <h1 style="margin-bottom: 0;">脑肿瘤MRI图像识别</h1>
                     <div style="display: flex; align-items: center; gap: 10px; flex-shrink: 0;">
                         <span v-if="currentUser" style="color: #2a5298; font-size: 13px;">{{ currentUser.username }}</span>
-                        <button v-if="currentUser" @click="logout" style="padding: 4px 12px; background: #e2e8f0; color: #475569; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">登出</button>
+                        <button v-if="currentUser" data-testid="logout" @click="logout" style="padding: 4px 12px; background: #e2e8f0; color: #475569; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">登出</button>
                     </div>
                 </div>
 
@@ -1242,6 +1242,7 @@
                     <label>四模态 NIfTI：</label>
                     <div
                         :class="['volume-drop-zone', { dragging: volumeDropActive }]"
+                        data-testid="volume-drop-zone"
                         @click="toggleVolumeSourceMenu"
                         @dragenter.prevent="volumeDropActive = true"
                         @dragover.prevent="volumeDropActive = true"
@@ -1270,6 +1271,7 @@
                     <input
                         type="file"
                         id="volume-archive-picker"
+                        data-testid="volume-archive-picker"
                         accept=".zip,application/zip"
                         style="display: none"
                         @change="onVolumeArchiveSelected"
@@ -1354,7 +1356,7 @@
                     <button type="button" class="browse-btn compact" @click="startNewUpload">重新上传病例</button>
                 </div>
 
-                <button class="recognize-btn" v-if="!loading && !taskId" @click="recognizeFromUpload" :disabled="!canRecognize">
+                <button class="recognize-btn" data-testid="start-analysis" v-if="!loading && !taskId" @click="recognizeFromUpload" :disabled="!canRecognize">
                     {{ loading ? '3D分析中...' : '开始3D分析' }}
                 </button>
 
@@ -1471,6 +1473,7 @@
                         >结果文件</button>
                         <button
                             :class="['right-view-tab', { active: activeRightView === 'tasks' }]"
+                            data-testid="task-manager-tab"
                             @click="switchRightView('tasks')"
                         >任务管理</button>
                     </div>
@@ -1487,6 +1490,7 @@
                             v-for="f in fileList"
                             :key="f.path"
                             :class="['file-tab', { active: selectedFilePath === f.path, loading: fileLoading && selectedFilePath === f.path }]"
+                            :data-testid="f.type === 'volume' ? 'volume-viewer-tab' : null"
                             @click="selectFile(f)"
                         >{{ f.label }}</div>
                     </div>
@@ -1681,12 +1685,14 @@
                                 <button
                                     class="task-small-btn"
                                     v-if="taskListMode === 'active' && task.status === 'failed'"
+                                    :data-testid="`task-retry-${task.task_id}`"
                                     @click="retryTask(task)"
                                     :disabled="taskActionId === task.task_id"
                                 >重试</button>
                                 <button
                                     class="task-small-btn danger"
                                     v-if="taskListMode === 'active' && canCancelTask(task.status)"
+                                    :data-testid="`task-cancel-${task.task_id}`"
                                     @click="cancelTask(task)"
                                     :disabled="taskActionId === task.task_id"
                                 >{{ taskActionId === task.task_id ? '处理中...' : '取消' }}</button>

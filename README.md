@@ -212,6 +212,16 @@ python -m unittest discover -s tests -v
 
 测试使用临时任务目录，不读取或修改已有任务数据。Redis 可用时会运行真实 RQ 集成测试；Redis 不可用时对应集成用例按原有规则跳过。
 
+浏览器端到端测试使用独立的本地模拟 API，不需要模型权重、Redis 或 DeepSeek。首次执行还需要安装 Chromium：
+
+```powershell
+python -m playwright install chromium
+$env:BTIR_RUN_BROWSER_E2E=1
+python -m unittest tests.test_browser_e2e -v
+```
+
+覆盖登录、ZIP 上传、异步任务提交、重试、取消和 3D 查看入口。未设置 `BTIR_RUN_BROWSER_E2E=1` 时，该用例会自动跳过。
+
 ## 数据存储
 
 ```text
@@ -315,13 +325,6 @@ Brier 分数和概率分桶，同时记录耗时和 CUDA 峰值显存。默认�
 4. 修改持久化字段时同步检查 `core/task_records.py` 和 SQLite migration。
 5. 清理和归档先使用预览模式；`clear` 只操作 BTIR 队列、作业和任务锁，禁止
    用 `FLUSHALL` 或 `FLUSHDB` 代替项目清理命令。
-
-## 下一阶段
-
-1. 扩展浏览器端到端测试，覆盖登录、上传、任务操作与 3D 查看。
-2. 用患者级、按来源隔离的数据继续校准本地 ViT，优先评估肿瘤召回率、假阴性和阈值稳定性；验证前不允许分类结果跳过分割。
-3. 用经过专家审核的病例和固定评价指标校验可选综合分析的表述质量；不得将其升级为诊断路线。
-4. 补充审计日志轮转与保留策略。
 
 ## 彩蛋
 

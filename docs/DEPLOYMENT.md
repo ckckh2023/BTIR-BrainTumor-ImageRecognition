@@ -449,7 +449,8 @@ journalctl -u btir -f
 tail -f /opt/btir/logs/supervisor.log
 ```
 
-生产环境应另外配置 logrotate，避免项目 `logs/` 持续增长。永久清除使用独立
+审计日志使用应用内按大小轮转和保留策略，配置项见 `.env.example` 中的 `BTIR_AUDIT_LOG_*`。
+生产环境仍应另外配置 logrotate，避免项目 `logs/` 持续增长。永久清除使用独立
 systemd timer 或 cron，不加入 supervisor 主循环。
 
 ## 部署验证

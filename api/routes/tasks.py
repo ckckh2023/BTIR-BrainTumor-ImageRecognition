@@ -467,9 +467,15 @@ def get_task(
     current_user: UserRecord = Depends(require_password_changed),
 ) -> TaskStatusResponse:
     '''获取指定任务状态和当前结果'''
-    verify_task_owner(task_id, current_user)
+    try:
+        task_data = task_repository.load_for_user(task_id, current_user.user_id)
+    except TaskNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="任务不存在",
+        ) from exc
     task_dir = require_task_dir(task_id)
-    task_data = reconcile_task_job(task_dir)
+    task_data = reconcile_task_job(task_dir, record=task_data)
 
     frontend_path = task_dir / TaskArtifact.FRONTEND_RESULT
     frontend_result = None
@@ -559,9 +565,14 @@ def list_task_runs(
     current_user: UserRecord = Depends(require_password_changed),
 ) -> TaskRunListResponse:
     '''分页查询指定任务的历史运行元数据'''
-    verify_task_owner(task_id, current_user)
+    try:
+        task_data = task_repository.load_for_user(task_id, current_user.user_id)
+    except TaskNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="任务不存在",
+        ) from exc
     task_dir = require_task_dir(task_id)
-    task_data = task_repository.load(task_dir)
     runs = task_data.runs or []
     if model_filter is not None:
         runs = [run for run in runs if run.model == model_filter]

@@ -167,6 +167,9 @@ class Settings:
     succeeded_task_retention_days: int
     failed_task_retention_days: int
     task_archive_grace_days: int
+    audit_log_max_bytes: int
+    audit_log_retention_days: int
+    audit_log_max_rotated_files: int
     jwt_secret_key: str
     jwt_expiration_hours: int
     jwt_algorithm: str
@@ -291,6 +294,18 @@ def _build_settings() -> Settings:
         task_archive_grace_days=_get_nonnegative_int(
             "BTIR_TASK_ARCHIVE_GRACE_DAYS",
             7,
+        ),
+        audit_log_max_bytes=_get_positive_int(
+            "BTIR_AUDIT_LOG_MAX_BYTES",
+            10 * 1024 * 1024,
+        ),
+        audit_log_retention_days=_get_nonnegative_int(
+            "BTIR_AUDIT_LOG_RETENTION_DAYS",
+            90,
+        ),
+        audit_log_max_rotated_files=_get_nonnegative_int(
+            "BTIR_AUDIT_LOG_MAX_ROTATED_FILES",
+            30,
         ),
         task_database_path=_get_path(
             "BTIR_TASK_DATABASE_PATH",

@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -294,6 +295,89 @@ class TaskArchiveTests(unittest.TestCase):
         self.assertEqual(invalid_lines, 0)
         self.assertTrue(all(event["outcome"] == "success" for event in events))
         self.assertTrue(all(event["source_ip"] == "127.0.0.1" for event in events))
+
+    def test_audit_log_rotation_keeps_events_queryable(self) -> None:
+        for index in range(3):
+            append_audit_event(
+                operation="rotation_test",
+                timestamp=self.now + timedelta(seconds=index),
+                actor_user_id=f"user-{index}",
+                audit_dir=self.archive_dir,
+                max_bytes=1,
+                retention_days=7,
+                max_rotated_files=10,
+            )
+
+        rotated_paths = list(self.archive_dir.glob("audit.*.jsonl"))
+        events, total, invalid_lines = list_audit_events(
+            audit_dir=self.archive_dir,
+            limit=10,
+            offset=0,
+            operation="rotation_test",
+        )
+
+        self.assertEqual(len(rotated_paths), 2)
+        self.assertEqual(total, 3)
+        self.assertEqual(invalid_lines, 0)
+        self.assertEqual(
+            [event["actor_user_id"] for event in events],
+            ["user-2", "user-1", "user-0"],
+        )
+
+    def test_audit_log_rotation_enforces_file_count_retention(self) -> None:
+        for index in range(4):
+            append_audit_event(
+                operation="rotation_retention_test",
+                timestamp=self.now + timedelta(seconds=index),
+                actor_user_id=f"user-{index}",
+                audit_dir=self.archive_dir,
+                max_bytes=1,
+                retention_days=7,
+                max_rotated_files=2,
+            )
+
+        events, total, invalid_lines = list_audit_events(
+            audit_dir=self.archive_dir,
+            limit=10,
+            offset=0,
+            operation="rotation_retention_test",
+        )
+
+        self.assertEqual(len(list(self.archive_dir.glob("audit.*.jsonl"))), 2)
+        self.assertEqual(total, 3)
+        self.assertEqual(invalid_lines, 0)
+        self.assertEqual(
+            [event["actor_user_id"] for event in events],
+            ["user-3", "user-2", "user-1"],
+        )
+
+    def test_audit_log_rotation_removes_expired_files(self) -> None:
+        expired_path = self.archive_dir / "audit.expired.jsonl"
+        self.archive_dir.mkdir(parents=True)
+        expired_path.write_text(
+            '{"operation":"expired","timestamp":"2026-07-01T00:00:00+00:00"}\n',
+            encoding="utf-8",
+        )
+        expired_timestamp = (datetime.now(timezone.utc) - timedelta(days=2)).timestamp()
+        os.utime(expired_path, (expired_timestamp, expired_timestamp))
+
+        append_audit_event(
+            operation="retained",
+            timestamp=self.now,
+            audit_dir=self.archive_dir,
+            retention_days=1,
+            max_rotated_files=10,
+        )
+
+        events, total, invalid_lines = list_audit_events(
+            audit_dir=self.archive_dir,
+            limit=10,
+            offset=0,
+        )
+        self.assertFalse(expired_path.exists())
+        self.assertEqual(total, 1)
+        self.assertEqual(invalid_lines, 0)
+        self.assertEqual(events[0]["operation"], "retained")
 
     def test_audit_query_pages_unsorted_log_without_retaining_all_matches(self) -> None:
         event_count = 250
