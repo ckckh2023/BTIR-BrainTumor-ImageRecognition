@@ -295,6 +295,35 @@ class TaskArchiveTests(unittest.TestCase):
         self.assertTrue(all(event["outcome"] == "success" for event in events))
         self.assertTrue(all(event["source_ip"] == "127.0.0.1" for event in events))
 
+    def test_audit_query_pages_unsorted_log_without_retaining_all_matches(self) -> None:
+        event_count = 250
+        for index in range(event_count):
+            append_audit_event(
+                operation="paged_test",
+                timestamp=self.now + timedelta(seconds=(index * 37) % 251),
+                actor_user_id=f"user-{index}",
+                audit_dir=self.archive_dir,
+            )
+
+        events, total, invalid_lines = list_audit_events(
+            audit_dir=self.archive_dir,
+            limit=10,
+            offset=30,
+            operation="paged_test",
+        )
+
+        expected_indexes = sorted(
+            range(event_count),
+            key=lambda index: (index * 37) % 251,
+            reverse=True,
+        )[30:40]
+        self.assertEqual(total, event_count)
+        self.assertEqual(invalid_lines, 0)
+        self.assertEqual(
+            [event["actor_user_id"] for event in events],
+            [f"user-{index}" for index in expected_indexes],
+        )
+
     def test_purge_removes_only_expired_archived_task(self) -> None:
         task_id = "task-purge-apply"
         archived_dir = self.archive_dir / "tasks" / task_id

@@ -50,31 +50,10 @@ def main(argv: list[str] | None = None) -> int:
 
         print_event(f"开始执行 {args.command}")
 
-        if args.command == "clear":
-            queue_report = clear_task_queue_state(dry_run=args.dry_run)
-            _print_queue_reset_report(queue_report, dry_run=args.dry_run)
-            clear_generated_files(
-                SETTINGS.project_root,
-                SETTINGS.output_dir,
-                SETTINGS.task_archive_dir,
-                dry_run=args.dry_run,
-                task_repository=task_repository,
-                user_repository=SqliteUserRepository(task_repository),
-            )
-            return 0
-
-        if args.command == "purge":
-            queue_report = clear_task_queue_state(dry_run=args.dry_run)
-            _print_queue_reset_report(queue_report, dry_run=args.dry_run)
-            clear_generated_files(
-                SETTINGS.project_root,
-                SETTINGS.output_dir,
-                SETTINGS.task_archive_dir,
-                dry_run=args.dry_run,
-                task_repository=task_repository,
-                user_repository=SqliteUserRepository(task_repository),
-            )
-            purge_logs_and_data(SETTINGS.project_root, dry_run=args.dry_run)
+        if args.command in {"clear", "purge"}:
+            _clear_project_state(dry_run=args.dry_run)
+            if args.command == "purge":
+                purge_logs_and_data(SETTINGS.project_root, dry_run=args.dry_run)
             return 0
 
         if args.command == "archive-tasks":
@@ -173,7 +152,7 @@ def main(argv: list[str] | None = None) -> int:
 def _build_parser() -> argparse.ArgumentParser:
     '''建立命令行参数解析器'''
     parser = argparse.ArgumentParser(
-        description="脑肿瘤图像解释器：可独立运行分类、分割，或一键运行。"
+        description="脑肿瘤图像解释器：支持 3D 推理、运维、账号管理与评估。"
     )
     commands = parser.add_subparsers(dest="command", required=True)
 
@@ -424,6 +403,20 @@ def _print_queue_reset_report(report, *, dry_run: bool) -> None:
     )
     if report.active_worker_count:
         print(f"检测到活动推理 Worker：{report.active_worker_count} 个")
+
+
+def _clear_project_state(*, dry_run: bool) -> None:
+    '''清理项目队列、任务、归档和账号业务数据'''
+    queue_report = clear_task_queue_state(dry_run=dry_run)
+    _print_queue_reset_report(queue_report, dry_run=dry_run)
+    clear_generated_files(
+        SETTINGS.project_root,
+        SETTINGS.output_dir,
+        SETTINGS.task_archive_dir,
+        dry_run=dry_run,
+        task_repository=task_repository,
+        user_repository=SqliteUserRepository(task_repository),
+    )
 
 
 def _claim_legacy_tasks(username: str, *, apply: bool) -> None:

@@ -154,6 +154,7 @@ class Settings:
     redis_url: str
     task_lock_timeout_seconds: int
     task_lock_wait_seconds: float
+    task_cancel_check_interval_seconds: float
     task_queue_name: str
     task_job_timeout_seconds: int
     task_job_result_ttl_seconds: int
@@ -250,6 +251,10 @@ def _build_settings() -> Settings:
         task_lock_wait_seconds=_get_nonnegative_float(
             "BTIR_TASK_LOCK_WAIT_SECONDS",
             5.0,
+        ),
+        task_cancel_check_interval_seconds=_get_nonnegative_float(
+            "BTIR_TASK_CANCEL_CHECK_INTERVAL_SECONDS",
+            0.5,
         ),
         task_queue_name=task_queue_name,
         task_job_timeout_seconds=_get_positive_int(

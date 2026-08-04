@@ -39,7 +39,11 @@ from services.task_state import (
     record_model_completion,
     update_task_execution_status,
 )
-from workers.inference_jobs import _record_job_progress, run_task_job
+from workers.inference_jobs import (
+    _build_cancellation_checker,
+    _record_job_progress,
+    run_task_job,
+)
 from workers import run_worker
 
 
@@ -404,6 +408,44 @@ class AsyncQueueTests(unittest.TestCase):
         self.assertEqual(job.meta["progress"], 50)
         job.refresh.assert_called_once_with()
         job.save_meta.assert_called_once_with()
+
+    def test_progress_update_skips_identical_value(self) -> None:
+        job = SimpleNamespace(
+            id="job-progress-duplicate",
+            meta={"progress": 50, "progress_stage": "3D 分割推理中"},
+        )
+        job.refresh = Mock()
+        job.save_meta = Mock()
+
+        _record_job_progress(job, "task-progress-duplicate", "3D 分割推理中", 50)
+
+        job.refresh.assert_not_called()
+        job.save_meta.assert_not_called()
+
+    def test_cancellation_checker_throttles_backend_refreshes(self) -> None:
+        job = Mock()
+        task_dir = Path("output") / "task-cancel-checker"
+        with (
+            patch(
+                "workers.inference_jobs.SETTINGS",
+                replace(SETTINGS, task_cancel_check_interval_seconds=0.5),
+            ),
+            patch(
+                "workers.inference_jobs.monotonic",
+                side_effect=[10.0, 10.2, 10.5],
+            ),
+            patch(
+                "workers.inference_jobs._is_cancellation_requested",
+                side_effect=[False, True],
+            ) as is_canceled,
+        ):
+            should_cancel = _build_cancellation_checker(job, task_dir)
+
+            self.assertFalse(should_cancel())
+            self.assertFalse(should_cancel())
+            self.assertTrue(should_cancel())
+
+        self.assertEqual(is_canceled.call_count, 2)
 
     def test_job_progress_is_read_from_rq_meta(self) -> None:
         record = deepcopy(self.record)

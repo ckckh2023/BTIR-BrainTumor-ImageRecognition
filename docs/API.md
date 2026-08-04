@@ -340,7 +340,8 @@ GET /tasks/{task_id}
 }
 ```
 
-这里外层 `schema_version: "0.1"` 是任务查询接口版本。任务成功后，
+这里外层 `schema_version: "0.1"` 是任务查询接口版本。任务处于排队、运行或取消中时，
+`frontend_result` 为 `null`，避免轮询重复传输中间结果；任务进入终态后，
 `frontend_result` 自身还有独立的推理结果协议版本：
 
 ```json
