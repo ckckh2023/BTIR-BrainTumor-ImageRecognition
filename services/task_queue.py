@@ -16,6 +16,7 @@ from core.task_definitions import (
     ACTIVE_ASYNC_TASK_STATUSES,
     ALL_MODELS,
     JobStatus,
+    RETRYABLE_TASK_STATUSES,
     TaskStatus,
 )
 from core.task_records import TaskRecord
@@ -208,7 +209,7 @@ def enqueue_task_run(
             return existing_job.model_dump(mode="json"), True
         if current_status is TaskStatus.CANCELED:
             raise ValueError("已取消任务不能再次提交")
-        if retry_failed_only and current_status is not TaskStatus.FAILED:
+        if retry_failed_only and current_status not in RETRYABLE_TASK_STATUSES:
             raise ValueError("仅失败任务可以手动重试")
 
         try:

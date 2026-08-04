@@ -354,6 +354,8 @@ def _validate_roi_size(roi_size: tuple[int, int, int]) -> None:
 def _select_accumulator_device(
     image_shape: tuple[int, int, int],
     inference_device: torch.device,
+    *,
+    cuda_accumulator_reserve_bytes: int = CUDA_ACCUMULATOR_RESERVE_BYTES,
 ) -> torch.device:
     """在显存充足时让 MONAI 直接在 GPU 汇总窗口，避免频繁传回 CPU。"""
 
@@ -367,7 +369,7 @@ def _select_accumulator_device(
         free_bytes, _ = torch.cuda.mem_get_info(inference_device)
     except (RuntimeError, TypeError):
         return cpu
-    if free_bytes < CUDA_ACCUMULATOR_RESERVE_BYTES + staging_bytes:
+    if free_bytes < cuda_accumulator_reserve_bytes + staging_bytes:
         return cpu
     return inference_device
 
@@ -397,6 +399,7 @@ def _run_full_volume_inference(
     roi_size: tuple[int, int, int],
     overlap: float,
     progress: bool,
+    cuda_accumulator_reserve_bytes: int = CUDA_ACCUMULATOR_RESERVE_BYTES,
     progress_callback: Callable[[float], None] | None = None,
     cancel_callback: Callable[[], None] | None = None,
 ) -> np.ndarray:
@@ -404,7 +407,11 @@ def _run_full_volume_inference(
     if not 0 <= overlap < 1:
         raise ValueError(f"overlap 必须位于 [0, 1)，收到: {overlap}")
 
-    accumulator_device = _select_accumulator_device(images.shape[:3], device)
+    accumulator_device = _select_accumulator_device(
+        images.shape[:3],
+        device,
+        cuda_accumulator_reserve_bytes=cuda_accumulator_reserve_bytes,
+    )
     tensor, accumulator_device = _stage_input_tensor(
         images,
         device,
@@ -657,6 +664,7 @@ def predict(
     overlap: float = 0.5,
     seed: int = 0,
     fast_inference: bool = False,
+    cuda_accumulator_reserve_bytes: int = CUDA_ACCUMULATOR_RESERVE_BYTES,
     progress: bool = False,
     progress_callback: Callable[[float], None] | None = None,
     cancel_callback: Callable[[], None] | None = None,
@@ -691,6 +699,7 @@ def predict(
         roi_size=roi_size,
         overlap=overlap,
         progress=progress,
+        cuda_accumulator_reserve_bytes=cuda_accumulator_reserve_bytes,
         progress_callback=progress_callback,
         cancel_callback=cancel_callback,
     )

@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Iterator
 
+from core.settings import SETTINGS
 from core.user_records import UserRecord, UserRole, normalize_username
 from repositories.sqlite_task_repository import SqliteTaskRepository
 from repositories.task_repository_contracts import TaskRepositoryUnavailableError
@@ -25,9 +26,14 @@ class SqliteUserRepository:
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
         try:
-            connection = sqlite3.connect(self._repo.database_path, timeout=5)
+            connection = sqlite3.connect(
+                self._repo.database_path,
+                timeout=SETTINGS.sqlite_busy_timeout_seconds,
+            )
             connection.row_factory = sqlite3.Row
-            connection.execute("PRAGMA busy_timeout = 5000")
+            connection.execute(
+                f"PRAGMA busy_timeout = {SETTINGS.sqlite_busy_timeout_seconds * 1000}"
+            )
         except sqlite3.Error as exc:
             raise TaskRepositoryUnavailableError("SQLite 用户数据库不可用") from exc
 

@@ -12,6 +12,7 @@ from typing import Any
 
 from accelerator import resolve_device
 from core.settings import SETTINGS
+from core.task_definitions import TaskArtifact
 from processing.volume_classification import (
     aggregate_mean_slice_predictions,
     prepare_volume_slices,
@@ -143,7 +144,7 @@ def segment_volume(
     model = _load_3d_segmentation_model(str(device))
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    mask_path = output_dir / "prediction.nii.gz"
+    mask_path = output_dir / TaskArtifact.SEGMENTATION_MASK
     prediction = namespace["predict"](
         {
             modality: str(path)
@@ -155,6 +156,9 @@ def segment_volume(
         weights_path=SETTINGS.segmenter_3d_model,
         overlap=SETTINGS.segmenter_3d_overlap,
         fast_inference=SETTINGS.segmenter_3d_fast_inference,
+        cuda_accumulator_reserve_bytes=(
+            SETTINGS.segmenter_3d_cuda_accumulator_reserve_mb * 1024 * 1024
+        ),
         progress_callback=progress_callback,
         cancel_callback=cancel_callback,
     )

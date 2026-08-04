@@ -40,7 +40,7 @@ class TaskArchiveTests(unittest.TestCase):
             SETTINGS,
             task_cleanup_enabled=True,
             succeeded_task_retention_days=30,
-            failed_task_retention_days=7,
+            canceled_task_retention_days=7,
             task_archive_grace_days=7,
         )
 
@@ -91,9 +91,9 @@ class TaskArchiveTests(unittest.TestCase):
         self.assertTrue(task_dir.is_dir())
         self.assertFalse((self.archive_dir / "tasks" / task_dir.name).exists())
 
-    def test_archive_moves_eligible_task_and_preserves_metadata(self) -> None:
+    def test_archive_keeps_failed_task_for_manual_retry(self) -> None:
         task_dir = self._create_task(
-            "task-archive-apply",
+            "task-failed-retryable",
             TaskStatus.FAILED,
             self.now - timedelta(days=8),
         )
@@ -111,12 +111,9 @@ class TaskArchiveTests(unittest.TestCase):
                 cleanup_enabled=True,
             )
 
-        archived_dir = self.archive_dir / "tasks" / task_dir.name
-        self.assertEqual(report.processed_task_ids, [task_dir.name])
-        self.assertFalse(task_dir.exists())
-        self.assertTrue((archived_dir / "result.json").is_file())
-        self.assertEqual(self.repository.load(archived_dir).archived_at, self.now)
-        self.assertTrue((self.archive_dir / "audit.jsonl").is_file())
+        self.assertEqual(report.processed_task_ids, [])
+        self.assertTrue(task_dir.exists())
+        self.assertFalse((self.archive_dir / "tasks" / task_dir.name).exists())
 
     def test_archive_moves_expired_canceled_task(self) -> None:
         task_dir = self._create_task(
@@ -140,6 +137,7 @@ class TaskArchiveTests(unittest.TestCase):
 
         self.assertEqual(report.processed_task_ids, [task_dir.name])
         self.assertTrue((self.archive_dir / "tasks" / task_dir.name).is_dir())
+        self.assertTrue((self.archive_dir / "audit.jsonl").is_file())
 
     def test_manual_archive_moves_nonactive_task_and_is_idempotent(self) -> None:
         task_dir = self._create_task(

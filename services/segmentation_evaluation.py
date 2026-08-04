@@ -15,9 +15,9 @@ import re
 import nibabel as nib
 import numpy as np
 
+from core.task_definitions import VOLUME_MODALITIES
 
 EVALUATION_SCHEMA_VERSION = "1.1"
-MODALITIES = ("flair", "t1ce", "t1", "t2")
 REGION_LABELS = {
     "WT": frozenset({1, 2, 4}),
     "TC": frozenset({1, 4}),
@@ -62,7 +62,7 @@ def discover_brats_subjects(
         )
         modalities = {
             modality: _find_unique_file(nifti_files, modality, subject_dir)
-            for modality in MODALITIES
+            for modality in VOLUME_MODALITIES
         }
         label_path = _find_unique_file(nifti_files, "seg", subject_dir)
         subjects.append(

@@ -78,7 +78,7 @@ class TaskRepository(Protocol):
         self,
         *,
         succeeded_before: datetime,
-        failed_before: datetime,
+        canceled_before: datetime,
         limit: int,
         user_id: str | None = None,
     ) -> list[TaskRecord]:
