@@ -21,6 +21,7 @@ from core.task_definitions import (
 from repositories.task_repository import task_repository
 from services.task_files import create_run_dir, task_relative_path, write_json
 from services.task_lock import task_write_lock
+from services.model_consensus import build_model_consensus
 from services.task_state import record_model_completion
 
 
@@ -186,6 +187,7 @@ def build_frontend_result(
         _set_model_timing(result, "segmentation", segmentation)
     if supplementary_analysis is not None:
         _set_supplementary_analysis(result, supplementary_analysis)
+    _set_model_consensus(result)
     completed_models = [
         name for name in ModelName if name.value in result
     ]
@@ -221,8 +223,20 @@ def _set_supplementary_analysis(
     frontend_result: dict[str, Any],
     analysis: dict[str, Any],
 ) -> None:
-    """Keep the optional analysis outside completed_models and model-run history."""
+    '''写入补充分析结果'''
     frontend_result["supplementary_analysis"] = dict(analysis)
     duration_ms = analysis.get("duration_ms")
     if isinstance(duration_ms, (int, float)) and not isinstance(duration_ms, bool):
         frontend_result.setdefault("timing", {})["supplementary_analysis_ms"] = duration_ms
+
+
+def _set_model_consensus(frontend_result: dict[str, Any]) -> None:
+    classification = frontend_result.get("classification")
+    segmentation = frontend_result.get("segmentation")
+    if isinstance(classification, dict) and isinstance(segmentation, dict):
+        frontend_result["model_consensus"] = build_model_consensus(
+            classification,
+            segmentation,
+        )
+    else:
+        frontend_result.pop("model_consensus", None)

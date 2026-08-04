@@ -29,7 +29,7 @@ MAX_VOLUME_ARCHIVE_MEMBERS = 128
 
 
 class VolumeArchiveSelectionRequired(ValueError):
-    '''ZIP 中的模态存在缺失或重复，需要用户确认。'''
+    '''ZIP 模态需要用户确认'''
 
     def __init__(self, modalities: dict[str, dict[str, Any]]) -> None:
         self.modalities = modalities

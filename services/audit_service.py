@@ -62,7 +62,7 @@ def append_audit_event(
     source_ip: str | None = None,
     audit_dir: Path = SETTINGS.task_archive_dir,
 ) -> None:
-    '''记录操作者、目标用户和任务，不记录密码等敏感内容。'''
+    '''记录安全审计事件'''
     audit_dir.mkdir(parents=True, exist_ok=True)
     entry = {
         "operation": operation,
@@ -107,7 +107,7 @@ def list_audit_events(
     created_from: datetime | None = None,
     created_to: datetime | None = None,
 ) -> tuple[list[dict[str, object]], int, int]:
-    '''读取并筛选审计日志；损坏行会被跳过并单独计数。'''
+    '''读取并筛选审计日志'''
     audit_path = audit_dir / "audit.jsonl"
     if not audit_path.is_file():
         return [], 0, 0

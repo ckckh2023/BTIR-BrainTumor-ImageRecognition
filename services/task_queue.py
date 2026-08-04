@@ -61,7 +61,7 @@ PENDING_RQ_STATUSES = frozenset(
 
 @lru_cache(maxsize=1)
 def get_task_queue() -> Queue:
-    '''获取 3D 推理路线的 RQ 队列。'''
+    '''获取 3D 推理队列'''
 
     return Queue(
         SETTINGS.task_queue_name,
@@ -71,7 +71,7 @@ def get_task_queue() -> Queue:
 
 
 def get_active_inference_workers() -> list[Worker]:
-    '''获取仍监听 3D 推理队列的 Worker。'''
+    '''获取活跃 Worker'''
 
     return [
         worker
@@ -81,13 +81,13 @@ def get_active_inference_workers() -> list[Worker]:
 
 
 def has_active_inference_worker() -> bool:
-    '''检查 3D 推理队列是否有活动 Worker。'''
+    '''检查活跃 Worker'''
 
     return bool(get_active_inference_workers())
 
 
 def get_inference_queue_status() -> dict[str, object]:
-    '''汇总 3D 推理队列状态。'''
+    '''汇总队列状态'''
 
     queue = get_task_queue()
     workers = get_active_inference_workers()
@@ -113,7 +113,7 @@ def get_inference_queue_status() -> dict[str, object]:
 
 
 def clear_task_queue_state(*, dry_run: bool) -> TaskQueueResetReport:
-    '''只清理 BTIR 推理队列、作业记录与任务锁，不清空整个 Redis 数据库。'''
+    '''清理 BTIR 队列状态'''
     try:
         queue = get_task_queue()
         connection = get_redis_client()
@@ -263,7 +263,7 @@ def cancel_task_run(task_dir: Path) -> TaskRecord:
             try:
                 job.cancel()
             except InvalidJobOperation:
-                # 并发取消时，RQ 已将作业转为 canceled；接口保持幂等。
+                '''并发取消保持幂等'''
                 pass
             return _mark_task_canceled(task_dir, record)
         if rq_status is RqJobStatus.STARTED:

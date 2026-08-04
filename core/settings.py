@@ -67,7 +67,7 @@ def _get_nonnegative_int(name: str, default: int) -> int:
 
 
 def _get_bool(name: str, default: bool) -> bool:
-    '''获取布尔环境变量。'''
+    '''获取布尔环境变量'''
     value = os.getenv(name, str(default)).strip().lower()
     if value in {"1", "true", "yes", "on"}:
         return True
@@ -355,5 +355,5 @@ def _build_settings() -> Settings:
     )
 
 
-# 创建一个SETTINGS实例
+'''全局运行配置'''
 SETTINGS = _build_settings()

@@ -84,6 +84,11 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("result-analysis-provider", self.html)
         self.assertNotIn("v-html=\"supplementaryAnalysis", self.html)
 
+    def test_frontend_renders_local_segmentation_first_consensus(self) -> None:
+        self.assertIn("modelConsensus", self.html)
+        self.assertIn("综合识别结论", self.html)
+        self.assertIn("AI 分析结论", self.html)
+
     def test_result_panel_keeps_overview_separate_from_details(self) -> None:
         self.assertIn('class="result-overview"', self.html)
         self.assertIn('class="result-details"', self.html)

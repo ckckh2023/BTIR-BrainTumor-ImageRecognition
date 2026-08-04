@@ -30,8 +30,7 @@ def main(argv: list[str] | None = None) -> None:
             logger.info("worker model preload completed outcomes=%s", outcomes)
     elif SETTINGS.worker_preload_models:
         logger.info("worker model preload skipped for standard Linux RQ worker")
-    # 使用主机名和进程号保证每次启动的 worker 名称唯一；异常退出后遗留的
-    # Redis 注册记录不会再阻止新的 worker 启动
+    '''生成唯一 Worker 名称'''
     worker_name = (
         f"btir-inference-3d-{socket.gethostname()}-{os.getpid()}"
     )

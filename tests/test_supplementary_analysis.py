@@ -206,6 +206,8 @@ class SupplementaryAnalysisTests(unittest.TestCase):
         self.assertEqual(segmentation["non_background_voxel_count"], 30)
         self.assertEqual(segmentation["non_background_volume_mm3"], 37.5)
         self.assertEqual(segmentation["non_background_ratio"], 0.06)
+        self.assertEqual(evidence["local_consensus"]["consistency"], "consistent")
+        self.assertEqual(evidence["local_consensus"]["primary_evidence"], "segmentation")
         self.assertEqual(segmentation["morphology"]["connected_components"], 2)
         self.assertEqual(segmentation["morphology"]["bounding_box_size_voxels"], [4, 5, 6])
         self.assertEqual(segmentation["spatial"]["voxel_spacing_mm"], [1.0, 1.0, 1.5])

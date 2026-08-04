@@ -26,7 +26,7 @@ from services.archive_service import (
 
 
 class TaskArchiveTests(unittest.TestCase):
-    '''验证归档只移动符合策略的任务，永久删除仅作用于归档区。'''
+    '''验证归档和删除边界'''
 
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()

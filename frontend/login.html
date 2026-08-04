@@ -269,7 +269,6 @@
                         return
                     }
                 } catch {
-                    // 服务暂时不可用时保留登录页，允许用户稍后重试。
                 }
                 if (token) {
                     localStorage.removeItem('btir_token')

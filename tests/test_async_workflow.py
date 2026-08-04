@@ -789,7 +789,7 @@ class InferenceWorkerTests(unittest.TestCase):
 
 
 class TaskReconciliationTests(unittest.TestCase):
-    '''验证任务状态会跟随 RQ 的实际状态收敛。'''
+    '''验证任务状态收敛'''
 
     def setUp(self) -> None:
         self.task_dir = Path("output") / "task-reconcile-001"
@@ -1131,7 +1131,7 @@ class TaskPerformanceRecordTests(unittest.TestCase):
 
 
 class ModelPreloadTests(unittest.TestCase):
-    '''验证模型预热会填充现有缓存，并且不会因单模型失败阻断 worker。'''
+    '''验证模型预热容错'''
 
     def test_preload_loads_all_route_models(self) -> None:
         vit_classifier_model = Mock()
