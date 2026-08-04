@@ -59,7 +59,7 @@ def record_model_completion(
     record: TaskRecord | None = None,
     repository: TaskRepository = task_repository,
 ) -> TaskRecord:
-    '''一次写库同时记录运行历史和模型完成状态。'''
+    '''记录模型完成状态'''
 
     model = ModelName(model_name)
     record = record or repository.load(task_dir)

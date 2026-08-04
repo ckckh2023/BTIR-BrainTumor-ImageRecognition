@@ -12,7 +12,7 @@ from datetime import datetime
 from core.task_definitions import JobStatus, ModelName, TaskStatus
 
 
-# 响应模型
+'''响应模型'''
 class VolumeTaskCreatedResponse(BaseModel):
     schema_version: Literal["0.1"] = "0.1"
     task_id: str
@@ -26,7 +26,7 @@ class TaskInputFileData(BaseModel):
     size_bytes: int
     sha256: str
 
-# 任务输入数据模型
+'''任务输入模型'''
 class TaskInputData(BaseModel):
     size_bytes: int
     sha256: str
@@ -52,7 +52,7 @@ class TaskErrorData(BaseModel):
     updated_at: datetime
 
 
-# 任务状态响应模型
+'''任务状态模型'''
 class TaskStatusResponse(BaseModel):
     schema_version: Literal["0.1"] = "0.1"
     task_id: str
@@ -176,7 +176,7 @@ class InferenceQueueStatusResponse(BaseModel):
     queues: dict[str, InferenceQueueDetail]
 
 
-# 任务运行请求模型
+'''任务运行请求模型'''
 class TaskEnqueuedResponse(BaseModel):
     schema_version: Literal["0.1"] = "0.1"
     task_id: str

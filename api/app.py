@@ -68,7 +68,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 由 API 在同一来源托管随附前端
+'''重定向至前端页面'''
 @app.get("/")
 async def root():
     return RedirectResponse(url="/web/")

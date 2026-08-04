@@ -43,7 +43,6 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(command_args)
     task_dir: Path | None = None
 
-    # 按照对应命令执行指定行为
     try:
         if args.command == "help":
             _print_help(parser)
@@ -176,24 +175,21 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="脑肿瘤图像解释器：可独立运行分类、分割，或一键运行。"
     )
-    commands = parser.add_subparsers(dest="command", required=True) # 要求必须指定子命令
+    commands = parser.add_subparsers(dest="command", required=True)
 
-    # 添加help子命令
     commands.add_parser("help", help="显示命令说明和使用示例")
     commands.add_parser("game", help="启动终端扫瘤小游戏")
 
-    # 添加clear子命令
     clear = commands.add_parser(
         "clear",
         help="清空账号、任务、归档、BTIR 队列状态和 Python 缓存",
     )
-    clear.add_argument( # --dry-run 参数
+    clear.add_argument(
         "--dry-run",
         action="store_true",
         help="仅列出将清理的文件，不实际删除",
     )
 
-    # 添加purge子命令
     purge = commands.add_parser(
         "purge",
         help="执行 clear 全部操作并删除 logs 和 data 目录",

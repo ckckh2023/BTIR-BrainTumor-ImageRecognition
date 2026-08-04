@@ -45,7 +45,7 @@ def _distributed_lock(
         try:
             lock.release()
         except (LockError, RedisError):
-            # 不覆盖前面的业务异常，锁由 Redis 超时回收。
+            '''保留原业务异常'''
             pass
 
 

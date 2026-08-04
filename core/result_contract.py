@@ -94,6 +94,10 @@ def validate_frontend_result(payload: dict[str, Any]) -> None:
                 + ", ".join(missing_mode_fields)
             )
 
+    model_consensus = payload.get("model_consensus")
+    if model_consensus is not None:
+        _validate_model_consensus(model_consensus)
+
     supplementary_analysis = payload.get("supplementary_analysis")
     if supplementary_analysis is not None:
         _validate_supplementary_analysis(supplementary_analysis)
@@ -119,6 +123,20 @@ def _validate_supplementary_analysis(value: Any) -> None:
         raise ValueError("supplementary_analysis.content.consistency 无效")
     if not isinstance(content["observations"], list) or not isinstance(content["uncertainties"], list):
         raise ValueError("supplementary_analysis.content 列表字段无效")
+
+
+def _validate_model_consensus(value: Any) -> None:
+    if not isinstance(value, dict):
+        raise ValueError("model_consensus 必须是对象")
+    for key in ("version", "summary", "consistency", "primary_evidence"):
+        _require_nonempty_string(value, key, "model_consensus")
+    if value["consistency"] not in {"consistent", "inconclusive", "conflicting"}:
+        raise ValueError("model_consensus.consistency 无效")
+    if value["primary_evidence"] != "segmentation":
+        raise ValueError("model_consensus.primary_evidence 无效")
+    for key in ("requires_review", "segmentation_detected"):
+        if not isinstance(value.get(key), bool):
+            raise ValueError(f"model_consensus.{key} 必须是布尔值")
 
 
 def _require_nonempty_string(

@@ -491,7 +491,7 @@ def _run_project_segmenter(
 
 
 def run_project_classifier(modalities: dict[str, Path]) -> dict[str, Any]:
-    '''调用项目当前患者级分类器，供评测命令显式注入。'''
+    '''调用项目分类器'''
 
     from services.inference_service import classify_volume
 

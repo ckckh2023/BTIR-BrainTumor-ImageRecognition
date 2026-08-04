@@ -161,7 +161,7 @@ def login(request: LoginRequest, http_request: Request) -> AuthResponse:
     user_repo = get_user_repository()
     user = user_repo.get_by_username(request.username)
     if user is None:
-        # 对不存在的用户名也执行一次昂贵哈希，减小通过响应耗时枚举用户的差异。
+        '''统一认证失败耗时'''
         hash_password(request.password)
         password_valid = False
     else:

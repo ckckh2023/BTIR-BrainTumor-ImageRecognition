@@ -1,4 +1,4 @@
-'''终端状态输出的回归测试。'''
+'''终端状态输出回归测试'''
 
 from __future__ import annotations
 

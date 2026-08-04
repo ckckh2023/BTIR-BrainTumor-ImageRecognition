@@ -372,6 +372,16 @@ GET /tasks/{task_id}
     "regions": {},
     "mask_file": "runs/segmentation/<run_id>/prediction.nii.gz"
   },
+  "model_consensus": {
+    "version": "segmentation-first-v1",
+    "summary": "模型综合提示存在肿瘤相关异常区域。",
+    "consistency": "consistent",
+    "primary_evidence": "segmentation",
+    "segmentation_detected": true,
+    "segmentation_volume_mm3": 1234.5,
+    "segmentation_voxel_count": 1234,
+    "requires_review": false
+  },
   "supplementary_analysis": {
     "status": "succeeded",
     "provider": "deepseek",
@@ -433,6 +443,11 @@ GET /tasks/{task_id}
 - `modality`、`axis`：体积来源模态与切片方向；
 - `evaluated_slices`、`aggregation`、`evidence_slices`：参与聚合的切片数量、
   聚合方法及最高阳性概率切片摘要。
+
+`frontend_result.model_consensus` 在分类和分割均完成时生成。它固定使用
+`segmentation-first-v1` 规则：分割检出区域时以分割结果为主，分类仅作为交叉验证；
+两模型冲突时 `requires_review=true`，并直接给出需要复核的结论。该字段不依赖
+DeepSeek，因此外部综合分析未启用或不可用时仍会返回。
 
 `frontend_result.segmentation` 提供：
 

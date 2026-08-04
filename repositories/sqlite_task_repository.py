@@ -20,7 +20,7 @@ from repositories.task_repository_contracts import (
 )
 
 
-# 构建迁移函数类型
+'''迁移函数类型'''
 Migration = Callable[[sqlite3.Connection], None]
 
 
@@ -241,7 +241,7 @@ def _migration_012_add_normalized_username(connection: sqlite3.Connection) -> No
     )
 
 
-# 创建迁移清单
+'''迁移清单'''
 SCHEMA_MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (1, "create_tasks_table", _migration_001_create_tasks_table),
     (2, "add_archived_at", _migration_002_add_archived_at),
@@ -363,8 +363,7 @@ class SqliteTaskRepository:
         record_json = record.model_dump_json(exclude_none=True)
         with self._connect() as connection:
             if max_tasks_per_user is not None:
-                # SQLite 的 IMMEDIATE 事务会在统计与插入之间保留写锁，避免
-                # 两个并发上传同时通过配额检查。
+                '''保留写锁避免并发绕过配额检查'''
                 connection.execute("BEGIN IMMEDIATE")
             existing = connection.execute(
                 "SELECT user_id FROM tasks WHERE task_id = ?",

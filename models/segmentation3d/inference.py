@@ -361,8 +361,7 @@ def _select_accumulator_device(
     if inference_device.type != "cuda":
         return cpu
 
-    # GPU 路径需要四通道输入、四通道输出与一张权重图，另留 2 GiB
-    # 给当前窗口、模型激活和运行时碎片。显存不足时继续使用原 CPU 路径。
+    '''预留 GPU 运行余量'''
     staging_bytes = int(np.prod(image_shape, dtype=np.int64)) * 9 * 4
     try:
         free_bytes, _ = torch.cuda.mem_get_info(inference_device)
@@ -378,7 +377,7 @@ def _stage_input_tensor(
     inference_device: torch.device,
     accumulator_device: torch.device,
 ) -> tuple[torch.Tensor, torch.device]:
-    '''显存充足时一次上传完整输入；失败则连同结果汇总一起回退 CPU。'''
+    '''优先在 GPU 汇总结果'''
 
     tensor = _to_tensor(images)
     if accumulator_device.type != "cuda":

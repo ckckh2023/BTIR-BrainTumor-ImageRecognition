@@ -1,8 +1,4 @@
-"""Optional DeepSeek synthesis of local classification and segmentation evidence.
-
-Only a deliberately whitelisted numerical evidence payload is sent to the provider.
-The provider never receives MRI files, filenames, task IDs, user data, or server paths.
-"""
+'''DeepSeek 结构化证据分析'''
 
 from __future__ import annotations
 
@@ -17,6 +13,7 @@ from urllib.request import Request, urlopen
 
 from contracts.analysis import SupplementaryAnalysisContent
 from core.settings import SETTINGS
+from services.model_consensus import build_model_consensus
 
 
 ANALYSIS_PROMPT_VERSION = "deepseek-supplementary-v1"
@@ -26,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 class SupplementaryAnalysisError(RuntimeError):
-    """A provider or response failure that must not fail the inference task."""
+    '''外部分析异常'''
 
 
 @dataclass(frozen=True)
@@ -38,7 +35,7 @@ class ProviderResponse:
 
 
 class DeepSeekProvider:
-    """Minimal OpenAI-compatible DeepSeek client using only the standard library."""
+    '''DeepSeek 客户端'''
 
     def __init__(
         self,
@@ -112,7 +109,7 @@ def run_supplementary_analysis(
     classification_result: dict[str, Any],
     segmentation_result: dict[str, Any],
 ) -> dict[str, Any]:
-    """Return a public-safe analysis result; expected provider failures are soft failures."""
+    '''生成补充分析结果'''
     if not SETTINGS.supplementary_analysis_enabled:
         return {"status": "disabled", "message": DISABLED_MESSAGE}
 
@@ -164,7 +161,7 @@ def build_supplementary_evidence(
     classification_result: dict[str, Any],
     segmentation_result: dict[str, Any],
 ) -> dict[str, Any]:
-    """Extract the precise, non-identifying data the external provider may receive."""
+    '''提取脱敏量化证据'''
     classification = _mapping(classification_result.get("classification"), "classification")
     regions = _mapping(segmentation_result.get("regions"), "segmentation.regions")
     evidence_regions: dict[str, dict[str, float | int]] = {}
@@ -225,6 +222,11 @@ def build_supplementary_evidence(
     threshold_margin = _number_or_none(classification.get("threshold_margin"))
     if threshold_margin is None and threshold is not None and yes_probability is not None:
         threshold_margin = round(float(yes_probability) - float(threshold), 6)
+
+    model_consensus = build_model_consensus(
+        {"model": classification_result.get("model"), **classification},
+        segmentation_result,
+    )
 
     return {
         "evidence_version": "1",
@@ -290,6 +292,7 @@ def build_supplementary_evidence(
             "non_background_ratio": total_ratio,
             "morphology": morphology,
         },
+        "local_consensus": model_consensus,
     }
 
 
