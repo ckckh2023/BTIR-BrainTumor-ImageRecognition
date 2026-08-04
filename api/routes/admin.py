@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 
 from api.auth import get_user_repository, require_admin
 from api.routes.tasks import (
@@ -37,6 +37,23 @@ from services.auth_service import hash_password
 
 
 router = APIRouter(prefix="/admin", tags=["管理员"])
+ADMIN_CONFIRMATION_HEADER = "X-BTIR-Confirm-Action"
+
+
+def _require_admin_confirmation(
+    confirmation: str | None,
+    expected_action: str,
+) -> None:
+    if confirmation == expected_action:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_428_PRECONDITION_REQUIRED,
+        detail={
+            "code": "admin_confirmation_required",
+            "confirmation_header": ADMIN_CONFIRMATION_HEADER,
+            "confirmation_action": expected_action,
+        },
+    )
 
 
 def _require_target_user(user_id: str) -> UserRecord:
@@ -177,8 +194,10 @@ def reset_user_password(
     user_id: str,
     request: AdminPasswordResetRequest,
     current_admin: UserRecord = Depends(require_admin),
+    confirmation: str | None = Header(default=None, alias=ADMIN_CONFIRMATION_HEADER),
 ) -> AdminPasswordResetResponse:
     target = _require_target_user(user_id)
+    _require_admin_confirmation(confirmation, f"reset-password:{user_id}")
     repository = get_user_repository()
     updated = repository.update_password(
         target.username,
@@ -212,9 +231,11 @@ def archive_user_task(
     user_id: str,
     task_id: str,
     current_admin: UserRecord = Depends(require_admin),
+    confirmation: str | None = Header(default=None, alias=ADMIN_CONFIRMATION_HEADER),
 ) -> TaskArchivedResponse:
     _require_target_user(user_id)
     _verify_target_task_owner(user_id, task_id)
+    _require_admin_confirmation(confirmation, f"archive-task:{task_id}")
 
     try:
         task_data = archive_task(
@@ -250,9 +271,11 @@ def restore_user_task(
     user_id: str,
     task_id: str,
     current_admin: UserRecord = Depends(require_admin),
+    confirmation: str | None = Header(default=None, alias=ADMIN_CONFIRMATION_HEADER),
 ) -> TaskRestoredResponse:
     _require_target_user(user_id)
     _verify_target_task_owner(user_id, task_id)
+    _require_admin_confirmation(confirmation, f"restore-task:{task_id}")
     try:
         task_data = restore_task(
             task_id,
