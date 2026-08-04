@@ -1,53 +1,51 @@
 # 脑肿瘤 MRI 图像分析
 
-BTIR 提供脑肿瘤 MRI 图像分类与分割能力。每次分析以独立
-`task_id` 为单位，保存输入图像、异步作业状态、模型运行历史、统一结果和错误信息；
+BTIR 是一个面向四模态脑肿瘤 MRI 的完整分析系统<br>
+用户可在浏览器中登录、拖入病例文件夹或 ZIP 压缩包，查看分类、分割、模型综合结论和可选的 AI 结果解读，并在网页内进行 3D 查看
 
-## 当前能力
+## 项目能力
 
-| 模块 | 状态 | 说明 |
-| --- | --- | --- |
-| 模型推理 | 已完成 | 3D 四模态 NIfTI 使用本地 ViT 分类与 SuperLightNet 分割；本地综合结论以分割为主、分类为辅助，可选 DeepSeek 仅解释结构化定量结果 |
-| 任务管理 | 已完成 | 上传创建任务、异步运行、重试、取消、软删除、恢复、状态查询 |
-| 历史查询 | 已完成 | 支持任务筛选、分页和单任务运行历史 |
-| 异步调度 | 已完成 | Redis + RQ 单一 3D 推理队列、自动重试、状态对账和安全取消 |
-| 数据持久化 | 已完成 | SQLite 保存元数据，文件系统保存图像与完整结果 |
-| 运行安全 | 已完成 | Redis 写入/用户配额锁、SQLite 事务、JSON 原子写入 |
-| CPU/GPU | 已完成 | CPU、NVIDIA CUDA、Linux AMD ROCm |
-| 接口协议 | 已完成 | 支持拖入病例文件夹或 ZIP、异常校正、异步运行和结果展示 |
-| 多用户 | 已完成 | JWT 隔离、用户配额、强制改密，以及管理员查询、密码重置、任务删除/恢复、二次确认和审计查询 |
-
-> 升级注意：当前版本已删除 2D 创建与推理能力，只接受四模态 3D 任务。升级已有
-> 部署前先备份 `data/btir.db`、活动输出与归档目录；旧 2D 任务不会被自动迁移或
-> 删除。开发环境确认无需保留旧数据后，可停止 API 与 Worker，再使用
-> `python Main.py clear --dry-run` 和 `python Main.py clear` 重置业务数据。
-
-> 多用户数据库升级会为用户名建立不区分大小写的唯一索引。若历史库已经同时存在
-> `Alice` 与 `alice` 这类账号，API 会拒绝启动并列出冲突名称；请在备份数据库后人工
-> 合并账号，再重新启动完成迁移。
-
-## 3D 结果查看
-
-3D 任务完成后，在结果文件区域选择“3D查看”，可以：
-
-- 在 FLAIR、T1CE、T1、T2 模态之间切换；
-- 使用轴位、冠状位、矢状位三视图或体渲染；
-- 叠加 `prediction.nii.gz` 分割掩码，并调整显示透明度；
-- 继续使用原有入口下载四模态输入和预测掩码。
-
-查看器按需读取当前模态和掩码，文件仍通过现有的鉴权任务文件接口获取，不新增公开
-文件地址。浏览器需要支持 WebGL2。体数据渲染使用固定版本的 NiiVue，引用来源和
-BSD-2-Clause 许可证全文见 [第三方软件说明](THIRD_PARTY_NOTICES.md)。
-
-## 文档导航
-
-| 文档 | 内容 |
+| 范围 | 能力 |
 | --- | --- |
-| [API 对接说明](docs/API.md) | 所有接口、参数、响应、错误和前端调用示例 |
-| [安装与部署](docs/DEPLOYMENT.md) | Windows 开发、Linux 部署、Redis、GPU、Worker 与进程守护 |
-| [运维与数据管理](docs/OPERATIONS.md) | 健康检查、队列、SQLite、归档、清理、测试和基准 |
+| 病例上传 | 支持拖入病例文件夹或 ZIP，自动匹配 FLAIR、T1CE、T1、T2；缺失或重复时提供对应校正项 |
+| 模型分析 | 本地 ViT 多切片二分类与 SuperLightNet 3D 分割共同提供证据，生成综合结论 |
+| 结果展示 | 展示关键结论、分割区域统计、模型观察、可选 AI 结构化结果解读和建议 |
+| 3D 查看 | 切换四模态、三视图与体渲染，叠加预测掩码并调整透明度 |
+| 任务管理 | 异步提交、进度轮询、取消、失败重试、运行历史、归档与恢复 |
+| 多用户 | JWT 登录隔离、用户任务配额、强制改密、管理员用户与任务管理、审计查询 |
+| 测试保障 | 单元测试、接口契约、任务流程与可选浏览器端到端测试 |
+| 部署运行 | SQLite 持久化、Redis + RQ 队列、CPU、CUDA 与 Linux ROCm 运行支持，审计日志按大小轮转并自动保留 |
 
-接口启动后还可以访问 Swagger：<http://127.0.0.1:8000/docs>
+## 系统组成
+
+```mermaid
+flowchart LR
+    U[用户] --> F[浏览器前端]
+    F --> A[FastAPI API]
+    A --> D[(SQLite 任务与用户数据)]
+    A --> R[(Redis 与 RQ 队列)]
+    R --> W[3D 推理 Worker]
+    W --> C[ViT 分类模型]
+    W --> S[SuperLightNet 分割模型]
+    W --> O[任务结果与 NIfTI 文件]
+    A --> O
+    A -. 可选结构化结果 .-> DS[AI 分析服务]
+```
+
+前端不直接读取数据库或任务目录，所有数据都经由鉴权 API 获取<br>
+AI 只接收本地模型产出的结构化定量信息，不获取用户传入的原始数据
+
+## 使用流程
+
+1. 使用账号登录系统
+2. 拖入一个病例文件夹或 ZIP 压缩包
+3. 若系统发现模态缺失或重复，按页面提示选择或补充对应文件
+4. 开始分析，页面展示上传、排队与推理进度
+5. 查看综合结果、详细数据和可下载文件
+6. 在“3D查看”中切换模态、查看分割掩码或体渲染
+
+浏览器需要支持 WebGL2 才能使用 3D 查看<br>
+查看器基于 NiiVue，许可证见[第三方软件说明](THIRD_PARTY_NOTICES.md)
 
 ## 快速开始
 
@@ -61,158 +59,92 @@ git lfs pull
 git lfs status
 ```
 
-确认以下文件是实际模型权重，不是 Git LFS 指针：
+确认以下文件是真实权重，而非 Git LFS 指针：
 
 ```text
 models/classification/vit-binary/model.safetensors
 models/segmentation3d/model/model_epoch_297.pth
 ```
 
-### 2. 准备 Python 3.11 环境
+### 2. 配置 Python 环境
 
-启用 Python 3.11 虚拟环境后：
+项目要求 Python 3.11：
 
 ```powershell
-python --version
 python -m pip install -r requirements.txt
 Copy-Item .env.example .env
 python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-`requirements.txt` 默认安装 NVIDIA CUDA 12.1 版 PyTorch。需要运行测试时改用
-`python -m pip install -r requirements-dev.txt`。CPU 或 Linux AMD ROCm 环境可在
-基础依赖安装后通过加速后端安装器切换，完整顺序参见[安装与部署](docs/DEPLOYMENT.md)。
-把最后一条命令生成的随机值写入 `.env` 的 `BTIR_JWT_SECRET_KEY`。服务器终端可直接
-执行 `python Main.py user create <username>` 创建普通账号；首次部署可执行
-`python Main.py user create <username> --admin` 创建管理员，不需要临时开放公开注册。
+将最后一条命令生成的随机值写入 `.env` 的 `BTIR_JWT_SECRET_KEY`<br>
 
-3D 任务默认使用仓库内的本地二分类 ViT。它从配置模态提取 25 张轴向切片，
-离线完成 `no/yes` 分类并生成病例级平均概率。分类加载或推理失败时不会切换其他
-模型，而是由异步任务自动重试一次；仍失败则任务明确标记为 `failed`。该分类流程
-不会改变 SuperLightNet 分割输入或结果。
+首次部署可创建管理员：
 
-### 3. 启动 Redis
+```powershell
+python Main.py user create <username> --admin
+```
 
-本地 Windows 可以使用 Docker Desktop：
+`requirements.txt` 默认使用 CUDA 12.1 版 PyTorch<br>
+CPU、CUDA、ROCm 与 Linux 部署方案见[安装与部署](docs/DEPLOYMENT.md)
+
+### 3. 启动 Redis、API 与 Worker
+
+本地使用 Docker 启动 Redis：
 
 ```powershell
 docker run --name btir-redis -p 6379:6379 -d redis:7-alpine
-python -c "from redis import Redis; print(Redis.from_url('redis://127.0.0.1:6379/0').ping())"
 ```
 
-容器已经创建时：
-
-```powershell
-docker start btir-redis
-```
-
-连接测试输出 `True` 后继续。
-
-### 4. 启动 API 和 Worker
-
-终端 1：
+分别启动 API 与 Worker：
 
 ```powershell
 python -m uvicorn api.app:app --reload
-```
-
-终端 2 启动 3D Worker：
-
-```powershell
 python -m workers.run_worker
 ```
 
-Linux 已准备好项目内 `.venv` 时，也可以一条命令同时托管 API 与 Worker。
-该脚本不会启动 Docker 或 Redis；若 Redis 运行在 Docker 中，请先启动 Docker 和 Redis 容器：
+随后便可打开以下地址：
 
-```bash
-bash scripts/run-supervisor.sh
-```
-
-若依赖安装在服务器的全局 Python 3.11 中，也可以直接指定解释器，不要求创建
-项目 `.venv`：
-
-```bash
-bash scripts/run-supervisor.sh /usr/bin/python3.11
-```
-
-项目根目录的 `.env` 可以由系统环境变量替代，但 API 必须获得安全的
-`BTIR_JWT_SECRET_KEY`，否则会拒绝启动。Linux 中已经导出的 `BTIR_*` 环境变量
-优先于 `.env` 中的同名配置。通过 systemd 启动时不要依赖用户 shell 配置，应在
-service 中使用 `Environment=` 或 `EnvironmentFile=` 注入，
-具体示例参见[安装与部署](docs/DEPLOYMENT.md)。
-
-打开：
-
-- 前端页面：<http://127.0.0.1:8000/web/>
-- Swagger：<http://127.0.0.1:8000/docs>
+- 前端：<http://127.0.0.1:8000/web/>
+- API 文档：<http://127.0.0.1:8000/docs>
 - 运行设备：<http://127.0.0.1:8000/runtime>
 - 完整就绪状态：<http://127.0.0.1:8000/readyz>
 
-只查询 SQLite 中已有任务时不要求 Worker 正在运行；创建新的推理结果需要 Redis 和 Worker。
+Linux 可使用 `bash scripts/run-supervisor.sh` 同时托管 API 与 Worker<br>
+该脚本不会启动 Redis
 
-## 最短联调流程
+## 模型与结果
 
-1. 调用 `POST /auth/register` 创建账号，或通过 `POST /auth/login` 登录。
-2. 后续任务请求携带 `Authorization: Bearer <access_token>`。
-3. 调用 `POST /tasks/3d`，同时上传 `flair`、`t1ce`、`t1`、`t2` 四个
-   `.nii` 或 `.nii.gz` 文件；也可调用 `POST /tasks/3d/archive` 上传包含一组
-   BraTS 命名四模态的 ZIP。两种方式都会返回 `task_id`。
-4. `POST /tasks/{task_id}/run-async` 提交任务。任务固定执行本地 ViT
-   多切片分类，再执行 SuperLightNet 分割。
-5. 轮询 `GET /tasks/{task_id}`，直到状态变为 `succeeded`。
-6. 历史和归档接口只返回当前用户自己的任务。
+系统将分类和分割结果组合为统一的 `frontend_result.json`：
 
-浏览器页面支持直接拖入病例文件夹或 ZIP；当某个模态缺失或出现多个候选文件时，
-才会显示对应项供选择或替换，确认后即可继续提交。
+- 分类模型提供病例级 `no/yes` 概率
+- 分割模型提供 NCR/NET、ED、ET 等区域及体积统计
+- 综合结论以分割结果为主要证据，分类结果为补充
+- AI汇总服务只解读上述结构化信息并在前端标出分析提供方
 
-从旧版本升级后，历史任务默认不属于任何用户，也不会被普通账号访问。服务器
-操作者确认接收账号后执行：
+分类与分割模型会以独立运行记录保存在任务目录中，方便追溯和对比<br>
+详细结果字段和 API 约定见[API 对接说明](docs/API.md)
 
-```powershell
-python Main.py claim-legacy-tasks <username>
-python Main.py claim-legacy-tasks <username> --apply
-```
+## 文档导航
 
-第一条仅预览，第二条才会写入归属关系。
+| 文档 | 对象 | 内容 |
+| --- | --- | --- |
+| [API 对接说明](docs/API.md) | 前端与接口调用者 | 所有接口、参数、响应、错误与调用示例 |
+| [安装与部署](docs/DEPLOYMENT.md) | 开发与部署人员 | Windows、Linux、GPU、Redis、Worker 与进程守护 |
+| [运维与数据管理](docs/OPERATIONS.md) | 管理员与后端维护者 | 健康检查、队列、备份、归档、审计、清理与基准 |
+| [分类模型说明](models/classification/vit-binary/README.md) | 模型维护者 | 病例级分类模型与权重配置 |
+| [分割模型说明](models/segmentation3d/README.md) | 模型维护者 | 3D 分割、标签与统计字段 |
+| [第三方软件说明](THIRD_PARTY_NOTICES.md) | 发布与合规人员 | NiiVue 等第三方组件的许可证 |
 
-服务器账号维护使用以下命令，密码通过终端隐藏输入，不会出现在 shell 历史中：
+## 测试
 
-```powershell
-python Main.py user create <username>
-python Main.py user create <username> --admin
-python Main.py user list
-python Main.py user set-role <username> admin
-python Main.py user set-role <username> user
-python Main.py user disable <username>
-python Main.py user enable <username>
-python Main.py user reset-password <username>
-```
-
-角色变更、禁用账号或重置密码都会撤销该用户已经签发的旧 Token；管理员通过 API
-重置密码、归档或恢复其他用户任务时，需先按接口返回的确认动作二次提交；密码被重置后，
-用户必须调用 `POST /auth/change-password` 修改临时密码才能继续操作任务。管理员可通过
-`GET /admin/users` 和 `GET /admin/tasks` 查询跨用户摘要，还可以重置指定用户密码
-或安全删除、恢复其指定任务，并通过 `GET /admin/audit` 查询审计记录；管理员接口
-暂不开放跨用户运行和文件下载。HTTP 仍可用于本机和内网
-联调；正式公网部署时再由反向代理提供 HTTPS。
-
-用户名登录与唯一约束不区分字母大小写，但接口保留注册时的显示形式。用户任务总数
-通过 SQLite 事务原子校验，活动任务数在入队时通过 Redis 用户锁串行校验，避免并发请求
-突破账号配额。
-
-完整请求、响应和前端 `fetch` 示例参见 [API 对接说明](docs/API.md)。
-
-## 自动化测试
+常规后端、前端契约和任务流程测试：
 
 ```powershell
 python -m pip install -r requirements-dev.txt
 python -m unittest discover -s tests -v
 ```
 
-测试使用临时任务目录，不读取或修改已有任务数据。Redis 可用时会运行真实 RQ 集成测试；Redis 不可用时对应集成用例按原有规则跳过。
-
-浏览器端到端测试使用独立的本地模拟 API，不需要模型权重、Redis 或 DeepSeek。首次执行还需要安装 Chromium：
+浏览器端到端测试使用本地模拟 API，覆盖登录、ZIP 上传、异步任务提交、重试、取消与 3D 查看入口，不依赖模型权重、Redis 或 AI接口：
 
 ```powershell
 python -m playwright install chromium
@@ -220,111 +152,46 @@ $env:BTIR_RUN_BROWSER_E2E=1
 python -m unittest tests.test_browser_e2e -v
 ```
 
-覆盖登录、ZIP 上传、异步任务提交、重试、取消和 3D 查看入口。未设置 `BTIR_RUN_BROWSER_E2E=1` 时，该用例会自动跳过。
-
-## 数据存储
-
-```text
-output/
-└── 20260715_120000_001/
-    ├── input/
-    │   ├── flair.nii.gz
-    │   ├── t1ce.nii.gz
-    │   ├── t1.nii.gz
-    │   └── t2.nii.gz
-    ├── classification.json
-    ├── segmentation.json
-    ├── runs/
-    ├── frontend_result.json
-    └── error.json
-
-data/
-└── btir.db
-```
-
-- SQLite 保存任务元数据、状态、作业信息和运行记录。
-- 文件系统保存输入图像、掩码和完整结果。
-- 同一模型重复运行时追加 `runs/<model>/` 历史，并更新最新结果。
-- `output/`、`data/*.db*`、缓存和本地数据集不提交到版本库；正式 `.pth`
-  和 `.safetensors` 权重统一通过 Git LFS 管理。
-
-归档、永久删除和数据库迁移规则参见
-[运维与数据管理](docs/OPERATIONS.md)。
+未设置 `BTIR_RUN_BROWSER_E2E=1` 时，浏览器用例会自动跳过
 
 ## 项目结构
 
 ```text
-api/             # FastAPI 应用与路由
-contracts/       # API 请求和响应模型
-core/            # 配置、任务状态和持久化记录
-repositories/    # 任务仓储契约与 SQLite 实现
-services/        # 任务、推理、队列、锁、归档等业务逻辑
-workers/         # RQ 推理作业与 Worker 入口
-accelerator/     # CPU、CUDA、ROCm 适配与安装
-models/          # 分类、分割模型实现与权重
-frontend/        # 随 API 托管的前端文件
-scripts/         # Linux 进程守护
-tests/           # 自动化测试
-Main.py          # 开发调试命令入口
+frontend/        浏览器页面、上传交互与 3D 查看
+api/             FastAPI 应用、鉴权和路由
+contracts/       API 请求与响应模型
+core/            配置、任务状态和持久化记录
+services/        任务、推理、队列、锁、归档、审计等业务逻辑
+repositories/    SQLite 任务与用户仓储
+workers/         RQ 推理作业与 Worker 入口
+models/          分类、分割模型实现与权重
+accelerator/     CPU、CUDA、ROCm 适配
+scripts/         Linux 进程守护脚本
+tests/           自动化测试
+Main.py          开发调试和维护命令
 ```
 
-后端主要分层：
+任务输入、运行记录和输出文件位于 `output/`，SQLite 数据库默认位于 `data/btir.db`，归档与审计日志默认位于 `archive/`<br>
+这些运行数据不应提交到版本库
 
-```text
-API 路由 → 服务层 → 仓储契约 → SQLite
-                 ↘ Redis / RQ Worker
-```
+审计日志的当前写入文件为 `archive/audit.jsonl`<br>
+超过 `BTIR_AUDIT_LOG_MAX_BYTES` 时会轮转为历史分片<br>
+`BTIR_AUDIT_LOG_RETENTION_DAYS` 和 `BTIR_AUDIT_LOG_MAX_ROTATED_FILES` 控制历史分片的保留范围
 
-## 开发调试命令
-
-查看完整帮助：
-
-```powershell
-python Main.py help
-```
+## 开发与维护
 
 常用命令：
 
 ```powershell
-python Main.py run --task-id <task_id>
-python Main.py evaluate-3d <BraTS数据集目录>
+python Main.py help
 python Main.py reconcile-tasks
-python Main.py clear --dry-run
-python Main.py purge --dry-run
 python Main.py archive-tasks
 python Main.py purge-archive
+python Main.py clear --dry-run
 ```
 
-命令行模型调用仅用于开发调试；正式前端流程使用异步 API。
-`evaluate-3d` 会发现数据集根目录下包含四模态和 `*_seg.nii[.gz]` 的病例，
-逐例计算 BraTS WT、TC、ET Dice，以及病例级分类的混淆矩阵、敏感度、特异度、F1、
-Brier 分数和概率分桶，同时记录耗时和 CUDA 峰值显存。默认报告写入
-`output/evaluations/segmentation3d-report.json`，不保留大型预测掩码；需要人工复核时
-可增加 `--predictions-dir <目录>`。仅需分割基线时加 `--skip-classification`。
-
-前端统一结果 `frontend_result.json` 使用独立的 `schema_version: "1.0"`。
-分类和分割对象都保留稳定的 `model` 标识；更换模型实现时不得改变既有字段语义，
-需要新增字段时保持向后兼容。完整字段见 [API 对接说明](docs/API.md)。
-
-`clear` 是开发环境全量重置命令：实际执行会清空用户账号、活动任务、归档、
-归档审计、全部任务记录、BTIR 推理队列/作业/任务锁和 Python 缓存，使业务数据
-回到首次启动前的空白状态；`.env`、模型权重和其他 Redis 应用的数据仍会保留。
-执行前必须先停止 API 和 Worker，并先使用 `--dry-run` 检查目标。Redis 不可用
-或仍存在活动 Worker 时，实际清理会拒绝执行。
-
-`purge` 在 `clear` 的基础上额外删除 `logs/` 和 `data/` 目录本身及其全部内容
-（包括日志文件、SQLite 数据库等），使项目回到无日志、无数据库的初始状态。
-执行前同样必须先停止 API 和 Worker，并先使用 `--dry-run` 检查目标。
-
-## 开发约定
-
-1. 前端和外部服务只通过 API 使用任务，不直接访问 SQLite 或任务目录。
-2. 新增模型时，在 `services/inference_service.py` 提供统一入口，并通过 `persist_model_result()` 写入结果。
-3. 修改公开字段时，同步检查 `contracts/task.py`、API 路由和
- [API 对接说明](docs/API.md)。
-4. 修改持久化字段时同步检查 `core/task_records.py` 和 SQLite migration。
-5. 清理和归档先使用预览模式；`clear` 只操作 BTIR 队列、作业和任务锁，禁止
-   用 `FLUSHALL` 或 `FLUSHDB` 代替项目清理命令。
+执行实际清理前必须先停止 API 与 Worker，并先使用 `--dry-run` 检查范围<br>
+账号维护、数据库迁移、归档、备份和审计日志轮转策略请遵循[运维与数据管理](docs/OPERATIONS.md)
 
 ## 彩蛋
 
