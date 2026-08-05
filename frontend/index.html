@@ -2865,7 +2865,7 @@
                         this.archiveSelections[modality] = ''
                     }
                 },
-                async gzipVolumeFileForUpload(file, label) {
+                async gzipVolumeFileForUpload(file, label, fileIndex = 0, fileCount = 1) {
                     if (!/\.nii$/i.test(file.name)) return file
                     if (typeof CompressionStream === 'undefined') return file
                     try {
@@ -2894,11 +2894,21 @@
                                 .arrayBuffer()
                             await writer.write(buffer)
                             loaded += buffer.byteLength
-                            const percent = Math.round((loaded / total) * 100)
+                            const fileFraction = loaded / total
+                            const percent = Math.round(fileFraction * 100)
                             this.statusText =
                                 `<span class="loading-spinner"></span>`
                                 + `正在压缩 ${label}`
                                 + `（${this.escapeHtml(file.name)}）... ${percent}%`
+                            this.analysisProgress = {
+                                percent: Math.min(
+                                    24,
+                                    Math.round(
+                                        ((fileIndex + fileFraction) / fileCount) * 24
+                                    )
+                                ),
+                                stage: '正在压缩/上传数据...',
+                            }
                         }
                         await writer.close()
                         await readPromise
@@ -2921,8 +2931,10 @@
                             if (event.lengthComputable && event.total > 0) {
                                 this.analysisProgress = {
                                     percent: Math.min(
-                                        6,
-                                        Math.round((event.loaded / event.total) * 6)
+                                        36,
+                                        24 + Math.round(
+                                            (event.loaded / event.total) * 12
+                                        )
                                     ),
                                     stage: '正在上传数据...',
                                 }
@@ -2975,10 +2987,17 @@
                             }
                             endpoint = '/tasks/3d/archive'
                         } else {
-                            for (const modality of this.volumeModalities) {
+                            for (
+                                let index = 0;
+                                index < this.volumeModalities.length;
+                                index++
+                            ) {
+                                const modality = this.volumeModalities[index]
                                 const uploadFile = await this.gzipVolumeFileForUpload(
                                     this.volumeFiles[modality.key],
-                                    modality.label
+                                    modality.label,
+                                    index,
+                                    this.volumeModalities.length
                                 )
                                 formData.append(modality.key, uploadFile)
                             }
