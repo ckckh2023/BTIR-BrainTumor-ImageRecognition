@@ -125,6 +125,19 @@ class AuthenticationTests(unittest.TestCase):
             "Value error, 用户名长度应为 3 至 32 个字符",
         )
 
+    def test_register_rejects_short_password_with_clear_message(self) -> None:
+        with TestClient(app) as client:
+            response = client.post(
+                "/auth/register",
+                json={"username": "songline", "password": "short"},
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_422_UNPROCESSABLE_CONTENT)
+        self.assertEqual(
+            response.json()["detail"][0]["msg"],
+            "Value error, 密码长度应为 6 至 72 个字符",
+        )
+
     def test_admin_can_query_users_and_cross_user_tasks_read_only(self) -> None:
         with TestClient(app) as client:
             alice = self._register(client, "alice")

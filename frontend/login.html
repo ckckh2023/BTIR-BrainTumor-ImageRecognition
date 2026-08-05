@@ -160,8 +160,6 @@
                         v-model.trim="username"
                         type="text"
                         placeholder="请输入用户名"
-                        required
-                        maxlength="32"
                         autocomplete="username"
                     />
                 </div>
@@ -174,7 +172,6 @@
                         v-model="password"
                         type="password"
                         placeholder="请输入密码"
-                        required
                         autocomplete="current-password"
                     />
                 </div>
@@ -208,12 +205,24 @@
                     this.msg = ''
                     this.msgType = 'error'
                 },
-                registrationValidationMessage() {
+                credentialsValidationMessage() {
+                    if (!this.username) {
+                        return '请输入用户名'
+                    }
                     if (this.username.length < 3 || this.username.length > 32) {
                         return '用户名长度应为 3 至 32 个字符'
                     }
                     if (!/^[a-zA-Z0-9_-]+$/.test(this.username)) {
                         return '用户名仅支持字母、数字、下划线和连字符'
+                    }
+                    if (!this.password) {
+                        return '请输入密码'
+                    }
+                    if (this.password.length < 6 || this.password.length > 72) {
+                        return '密码长度应为 6 至 72 个字符'
+                    }
+                    if (new TextEncoder().encode(this.password).length > 72) {
+                        return '密码的 UTF-8 编码不能超过 72 字节'
                     }
                     return ''
                 },
@@ -229,13 +238,11 @@
                 },
                 async submit() {
                     this.msg = ''
-                    if (this.mode === 'register') {
-                        const validationMessage = this.registrationValidationMessage()
-                        if (validationMessage) {
-                            this.msg = validationMessage
-                            this.msgType = 'error'
-                            return
-                        }
+                    const validationMessage = this.credentialsValidationMessage()
+                    if (validationMessage) {
+                        this.msg = validationMessage
+                        this.msgType = 'error'
+                        return
                     }
                     this.loading = true
 
