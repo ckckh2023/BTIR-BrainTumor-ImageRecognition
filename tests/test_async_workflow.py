@@ -638,9 +638,9 @@ class TaskRunnerTests(unittest.TestCase):
                 ),
             )
 
-        self.assertIn(("3D 分类推理中", 6), progress_events)
-        self.assertIn(("3D 分类完成，开始 3D 分割", 12), progress_events)
-        self.assertIn(("3D 分割推理中", 56), progress_events)
+        self.assertIn(("3D 分类推理中", 36), progress_events)
+        self.assertIn(("3D 分类完成，开始 3D 分割", 44), progress_events)
+        self.assertIn(("3D 分割推理中", 71), progress_events)
 
     def test_runner_cancels_between_segmentation_windows(self) -> None:
         task_dir = Path("output") / "task-runner-window-cancel"
