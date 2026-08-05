@@ -138,6 +138,16 @@ class AuthenticationTests(unittest.TestCase):
             "Value error, 密码长度应为 6 至 72 个字符",
         )
 
+    def test_register_accepts_chinese_username(self) -> None:
+        with TestClient(app) as client:
+            response = client.post(
+                "/auth/register",
+                json={"username": "测试用户", "password": "safe-password"},
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.json()["username"], "测试用户")
+
     def test_admin_can_query_users_and_cross_user_tasks_read_only(self) -> None:
         with TestClient(app) as client:
             alice = self._register(client, "alice")

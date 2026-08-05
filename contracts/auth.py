@@ -13,7 +13,7 @@ from core.user_records import UserRole
 
 USERNAME_MIN_LENGTH = 3
 USERNAME_MAX_LENGTH = 32
-USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
+USERNAME_PATTERN = re.compile(r"^[\u4e00-\u9fffa-zA-Z0-9_-]+$")
 PASSWORD_MIN_LENGTH = 6
 PASSWORD_MAX_LENGTH = 72
 
@@ -36,7 +36,7 @@ class CredentialsRequest(BaseModel):
         if not USERNAME_MIN_LENGTH <= len(value) <= USERNAME_MAX_LENGTH:
             raise ValueError("用户名长度应为 3 至 32 个字符")
         if not USERNAME_PATTERN.fullmatch(value):
-            raise ValueError("用户名仅支持字母、数字、下划线和连字符")
+            raise ValueError("用户名仅支持中文、字母、数字、下划线和连字符")
         return value
 
     @field_validator("password")

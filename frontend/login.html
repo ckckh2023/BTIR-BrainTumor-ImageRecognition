@@ -212,8 +212,8 @@
                     if (this.username.length < 3 || this.username.length > 32) {
                         return '用户名长度应为 3 至 32 个字符'
                     }
-                    if (!/^[a-zA-Z0-9_-]+$/.test(this.username)) {
-                        return '用户名仅支持字母、数字、下划线和连字符'
+                    if (!/^[\u4e00-\u9fffa-zA-Z0-9_-]+$/.test(this.username)) {
+                        return '用户名仅支持中文、字母、数字、下划线和连字符'
                     }
                     if (!this.password) {
                         return '请输入密码'
