@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>脑肿瘤MRI图像识别</title>
+    <link rel="icon" type="image/png" href="/assets/icon_exp.png">
     <link rel="preconnect" href="https://unpkg.com">
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <style>
@@ -2913,9 +2914,9 @@
                                 + `（${this.escapeHtml(file.name)}）... ${percent}%`
                             this.analysisProgress = {
                                 percent: Math.min(
-                                    24,
+                                    12,
                                     Math.round(
-                                        ((fileIndex + fileFraction) / fileCount) * 24
+                                        ((fileIndex + fileFraction) / fileCount) * 12
                                     )
                                 ),
                                 stage: '正在压缩/上传数据...',
@@ -2940,11 +2941,12 @@
                         }
                         xhr.upload.onprogress = (event) => {
                             if (event.lengthComputable && event.total > 0) {
+                                const base = this.analysisProgress?.percent || 0
                                 this.analysisProgress = {
                                     percent: Math.min(
                                         36,
-                                        24 + Math.round(
-                                            (event.loaded / event.total) * 12
+                                        base + Math.round(
+                                            (event.loaded / event.total) * (36 - base)
                                         )
                                     ),
                                     stage: '正在上传数据...',
