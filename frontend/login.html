@@ -161,6 +161,7 @@
                         type="text"
                         placeholder="请输入用户名"
                         required
+                        maxlength="32"
                         autocomplete="username"
                     />
                 </div>
@@ -207,9 +208,36 @@
                     this.msg = ''
                     this.msgType = 'error'
                 },
+                registrationValidationMessage() {
+                    if (this.username.length < 3 || this.username.length > 32) {
+                        return '用户名长度应为 3 至 32 个字符'
+                    }
+                    if (!/^[a-zA-Z0-9_-]+$/.test(this.username)) {
+                        return '用户名仅支持字母、数字、下划线和连字符'
+                    }
+                    return ''
+                },
+                async responseErrorMessage(response, fallback) {
+                    const data = await response.json().catch(() => ({}))
+                    if (typeof data.detail === 'string' && data.detail) {
+                        return data.detail
+                    }
+                    if (Array.isArray(data.detail) && typeof data.detail[0]?.msg === 'string') {
+                        return data.detail[0].msg.replace(/^Value error,\s*/, '')
+                    }
+                    return fallback
+                },
                 async submit() {
-                    this.loading = true
                     this.msg = ''
+                    if (this.mode === 'register') {
+                        const validationMessage = this.registrationValidationMessage()
+                        if (validationMessage) {
+                            this.msg = validationMessage
+                            this.msgType = 'error'
+                            return
+                        }
+                    }
+                    this.loading = true
 
                     try {
                         if (this.mode === 'register') {
@@ -222,8 +250,7 @@
                                 }),
                             })
                             if (!res.ok) {
-                                const data = await res.json()
-                                throw new Error(data.detail || `注册失败：HTTP ${res.status}`)
+                                throw new Error(await this.responseErrorMessage(res, `注册失败：HTTP ${res.status}`))
                             }
                             const data = await res.json()
                             this.onAuthSuccess(data)
@@ -237,8 +264,7 @@
                                 }),
                             })
                             if (!res.ok) {
-                                const data = await res.json()
-                                throw new Error(data.detail || `登录失败：HTTP ${res.status}`)
+                                throw new Error(await this.responseErrorMessage(res, `登录失败：HTTP ${res.status}`))
                             }
                             const data = await res.json()
                             this.onAuthSuccess(data)

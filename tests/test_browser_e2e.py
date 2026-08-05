@@ -218,6 +218,17 @@ class BrowserE2ETests(unittest.TestCase):
         self.assertGreaterEqual(_BrowserE2EHandler.request_counts.get("login", 0), 1)
         self.assertTrue(self.page.get_by_test_id("logout").is_visible())
 
+    def test_register_short_username_shows_clear_message(self) -> None:
+        self.page.goto(f"{self.base_url}/login/login.html", wait_until="networkidle")
+        self.page.locator(".tabs .tab").nth(1).click()
+        self.page.get_by_test_id("login-username").fill("SL")
+        self.page.get_by_test_id("login-password").fill("safe-password")
+        self.page.get_by_test_id("login-submit").click()
+
+        self.assertTrue(
+            self.page.get_by_text("用户名长度应为 3 至 32 个字符", exact=True).is_visible()
+        )
+
     def test_archive_upload_runs_task_and_opens_3d_viewer(self) -> None:
         self._login()
         self.page.get_by_test_id("volume-archive-picker").set_input_files(

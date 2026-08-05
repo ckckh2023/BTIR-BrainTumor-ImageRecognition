@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import re
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -10,17 +11,24 @@ from pydantic import BaseModel, Field, field_validator
 from core.user_records import UserRole
 
 
-USERNAME_FIELD = Field(
-    min_length=3,
-    max_length=32,
-    pattern=r"^[a-zA-Z0-9_-]+$",
-)
+USERNAME_MIN_LENGTH = 3
+USERNAME_MAX_LENGTH = 32
+USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
 PASSWORD_FIELD = Field(min_length=6, max_length=72)
 
 
 class CredentialsRequest(BaseModel):
-    username: str = USERNAME_FIELD
+    username: str
     password: str = PASSWORD_FIELD
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, value: str) -> str:
+        if not USERNAME_MIN_LENGTH <= len(value) <= USERNAME_MAX_LENGTH:
+            raise ValueError("用户名长度应为 3 至 32 个字符")
+        if not USERNAME_PATTERN.fullmatch(value):
+            raise ValueError("用户名仅支持字母、数字、下划线和连字符")
+        return value
 
     @field_validator("password")
     @classmethod
