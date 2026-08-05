@@ -86,6 +86,12 @@ app.mount(
     name="login",
 )
 
+app.mount(
+    "/assets",
+    StaticFiles(directory=SETTINGS.project_root / "assets"),
+    name="assets",
+)
+
 app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(runtime_router)
