@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 from datetime import datetime
-import re
 from typing import Literal
+import unicodedata
 
 from pydantic import BaseModel, field_validator
 
 from core.user_records import UserRole
 
 
-USERNAME_MIN_LENGTH = 3
+ASCII_USERNAME_MIN_LENGTH = 3
+UNICODE_USERNAME_MIN_LENGTH = 2
 USERNAME_MAX_LENGTH = 32
-USERNAME_PATTERN = re.compile(r"^[\u4e00-\u9fffa-zA-Z0-9_-]+$")
 PASSWORD_MIN_LENGTH = 6
 PASSWORD_MAX_LENGTH = 72
 
@@ -26,6 +26,14 @@ def _validate_password(value: str) -> str:
     return value
 
 
+def _is_allowed_username_character(value: str) -> bool:
+    return value in {"_", "-"} or unicodedata.category(value)[0] in {"L", "M", "N"}
+
+
+def _username_min_length(value: str) -> int:
+    return ASCII_USERNAME_MIN_LENGTH if value.isascii() else UNICODE_USERNAME_MIN_LENGTH
+
+
 class CredentialsRequest(BaseModel):
     username: str
     password: str
@@ -33,10 +41,10 @@ class CredentialsRequest(BaseModel):
     @field_validator("username")
     @classmethod
     def validate_username(cls, value: str) -> str:
-        if not USERNAME_MIN_LENGTH <= len(value) <= USERNAME_MAX_LENGTH:
-            raise ValueError("用户名长度应为 3 至 32 个字符")
-        if not USERNAME_PATTERN.fullmatch(value):
-            raise ValueError("用户名仅支持中文、字母、数字、下划线和连字符")
+        if not _username_min_length(value) <= len(value) <= USERNAME_MAX_LENGTH:
+            raise ValueError("用户名长度应为 2 至 32 个字符，纯英文或数字用户名至少 3 个字符")
+        if not all(_is_allowed_username_character(character) for character in value):
+            raise ValueError("用户名仅支持各语言的字母、数字、下划线和连字符")
         return value
 
     @field_validator("password")

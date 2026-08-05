@@ -122,7 +122,7 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(response.status_code, status.HTTP_422_UNPROCESSABLE_CONTENT)
         self.assertEqual(
             response.json()["detail"][0]["msg"],
-            "Value error, 用户名长度应为 3 至 32 个字符",
+            "Value error, 用户名长度应为 2 至 32 个字符，纯英文或数字用户名至少 3 个字符",
         )
 
     def test_register_rejects_short_password_with_clear_message(self) -> None:
@@ -138,15 +138,25 @@ class AuthenticationTests(unittest.TestCase):
             "Value error, 密码长度应为 6 至 72 个字符",
         )
 
-    def test_register_accepts_chinese_username(self) -> None:
+    def test_register_accepts_two_character_chinese_username(self) -> None:
         with TestClient(app) as client:
             response = client.post(
                 "/auth/register",
-                json={"username": "测试用户", "password": "safe-password"},
+                json={"username": "张三", "password": "safe-password"},
             )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.json()["username"], "测试用户")
+        self.assertEqual(response.json()["username"], "张三")
+
+    def test_register_accepts_other_unicode_username(self) -> None:
+        with TestClient(app) as client:
+            response = client.post(
+                "/auth/register",
+                json={"username": "مستخدم", "password": "safe-password"},
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.json()["username"], "مستخدم")
 
     def test_admin_can_query_users_and_cross_user_tasks_read_only(self) -> None:
         with TestClient(app) as client:

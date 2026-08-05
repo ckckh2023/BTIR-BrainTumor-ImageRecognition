@@ -123,7 +123,7 @@ def list_tasks(
     offset: int = Query(default=0, ge=0),
     status_filter: TaskStatus | None = Query(default=None, alias="status"),
     q: str | None = Query(default=None, min_length=1, max_length=100),
-    owner_username: str | None = Query(default=None, min_length=3, max_length=32),
+    owner_username: str | None = Query(default=None, min_length=2, max_length=32),
     archived: bool = Query(default=False),
     _: UserRecord = Depends(require_admin),
 ) -> AdminTaskListResponse:
