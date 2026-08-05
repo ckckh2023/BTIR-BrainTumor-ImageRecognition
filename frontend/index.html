@@ -2018,9 +2018,13 @@
                     let detail = ''
                     try {
                         const payload = await response.json()
-                        detail = typeof payload.detail === 'string'
-                            ? payload.detail
-                            : (payload.message || '')
+                        if (typeof payload.detail === 'string') {
+                            detail = payload.detail
+                        } else if (Array.isArray(payload.detail) && typeof payload.detail[0]?.msg === 'string') {
+                            detail = payload.detail[0].msg.replace(/^Value error,\s*/, '')
+                        } else {
+                            detail = payload.message || ''
+                        }
                     } catch {
                     }
                     return detail

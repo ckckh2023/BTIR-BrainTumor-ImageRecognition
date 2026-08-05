@@ -6,7 +6,7 @@ from datetime import datetime
 import re
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, field_validator
 
 from core.user_records import UserRole
 
@@ -14,12 +14,21 @@ from core.user_records import UserRole
 USERNAME_MIN_LENGTH = 3
 USERNAME_MAX_LENGTH = 32
 USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
-PASSWORD_FIELD = Field(min_length=6, max_length=72)
+PASSWORD_MIN_LENGTH = 6
+PASSWORD_MAX_LENGTH = 72
+
+
+def _validate_password(value: str) -> str:
+    if not PASSWORD_MIN_LENGTH <= len(value) <= PASSWORD_MAX_LENGTH:
+        raise ValueError("密码长度应为 6 至 72 个字符")
+    if len(value.encode("utf-8")) > 72:
+        raise ValueError("密码的 UTF-8 编码不能超过 72 字节")
+    return value
 
 
 class CredentialsRequest(BaseModel):
     username: str
-    password: str = PASSWORD_FIELD
+    password: str
 
     @field_validator("username")
     @classmethod
@@ -32,10 +41,8 @@ class CredentialsRequest(BaseModel):
 
     @field_validator("password")
     @classmethod
-    def validate_bcrypt_password_size(cls, value: str) -> str:
-        if len(value.encode("utf-8")) > 72:
-            raise ValueError("密码的 UTF-8 编码不能超过 72 字节")
-        return value
+    def validate_password(cls, value: str) -> str:
+        return _validate_password(value)
 
 
 class RegisterRequest(CredentialsRequest):
@@ -47,15 +54,13 @@ class LoginRequest(CredentialsRequest):
 
 
 class ChangePasswordRequest(BaseModel):
-    current_password: str = PASSWORD_FIELD
-    new_password: str = Field(min_length=6, max_length=72)
+    current_password: str
+    new_password: str
 
     @field_validator("current_password", "new_password")
     @classmethod
-    def validate_bcrypt_password_size(cls, value: str) -> str:
-        if len(value.encode("utf-8")) > 72:
-            raise ValueError("密码的 UTF-8 编码不能超过 72 字节")
-        return value
+    def validate_password(cls, value: str) -> str:
+        return _validate_password(value)
 
 
 class AuthResponse(BaseModel):
@@ -95,14 +100,12 @@ class AdminUserListResponse(BaseModel):
 
 
 class AdminPasswordResetRequest(BaseModel):
-    new_password: str = Field(min_length=6, max_length=72)
+    new_password: str
 
     @field_validator("new_password")
     @classmethod
-    def validate_bcrypt_password_size(cls, value: str) -> str:
-        if len(value.encode("utf-8")) > 72:
-            raise ValueError("密码的 UTF-8 编码不能超过 72 字节")
-        return value
+    def validate_password(cls, value: str) -> str:
+        return _validate_password(value)
 
 
 class AdminPasswordResetResponse(BaseModel):
