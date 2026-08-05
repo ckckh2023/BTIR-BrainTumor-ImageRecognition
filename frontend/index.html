@@ -2649,7 +2649,18 @@
                                 && resultData.progress !== undefined
                             ) {
                                 this.analysisProgress = {
-                                    percent: Number(resultData.progress) || 0,
+                                    percent: Math.max(
+                                        this.analysisProgress?.percent || 0,
+                                        Math.min(
+                                            100,
+                                            Math.max(
+                                                0,
+                                                Math.round(
+                                                    Number(resultData.progress) || 0
+                                                )
+                                            )
+                                        )
+                                    ),
                                     stage: resultData.progress_stage || '',
                                 }
                             }
