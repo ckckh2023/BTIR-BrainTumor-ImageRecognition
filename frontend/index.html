@@ -1388,14 +1388,14 @@
                         </div>
                         <div class="result-overview" v-if="classificationLabel || tumorArea !== null">
                             <div class="result-summary-card" v-if="classificationLabel">
-                                <div class="result-summary-card-label">分类模型</div>
+                                <div class="result-summary-card-label">分类判断</div>
                                 <div :class="['result-summary-card-value', 'result-highlight', classificationLabel === '肿瘤 detected' ? 'detected' : '']">
                                     {{ classificationLabel === '肿瘤 detected' ? '提示肿瘤相关异常' : '未发现明显异常' }}
                                 </div>
-                                <div class="result-summary-card-meta" v-if="confidence">置信度 {{ (confidence * 100).toFixed(1) }}%</div>
+                                <div class="result-summary-card-meta" v-if="confidence">模型概率 {{ (confidence * 100).toFixed(1) }}%</div>
                             </div>
                             <div class="result-summary-card" v-if="tumorArea !== null">
-                                <div class="result-summary-card-label">分割模型</div>
+                                <div class="result-summary-card-label">分割判断</div>
                                 <div class="result-summary-card-value">
                                     {{ tumorArea > 0 ? '检出非背景区域' : '未检出非背景区域' }}
                                 </div>
@@ -1403,7 +1403,7 @@
                             </div>
                         </div>
                         <div class="result-item" v-if="modelConsensus">
-                            <div class="result-label">综合识别结论：</div>
+                            <div class="result-label">分类与分割一致性：</div>
                             <div class="result-value result-analysis">
                                 <div>{{ modelConsensus.summary }}</div>
                                 <div class="result-consensus-review" v-if="modelConsensus.requires_review">分类与分割结果存在差异，建议重点复核分割区域与输入影像。</div>
@@ -1433,6 +1433,10 @@
                                 <div class="result-details-group" v-if="taskId">
                                     <div class="result-details-heading">任务信息</div>
                                     <div class="result-value">任务 ID：{{ taskId }}</div>
+                                </div>
+                                <div class="result-details-group">
+                                    <div class="result-details-heading">模型评测表现</div>
+                                    <div>V1 终盲测试集整体正确率 95.0%</div>
                                 </div>
                                 <div class="result-details-group" v-if="regionStats.length">
                                     <div class="result-details-heading">BraTS 区域体积</div>

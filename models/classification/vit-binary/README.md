@@ -1,30 +1,39 @@
 # 本地脑肿瘤二分类 ViT
 
-本目录保存 3D 推理路线使用的本地 2D 切片分类器<br>
-运行时只读取本目录，不会联网下载模型
+本目录保存 3D 推理流程使用的 V1 FLAIR 分类模型
 
-## 模型来源
+运行时只读取本地文件，不会联网下载权重
 
-- 上游模型：`dima806/brain_tumor_detection`
-- 固定版本：`d33cfd06151ffbc5aad051534137a00961134b46`
-- 基础模型：`google/vit-base-patch16-224-in21k`
-- 上游示例：[Brain Tumor Detection Example](https://www.kaggle.com/code/dima806/brain-tumor-detection-example)
-- 许可证：Apache-2.0
+## 模型信息
 
-`model.safetensors` 的 SHA-256：
+- 发布仓库 [Songline/BrainTumor_FlairClassifier](https://huggingface.co/Songline/BrainTumor_FlairClassifier)
+- 初始化主干 `google/vit-base-patch16-224-in21k`
+- 输入模态 FLAIR
+- 病例级规则为 25 张轴位有效切片阳性概率均值
+- 判定阈值 `0.548381`
+- 权重格式 `safetensors`
+
+`model.safetensors` SHA-256
 
 ```text
-328D473DC39C1BF82C114F2FF542642D67C2A7F5743A7BEBA5A830849068AD8C
+333B18821DD4A8E5B30C6F34A5F476A8D86BFCCCE681510FEBB6E43CEBB22C9A
 ```
 
-## 运行要求
+## 锁定评测
 
-以下文件缺一不可：
+| 数据范围 | 分类结果 |
+| --- | --- |
+| 内部固定测试 | 29 / 30 正确 |
+| UCSF-PDGM 外部开发阳性集 | 灵敏度 16 / 20 |
+| HBN-SSI 外部开发健康集 | 特异度 12 / 12 |
+| UPENN-GBM 最终盲测阳性集 | 灵敏度 9 / 10 |
+| OpenNeuro ds003592 最终盲测健康集 | 特异度 10 / 10 |
+| 合并最终盲测分类 | 19 / 20 正确 |
+
+## 必需文件
 
 - `config.json`
 - `model.safetensors`
 - `preprocessor_config.json`
 
-权重由 Git LFS 管理，克隆项目后若文件不完整，请执行 `git lfs pull`
-
-项目从配置的 3D 模态中抽取轴向切片，逐批执行二分类，再对切片概率取平均得到病例级结果
+三项文件必须保持来自同一版本

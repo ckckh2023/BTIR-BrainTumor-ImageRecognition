@@ -241,7 +241,7 @@ def _build_settings() -> Settings:
         ),
         vit_classifier_threshold=_get_fraction(
             "BTIR_VIT_CLASSIFIER_THRESHOLD",
-            0.5,
+            0.548381,
         ),
         device=device,
         max_3d_upload_bytes=_get_positive_int(
