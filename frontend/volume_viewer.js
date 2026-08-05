@@ -122,6 +122,8 @@
                 let label = ''
                 let hasKnownTotal = false
                 let dominantSize = -1
+                let dominantLoaded = 0
+                let dominantTotal = 0
                 for (const entry of progressEntries.values()) {
                     if (entry.total > 0) {
                         hasKnownTotal = true
@@ -131,12 +133,15 @@
                     if (entry.total > dominantSize) {
                         dominantSize = entry.total
                         label = entry.label
+                        dominantLoaded = entry.loaded
+                        dominantTotal = entry.total
                     }
                 }
                 onProgress({
                     label,
-                    loaded,
-                    total,
+                    // 按最大的文件计算百分比，避免后到的文件总量加入分母导致回弹
+                    loaded: dominantTotal > 0 ? dominantLoaded : loaded,
+                    total: dominantTotal > 0 ? dominantTotal : total,
                     indeterminate: !hasKnownTotal,
                 })
             }
