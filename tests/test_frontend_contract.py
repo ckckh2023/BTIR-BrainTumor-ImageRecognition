@@ -88,7 +88,8 @@ class FrontendContractTests(unittest.TestCase):
 
     def test_frontend_renders_local_segmentation_first_consensus(self) -> None:
         self.assertIn("modelConsensus", self.html)
-        self.assertIn("综合识别结论", self.html)
+        self.assertIn("分类与分割一致性", self.html)
+        self.assertIn("V1 终盲测试集整体正确率 95.0%", self.html)
         self.assertIn("AI 分析结论", self.html)
 
     def test_result_panel_keeps_overview_separate_from_details(self) -> None:
