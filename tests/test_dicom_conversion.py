@@ -16,7 +16,9 @@ from pydicom.uid import ExplicitVRLittleEndian, MRImageStorage, generate_uid
 
 from services.dicom_conversion import (
     _convert_dicom_series,
+    _modality_from_dicom_description,
     _select_dicom_series,
+    DICOMSeriesSelectionRequired,
     initialize_uploaded_dicom_task,
 )
 
@@ -139,6 +141,33 @@ class DicomConversionTests(unittest.TestCase):
             _select_dicom_series(
                 [path for path in self.paths if not path.name.startswith("t2-")]
             )
+
+    def test_t1_contrast_suffix_is_recognized(self) -> None:
+        self.assertEqual(
+            _modality_from_dicom_description("T1/3D/FFE/C"),
+            "t1ce",
+        )
+
+    def test_duplicate_series_can_be_selected_by_user_choice(self) -> None:
+        duplicate_path = self.dicom_dir / "t1-extra.dcm"
+        self._write_dicom(
+            duplicate_path,
+            study_uid=generate_uid(),
+            series_uid=generate_uid(),
+            description="AX T1 PRE",
+            instance_number=1,
+            pixel_value=1,
+        )
+
+        with self.assertRaises(DICOMSeriesSelectionRequired) as caught:
+            _select_dicom_series([*self.paths, duplicate_path])
+
+        candidates = caught.exception.modalities["t1"]
+        selected = _select_dicom_series(
+            [*self.paths, duplicate_path],
+            {"t1": candidates[0]["series_uid"]},
+        )
+        self.assertEqual(selected["t1"], candidates[0]["series_uid"])
 
 
 if __name__ == "__main__":
