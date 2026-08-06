@@ -1279,7 +1279,7 @@
                 </div>
 
                 <div class="input-group" v-if="!loading && !taskId">
-                    <label>四模态 NIfTI：</label>
+                    <label>病例影像：</label>
                     <div
                         :class="['volume-drop-zone', { dragging: volumeDropActive }]"
                         data-testid="volume-drop-zone"
@@ -1291,7 +1291,7 @@
                     >
                         <div>
                             <div class="volume-drop-title">拖入一个病例文件夹或 ZIP 压缩包</div>
-                            <div class="volume-drop-hint">点击此处可选择文件，或直接拖入文件夹或压缩包</div>
+                            <div class="volume-drop-hint">支持四模态 NIfTI 或原始 DICOM 文件</div>
                         </div>
                         <div class="volume-source-menu" v-if="volumeSourceMenuVisible" @click.stop>
                             <button type="button" @click="triggerVolumeFolderPicker">选择病例文件夹</button>
@@ -1302,7 +1302,6 @@
                     <input
                         type="file"
                         id="volume-folder-picker"
-                        accept=".nii,.nii.gz"
                         webkitdirectory
                         directory
                         multiple
@@ -1856,6 +1855,7 @@
                         t2: null,
                     },
                     volumeArchiveFile: null,
+                    volumeDicomFiles: [],
                     volumeFolderLabel: '',
                     volumeDropActive: false,
                     volumeSourceMenuVisible: false,
@@ -1958,6 +1958,7 @@
                     return token ? { 'Authorization': `Bearer ${token}` } : {}
                 },
                 canRecognize() {
+                    if (this.volumeDicomFiles.length) return true
                     if (this.volumeArchiveFile) {
                         return this.volumeModalities.every(modality => (
                             !this.volumeSelectionIssues[modality.key]
@@ -1974,11 +1975,16 @@
                         && Object.keys(this.volumeSelectionIssues).length > 0
                 },
                 hasVolumeFolderSelection() {
-                    return !this.volumeArchiveFile && Boolean(this.volumeFolderLabel)
+                    return !this.volumeArchiveFile
+                        && !this.volumeDicomFiles.length
+                        && Boolean(this.volumeFolderLabel)
                 },
                 volumeSourceSummary() {
                     if (this.volumeArchiveFile) {
                         return `已选择压缩包：${this.volumeArchiveFile.name}`
+                    }
+                    if (this.volumeDicomFiles.length) {
+                        return `已选择 DICOM 文件夹：${this.volumeFolderLabel}（${this.volumeDicomFiles.length} 个文件）`
                     }
                     if (this.hasVolumeFolderSelection) {
                         return `已选择文件夹：${this.volumeFolderLabel}`
@@ -1990,6 +1996,7 @@
                 },
                 volumeModalFilesVisible() {
                     if (this.showVolumeCorrection) return false
+                    if (this.volumeDicomFiles.length) return false
                     if (this.volumeManualMode || this.hasVolumeFolderSelection) return true
                     if (this.volumeArchiveFile) {
                         return this.volumeModalities.some(modality =>
@@ -2819,6 +2826,7 @@
                 triggerVolumeManualPicker() {
                     this.volumeSourceMenuVisible = false
                     this.volumeArchiveFile = null
+                    this.volumeDicomFiles = []
                     this.volumeFolderLabel = ''
                     this.clearVolumeSelectionState()
                     this.volumeManualMode = true
@@ -2849,12 +2857,16 @@
                     this.volumeCandidateSelections = remainingSelections
                 },
                 selectVolumeFiles(files, sourceLabel) {
+                    const selectedFiles = Array.from(files)
                     const candidates = { flair: [], t1ce: [], t1: [], t2: [] }
-                    for (const file of Array.from(files)) {
+                    for (const file of selectedFiles) {
                         if (!/\.nii(?:\.gz)?$/i.test(file.name)) continue
                         const modality = this.volumeModalityFromFilename(file.name)
                         if (!modality) continue
                         candidates[modality].push(file)
+                    }
+                    if (!Object.values(candidates).some(items => items.length)) {
+                        return this.selectDicomFiles(selectedFiles, sourceLabel)
                     }
                     const selected = {}
                     const issues = {}
@@ -2875,7 +2887,8 @@
                     }
                     this.volumeFiles = selected
                     this.volumeArchiveFile = null
-                    this.volumeFolderLabel = this.getVolumeFolderLabel(files, sourceLabel)
+                    this.volumeDicomFiles = []
+                    this.volumeFolderLabel = this.getVolumeFolderLabel(selectedFiles, sourceLabel)
                     this.volumeManualMode = false
                     this.volumeSelectionIssues = issues
                     this.volumeSelectionCandidates = candidates
@@ -2883,6 +2896,20 @@
                     this.archiveSelections = {}
                     this.volumeCorrectionVisible = true
                     return !Object.keys(issues).length
+                },
+                selectDicomFiles(files, sourceLabel) {
+                    if (!files.length) return false
+                    this.volumeFiles = { flair: null, t1ce: null, t1: null, t2: null }
+                    this.volumeArchiveFile = null
+                    this.volumeDicomFiles = files
+                    this.volumeFolderLabel = this.getVolumeFolderLabel(files, sourceLabel)
+                    this.volumeManualMode = false
+                    this.volumeSelectionIssues = {}
+                    this.volumeSelectionCandidates = {}
+                    this.volumeCandidateSelections = {}
+                    this.archiveSelections = {}
+                    this.volumeCorrectionVisible = false
+                    return true
                 },
                 onVolumeFolderSelected(event) {
                     this.selectVolumeFiles(event.target.files, '所选文件夹')
@@ -2941,6 +2968,7 @@
                 setVolumeArchive(file) {
                     this.volumeArchiveFile = file
                     this.volumeFiles = { flair: null, t1ce: null, t1: null, t2: null }
+                    this.volumeDicomFiles = []
                     this.volumeFolderLabel = ''
                     this.volumeManualMode = false
                     this.clearVolumeSelectionState()
@@ -2954,6 +2982,7 @@
                 clearVolumeUpload() {
                     this.volumeFiles = { flair: null, t1ce: null, t1: null, t2: null }
                     this.volumeArchiveFile = null
+                    this.volumeDicomFiles = []
                     this.volumeFolderLabel = ''
                     this.volumeManualMode = false
                     this.volumeSourceMenuVisible = false
@@ -3094,7 +3123,16 @@
                     try {
                         const formData = new FormData()
                         let endpoint = '/tasks/3d'
-                        if (this.volumeArchiveFile) {
+                        if (this.volumeDicomFiles.length) {
+                            for (const file of this.volumeDicomFiles) {
+                                formData.append(
+                                    'files',
+                                    file,
+                                    file.webkitRelativePath || file.name
+                                )
+                            }
+                            endpoint = '/tasks/3d/dicom'
+                        } else if (this.volumeArchiveFile) {
                             formData.append('archive', this.volumeArchiveFile)
                             for (const modality of this.volumeModalities) {
                                 const manualFile = this.volumeFiles[modality.key]

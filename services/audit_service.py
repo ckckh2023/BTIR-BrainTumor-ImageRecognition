@@ -55,14 +55,14 @@ def _normalize_timestamp(value: datetime) -> datetime:
 
 
 def _rotated_audit_log_paths(audit_dir: Path) -> list[Path]:
-    paths: list[tuple[int, str, Path]] = []
+    paths: list[tuple[str, Path]] = []
     for path in audit_dir.glob(_ROTATED_AUDIT_LOG_GLOB):
         try:
             if path.is_file():
-                paths.append((path.stat().st_mtime_ns, path.name, path))
+                paths.append((path.name, path))
         except OSError:
             continue
-    return [path for _, _, path in sorted(paths)]
+    return [path for _, path in sorted(paths)]
 
 
 def _prune_rotated_audit_logs(

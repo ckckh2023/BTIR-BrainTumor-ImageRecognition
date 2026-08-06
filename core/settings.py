@@ -158,6 +158,7 @@ class Settings:
     sqlite_busy_timeout_seconds: int
     upload_copy_chunk_bytes: int
     max_volume_archive_members: int
+    max_dicom_files: int
     task_lock_timeout_seconds: int
     task_lock_wait_seconds: float
     task_cancel_check_interval_seconds: float
@@ -272,6 +273,10 @@ def _build_settings() -> Settings:
         max_volume_archive_members=_get_positive_int(
             "BTIR_MAX_VOLUME_ARCHIVE_MEMBERS",
             128,
+        ),
+        max_dicom_files=_get_positive_int(
+            "BTIR_MAX_DICOM_FILES",
+            2_000,
         ),
         task_lock_timeout_seconds=_get_positive_int(
             "BTIR_TASK_LOCK_TIMEOUT_SECONDS",
