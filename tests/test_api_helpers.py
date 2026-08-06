@@ -273,6 +273,8 @@ class TaskHttpEndpointTests(unittest.TestCase):
         self.assertEqual(set(paths["/tasks"]), {"get"})
         self.assertIn("/tasks/3d", paths)
         self.assertEqual(set(paths["/tasks/3d"]), {"post"})
+        self.assertIn("/tasks/3d/dicom", paths)
+        self.assertEqual(set(paths["/tasks/3d/dicom"]), {"post"})
         self.assertIn("/tasks/3d/archive", paths)
         self.assertEqual(set(paths["/tasks/3d/archive"]), {"post"})
         self.assertIn("/tasks/{task_id}/run-async", paths)
@@ -328,6 +330,36 @@ class TaskHttpEndpointTests(unittest.TestCase):
             {"flair", "t1ce", "t1", "t2"},
         )
 
+    def test_create_3d_task_accepts_a_dicom_folder(self) -> None:
+        with TemporaryDirectory() as directory:
+            task_dir = Path(directory) / "task-http-3d-dicom-001"
+            task_dir.mkdir()
+            stored = {
+                modality: task_dir / "input" / f"{modality}.nii.gz"
+                for modality in ("flair", "t1ce", "t1", "t2")
+            }
+            with (
+                patch("api.routes.tasks.task_repository.count", return_value=0),
+                patch("api.routes.tasks.create_task_dir", return_value=task_dir),
+                patch(
+                    "api.routes.tasks.initialize_uploaded_dicom_task",
+                    return_value=stored,
+                ) as initialize_dicom,
+                TestClient(app) as client,
+            ):
+                response = client.post(
+                    "/tasks/3d/dicom",
+                    files=[
+                        ("files", ("series/flair-001.dcm", b"dicom", "application/dicom")),
+                        ("files", ("series/t1-001.dcm", b"dicom", "application/dicom")),
+                    ],
+                    data={"name": "DICOM patient"},
+                )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(set(response.json()["input_files"]), {"flair", "t1ce", "t1", "t2"})
+        self.assertEqual(len(initialize_dicom.call_args.kwargs["uploads"]), 2)
+
     def test_create_3d_task_accepts_a_case_zip(self) -> None:
         archive_bytes = BytesIO()
         with zipfile.ZipFile(archive_bytes, "w") as archive:
@@ -364,6 +396,37 @@ class TaskHttpEndpointTests(unittest.TestCase):
             set(initialize_volume.call_args.kwargs["uploads"]),
             {"flair", "t1ce", "t1", "t2"},
         )
+
+    def test_create_3d_task_accepts_a_dicom_zip(self) -> None:
+        archive_bytes = BytesIO()
+        with zipfile.ZipFile(archive_bytes, "w") as archive:
+            archive.writestr("series/000001.dcm", b"dicom-data")
+            archive.writestr("series/000002.dcm", b"dicom-data")
+        archive_bytes.seek(0)
+
+        with TemporaryDirectory() as directory:
+            task_dir = Path(directory) / "task-http-3d-dicom-archive-001"
+            task_dir.mkdir()
+            stored = {
+                modality: task_dir / "input" / f"{modality}.nii.gz"
+                for modality in ("flair", "t1ce", "t1", "t2")
+            }
+            with (
+                patch("api.routes.tasks.task_repository.count", return_value=0),
+                patch("api.routes.tasks.create_task_dir", return_value=task_dir),
+                patch(
+                    "api.routes.tasks.initialize_uploaded_dicom_task",
+                    return_value=stored,
+                ) as initialize_dicom,
+                TestClient(app) as client,
+            ):
+                response = client.post(
+                    "/tasks/3d/archive",
+                    files={"archive": ("dicom-case.zip", archive_bytes.getvalue(), "application/zip")},
+                )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        initialize_dicom.assert_called_once()
 
     def test_case_zip_returns_selectable_candidates_when_a_modality_is_duplicated(self) -> None:
         archive_bytes = BytesIO()

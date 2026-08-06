@@ -128,6 +128,7 @@ BTIR_REDIS_SOCKET_TIMEOUT_SECONDS=3
 BTIR_SQLITE_BUSY_TIMEOUT_SECONDS=5
 BTIR_UPLOAD_COPY_CHUNK_BYTES=1048576
 BTIR_MAX_VOLUME_ARCHIVE_MEMBERS=128
+BTIR_MAX_DICOM_FILES=2000
 ```
 
 可以生成 JWT 密钥：
@@ -499,7 +500,7 @@ systemd timer 或 cron，不加入 supervisor 主循环
 2. `GET /healthz` 返回 `200`
 3. `GET /readyz` 的 SQLite、Redis、Worker 和模型检查均为 `ok`
 4. `GET /runtime` 显示预期的 CPU、CUDA 或 ROCm 后端
-5. 通过页面拖入病例文件夹或 ZIP，或上传一组四模态 NIfTI；随后调用
+5. 通过页面拖入病例文件夹或 ZIP，上传四模态 NIfTI 或原始 DICOM；随后调用
    `POST /tasks/{task_id}/run-async`
 6. 轮询任务直到 `succeeded`，确认分类与分割结果均存在
 7. 有带 `seg` 标签的 BraTS 验证集时，执行

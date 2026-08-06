@@ -1,0 +1,219 @@
+'''DICOM 多序列识别与 NIfTI 转换'''
+
+from __future__ import annotations
+
+from contextlib import ExitStack
+import re
+import shutil
+from pathlib import Path
+from typing import BinaryIO, Iterable
+
+from core.settings import SETTINGS
+from core.task_definitions import VOLUME_MODALITIES
+from services.task_files import initialize_uploaded_volume_task
+
+
+def initialize_uploaded_dicom_task(
+    task_dir: Path,
+    uploads: Iterable[tuple[str, BinaryIO]],
+    *,
+    name: str | None = None,
+    user_id: str | None = None,
+    max_tasks_per_user: int | None = None,
+) -> dict[str, Path]:
+    '''将同一病例的 DICOM 序列转换为四模态 NIfTI 任务'''
+
+    staging_dir = task_dir / ".dicom-staging"
+    converted_dir = task_dir / ".dicom-converted"
+    staging_dir.mkdir(parents=True)
+    try:
+        paths = _save_dicom_uploads(staging_dir, uploads)
+        selected_series = _select_dicom_series(paths)
+        converted_paths = _convert_dicom_series(
+            staging_dir,
+            converted_dir,
+            selected_series,
+        )
+        with ExitStack() as streams:
+            return initialize_uploaded_volume_task(
+                task_dir=task_dir,
+                uploads={
+                    modality: streams.enter_context(converted_paths[modality].open("rb"))
+                    for modality in VOLUME_MODALITIES
+                },
+                filenames={
+                    modality: f"{modality}_from_dicom.nii.gz"
+                    for modality in VOLUME_MODALITIES
+                },
+                name=name,
+                user_id=user_id,
+                max_tasks_per_user=max_tasks_per_user,
+            )
+    finally:
+        shutil.rmtree(staging_dir, ignore_errors=True)
+        shutil.rmtree(converted_dir, ignore_errors=True)
+
+
+def _save_dicom_uploads(
+    destination: Path,
+    uploads: Iterable[tuple[str, BinaryIO]],
+) -> list[Path]:
+    '''限制总大小后保存待转换的 DICOM 文件'''
+
+    paths: list[Path] = []
+    total_size = 0
+    for index, (_, upload) in enumerate(uploads, 1):
+        if index > SETTINGS.max_dicom_files:
+            raise ValueError(
+                "DICOM 文件数量超过限制"
+                f"（最多 {SETTINGS.max_dicom_files} 个）"
+            )
+        path = destination / f"{index:05d}.dcm"
+        with path.open("wb") as output:
+            while chunk := upload.read(SETTINGS.upload_copy_chunk_bytes):
+                total_size += len(chunk)
+                if total_size > SETTINGS.max_3d_upload_bytes:
+                    raise ValueError("DICOM 上传总大小超过限制")
+                output.write(chunk)
+        if path.stat().st_size:
+            paths.append(path)
+
+    if not paths:
+        raise ValueError("未收到可转换的 DICOM 文件")
+    return paths
+
+
+def _select_dicom_series(paths: list[Path]) -> dict[str, str]:
+    '''按 SeriesInstanceUID 归类并识别四个所需模态'''
+
+    try:
+        import pydicom
+    except ImportError as exc:
+        raise RuntimeError("DICOM 转换依赖 pydicom") from exc
+
+    series: dict[str, dict[str, str]] = {}
+    for path in paths:
+        try:
+            dataset = pydicom.dcmread(
+                path,
+                stop_before_pixels=True,
+                force=True,
+                specific_tags=[
+                    "SeriesInstanceUID",
+                    "SeriesDescription",
+                    "ProtocolName",
+                    "SequenceName",
+                    "ImageType",
+                    "ContrastBolusAgent",
+                ],
+            )
+        except Exception:
+            continue
+        series_uid = str(getattr(dataset, "SeriesInstanceUID", "")).strip()
+        if not series_uid:
+            continue
+        description = " ".join(
+            str(getattr(dataset, field, ""))
+            for field in (
+                "SeriesDescription",
+                "ProtocolName",
+                "SequenceName",
+                "ImageType",
+                "ContrastBolusAgent",
+            )
+        )
+        series.setdefault(series_uid, {"description": description})
+
+    candidates: dict[str, list[tuple[str, str]]] = {
+        modality: [] for modality in VOLUME_MODALITIES
+    }
+    for series_uid, metadata in series.items():
+        modality = _modality_from_dicom_description(metadata["description"])
+        if modality is not None:
+            candidates[modality].append((series_uid, metadata["description"]))
+
+    errors: list[str] = []
+    selected: dict[str, str] = {}
+    for modality in VOLUME_MODALITIES:
+        matches = candidates[modality]
+        if not matches:
+            errors.append(f"未识别到 {modality.upper()} DICOM 序列")
+        elif len(matches) > 1:
+            errors.append(
+                f"识别到 {len(matches)} 组 {modality.upper()} DICOM 序列，请仅保留一组后上传"
+            )
+        else:
+            selected[modality] = matches[0][0]
+    if errors:
+        raise ValueError("；".join(errors))
+    return selected
+
+
+def _modality_from_dicom_description(description: str) -> str | None:
+    '''根据常见 DICOM 序列描述识别输入模态'''
+
+    value = description.lower()
+    compact = re.sub(r"[^a-z0-9+]", "", value)
+    has_t1 = bool(re.search(r"(?:^|[^a-z0-9])t1(?:$|[^a-z0-9])", value)) or "t1" in compact
+    has_t2 = bool(re.search(r"(?:^|[^a-z0-9])t2(?:$|[^a-z0-9])", value)) or "t2" in compact
+    if "flair" in compact:
+        return "flair"
+    if has_t1 and any(
+        marker in compact
+        for marker in ("t1ce", "t1c", "t1gd", "postcontrast", "postcon", "contrast", "enhanc", "+c", "gad")
+    ):
+        return "t1ce"
+    if has_t1:
+        return "t1"
+    if has_t2:
+        return "t2"
+    return None
+
+
+def _convert_dicom_series(
+    staging_dir: Path,
+    destination: Path,
+    series_uids: dict[str, str],
+) -> dict[str, Path]:
+    '''读取 DICOM 序列并全部重采样至 FLAIR 空间'''
+
+    try:
+        import SimpleITK as sitk
+    except ImportError as exc:
+        raise RuntimeError("DICOM 转换依赖 SimpleITK") from exc
+
+    available_series = set(sitk.ImageSeriesReader.GetGDCMSeriesIDs(str(staging_dir)) or [])
+    images = {}
+    for modality in VOLUME_MODALITIES:
+        series_uid = series_uids[modality]
+        if series_uid not in available_series:
+            raise ValueError(f"无法读取 {modality.upper()} DICOM 序列")
+        file_names = sitk.ImageSeriesReader.GetGDCMSeriesFileNames(
+            str(staging_dir),
+            series_uid,
+        )
+        reader = sitk.ImageSeriesReader()
+        reader.SetFileNames(file_names)
+        image = reader.Execute()
+        if image.GetDimension() != 3 or min(image.GetSize()) <= 1:
+            raise ValueError(f"{modality.upper()} DICOM 序列不是有效三维体数据")
+        images[modality] = sitk.Cast(image, sitk.sitkFloat32)
+
+    destination.mkdir()
+    reference = images["flair"]
+    converted: dict[str, Path] = {}
+    for modality in VOLUME_MODALITIES:
+        image = images[modality]
+        if modality != "flair":
+            image = sitk.Resample(
+                image,
+                reference,
+                sitk.Transform(),
+                sitk.sitkLinear,
+                0.0,
+                sitk.sitkFloat32,
+            )
+        destination_path = destination / f"{modality}.nii.gz"
+        sitk.WriteImage(image, str(destination_path), useCompression=True)
+        converted[modality] = destination_path
+    return converted

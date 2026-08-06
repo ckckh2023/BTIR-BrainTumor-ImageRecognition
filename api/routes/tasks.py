@@ -46,11 +46,13 @@ from repositories.task_repository_contracts import (
     TaskQuotaExceededError,
 )
 from services.archive_service import archive_task, restore_task
+from services.dicom_conversion import initialize_uploaded_dicom_task
 from services.task_files import (
     create_task_dir,
     get_task_dir,
     initialize_uploaded_volume_task,
     select_volume_archive_entries,
+    volume_modality_from_filename,
     VolumeArchiveSelectionRequired,
 )
 from services.task_queue import (
@@ -281,6 +283,65 @@ def create_3d_task_from_upload(
 
 
 @router.post(
+    "/3d/dicom",
+    response_model=VolumeTaskCreatedResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_3d_task_from_dicom(
+    files: list[UploadFile] = File(...),
+    name: str | None = Form(default=None),
+    current_user: UserRecord = Depends(require_password_changed),
+) -> VolumeTaskCreatedResponse:
+    '''上传一个病例的 DICOM 文件夹并转换为四模态 NIfTI'''
+
+    enforce_task_storage_limit(current_user)
+    task_dir: Path | None = None
+    try:
+        task_dir = create_task_dir(SETTINGS.output_dir)
+        stored_files = initialize_uploaded_dicom_task(
+            task_dir=task_dir,
+            uploads=[
+                (upload.filename or f"dicom-{index}", upload.file)
+                for index, upload in enumerate(files, 1)
+                if upload.filename
+            ],
+            name=name,
+            user_id=current_user.user_id,
+            max_tasks_per_user=SETTINGS.max_tasks_per_user,
+        )
+    except TaskQuotaExceededError as exc:
+        discard_incomplete_task_dir(task_dir)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+        ) from exc
+    except (RuntimeError, ValueError) as exc:
+        discard_incomplete_task_dir(task_dir)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    return VolumeTaskCreatedResponse(
+        task_id=task_dir.name,
+        input_files={
+            modality: path.name
+            for modality, path in stored_files.items()
+        },
+    )
+
+
+def _iter_archive_dicom_uploads(archive: zipfile.ZipFile):
+    '''逐个打开 ZIP 内的 DICOM，避免同时占用过多文件句柄'''
+
+    for entry in archive.infolist():
+        if entry.is_dir():
+            continue
+        with archive.open(entry) as stream:
+            yield entry.filename, stream
+
+
+@router.post(
     "/3d/archive",
     response_model=VolumeTaskCreatedResponse,
     status_code=status.HTTP_201_CREATED,
@@ -298,7 +359,7 @@ def create_3d_task_from_archive(
     t2_entry: str | None = Form(default=None),
     current_user: UserRecord = Depends(require_password_changed),
 ) -> VolumeTaskCreatedResponse:
-    '''上传病例 ZIP，自动识别其中唯一的一组四模态 NIfTI'''
+    '''上传病例 ZIP，自动识别四模态 NIfTI 或 DICOM 序列'''
 
     archive_name = Path(archive.filename or "").name
     if not archive_name.lower().endswith(".zip"):
@@ -316,6 +377,11 @@ def create_3d_task_from_archive(
     task_dir: Path | None = None
     try:
         with zipfile.ZipFile(archive.file) as uploaded_archive, ExitStack() as streams:
+            archive_has_nifti = any(
+                volume_modality_from_filename(Path(entry.filename).name) is not None
+                for entry in uploaded_archive.infolist()
+                if not entry.is_dir()
+            )
             manual_uploads = {
                 modality: upload
                 for modality, upload in {
@@ -326,39 +392,50 @@ def create_3d_task_from_archive(
                 }.items()
                 if upload is not None and upload.filename
             }
-            entries = select_volume_archive_entries(
-                uploaded_archive,
-                selected_filenames={
-                    "flair": flair_entry,
-                    "t1ce": t1ce_entry,
-                    "t1": t1_entry,
-                    "t2": t2_entry,
-                },
-                required_modalities=set(VOLUME_MODALITIES) - set(manual_uploads),
-            )
             task_dir = create_task_dir(SETTINGS.output_dir)
-            stored_files = initialize_uploaded_volume_task(
-                task_dir=task_dir,
-                uploads={
-                    modality: (
-                        manual_uploads[modality].file
-                        if modality in manual_uploads
-                        else streams.enter_context(uploaded_archive.open(entries[modality]))
-                    )
-                    for modality in VOLUME_MODALITIES
-                },
-                filenames={
-                    modality: (
-                        manual_uploads[modality].filename
-                        if modality in manual_uploads
-                        else entries[modality].filename
-                    )
-                    for modality in VOLUME_MODALITIES
-                },
-                name=name,
-                user_id=current_user.user_id,
-                max_tasks_per_user=SETTINGS.max_tasks_per_user,
-            )
+            if archive_has_nifti or set(manual_uploads) == set(VOLUME_MODALITIES):
+                entries = select_volume_archive_entries(
+                    uploaded_archive,
+                    selected_filenames={
+                        "flair": flair_entry,
+                        "t1ce": t1ce_entry,
+                        "t1": t1_entry,
+                        "t2": t2_entry,
+                    },
+                    required_modalities=set(VOLUME_MODALITIES) - set(manual_uploads),
+                )
+                stored_files = initialize_uploaded_volume_task(
+                    task_dir=task_dir,
+                    uploads={
+                        modality: (
+                            manual_uploads[modality].file
+                            if modality in manual_uploads
+                            else streams.enter_context(uploaded_archive.open(entries[modality]))
+                        )
+                        for modality in VOLUME_MODALITIES
+                    },
+                    filenames={
+                        modality: (
+                            manual_uploads[modality].filename
+                            if modality in manual_uploads
+                            else entries[modality].filename
+                        )
+                        for modality in VOLUME_MODALITIES
+                    },
+                    name=name,
+                    user_id=current_user.user_id,
+                    max_tasks_per_user=SETTINGS.max_tasks_per_user,
+                )
+            elif manual_uploads:
+                raise ValueError("DICOM 压缩包不能与单个 NIfTI 文件混合上传")
+            else:
+                stored_files = initialize_uploaded_dicom_task(
+                    task_dir=task_dir,
+                    uploads=_iter_archive_dicom_uploads(uploaded_archive),
+                    name=name,
+                    user_id=current_user.user_id,
+                    max_tasks_per_user=SETTINGS.max_tasks_per_user,
+                )
     except TaskQuotaExceededError as exc:
         discard_incomplete_task_dir(task_dir)
         raise HTTPException(
@@ -366,6 +443,7 @@ def create_3d_task_from_archive(
             detail=str(exc),
         ) from exc
     except VolumeArchiveSelectionRequired as exc:
+        discard_incomplete_task_dir(task_dir)
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={
@@ -376,9 +454,14 @@ def create_3d_task_from_archive(
         ) from exc
     except RuntimeError as exc:
         discard_incomplete_task_dir(task_dir)
+        message = str(exc)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="压缩包中的文件无法读取，请使用未加密的标准 ZIP 文件",
+            detail=(
+                message
+                if "DICOM" in message
+                else "压缩包中的文件无法读取，请使用未加密的标准 ZIP 文件"
+            ),
         ) from exc
     except (ValueError, zipfile.BadZipFile) as exc:
         discard_incomplete_task_dir(task_dir)

@@ -105,6 +105,12 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn(".result-section", self.html)
         self.assertIn("min-height: 280px;", self.html)
         self.assertIn("max-height: 420px;", self.html)
+
+    def test_upload_flow_supports_dicom_folder_conversion(self) -> None:
+        self.assertIn("原始 DICOM 文件", self.html)
+        self.assertIn("volumeDicomFiles", self.html)
+        self.assertIn("selectDicomFiles", self.html)
+        self.assertIn("/tasks/3d/dicom", self.html)
         self.assertIn("未发现明显异常", self.html)
 
     def test_upload_phase_is_included_in_inference_progress(self) -> None:
