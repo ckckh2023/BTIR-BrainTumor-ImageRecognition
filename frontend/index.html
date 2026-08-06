@@ -65,10 +65,12 @@
             flex-shrink: 0;
         }
 
-        .upload-restart-bar {
+        .result-header {
             display: flex;
-            justify-content: flex-end;
-            margin-bottom: 12px;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 15px;
             flex-shrink: 0;
         }
 
@@ -263,6 +265,40 @@
             line-height: 1.5;
         }
 
+        .volume-modal-files-panel {
+            margin-top: -12px;
+            margin-bottom: 12px;
+            padding: 12px;
+            background: #eef6ff;
+            border: 1px solid #bfdbfe;
+            border-radius: 8px;
+            flex-shrink: 0;
+        }
+
+        .volume-modal-files-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            min-width: 0;
+        }
+
+        .volume-modal-files-title {
+            color: #1e3c72;
+            font-size: 13px;
+            font-weight: 600;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .volume-modal-files-tip {
+            margin: 4px 0 10px;
+            color: #315a93;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
         .volume-file-detail {
             min-width: 0;
         }
@@ -361,7 +397,6 @@
 
         .result-title {
             color: #1e3c72;
-            margin-bottom: 15px;
             font-size: 18px;
             font-weight: 600;
             flex-shrink: 0;
@@ -1252,11 +1287,12 @@
                     >
                         <div>
                             <div class="volume-drop-title">拖入一个病例文件夹或 ZIP 压缩包</div>
-                            <div class="volume-drop-hint">点击选择文件，或直接拖入</div>
+                            <div class="volume-drop-hint">点击此处可选择文件，或直接拖入文件夹或压缩包</div>
                         </div>
                         <div class="volume-source-menu" v-if="volumeSourceMenuVisible" @click.stop>
                             <button type="button" @click="triggerVolumeFolderPicker">选择病例文件夹</button>
                             <button type="button" @click="triggerVolumeArchivePicker">选择 ZIP 压缩包</button>
+                            <button type="button" @click="triggerVolumeManualPicker">手动上传各个文件</button>
                         </div>
                     </div>
                     <input
@@ -1277,26 +1313,6 @@
                         style="display: none"
                         @change="onVolumeArchiveSelected"
                     />
-                    <div class="volume-source-summary" v-if="volumeArchiveFile">
-                        <div class="volume-source-summary-header">
-                            <span class="volume-source-summary-label" :title="volumeArchiveFile.name">已选择压缩包：{{ volumeArchiveFile.name }}</span>
-                            <button type="button" class="volume-source-clear" title="删除已选压缩包" aria-label="删除已选压缩包" @click.stop="clearVolumeUpload">×</button>
-                        </div>
-                    </div>
-                    <div class="volume-source-summary" v-else-if="hasVolumeFolderSelection">
-                        <div class="volume-source-summary-header">
-                            <span class="volume-source-summary-label" :title="volumeFolderLabel">已选择文件夹：{{ volumeFolderLabel }}</span>
-                            <button type="button" class="volume-source-clear" title="删除已选文件夹" aria-label="删除已选文件夹" @click.stop="clearVolumeUpload">×</button>
-                        </div>
-                        <div class="volume-folder-file-list" v-if="selectedVolumeFiles.length">
-                            <span
-                                class="volume-folder-file"
-                                v-for="file in selectedVolumeFiles"
-                                :key="file.name"
-                                :title="file.name"
-                            >{{ file.name }}</span>
-                        </div>
-                    </div>
                     <div class="volume-correction-panel" v-if="showVolumeCorrection">
                         <div class="volume-correction-title">需要补充或确认输入文件</div>
                         <div class="volume-correction-tip">请为标记项选择生效文件或上传替代文件。</div>
@@ -1352,17 +1368,68 @@
                     </div>
                     </div>
                 </div>
-
-                <div class="upload-restart-bar" v-else-if="taskId && !loading">
-                    <button type="button" class="browse-btn compact" @click="startNewUpload">重新上传病例</button>
+                <div class="volume-source-summary" v-if="!loading && !taskId && volumeArchiveFile && !volumeModalFilesVisible">
+                    <div class="volume-source-summary-header">
+                        <span class="volume-source-summary-label" :title="volumeSourceSummary">{{ volumeSourceSummary }}</span>
+                        <button type="button" class="volume-source-clear" title="删除已选压缩包" aria-label="删除已选压缩包" @click.stop="clearVolumeUpload">×</button>
+                    </div>
+                </div>
+                <div class="volume-modal-files-panel" v-if="!loading && !taskId && volumeModalFilesVisible">
+                    <div class="volume-modal-files-header">
+                        <span class="volume-modal-files-title" :title="volumeSourceSummary">{{ volumeSourceSummary }}</span>
+                        <button type="button" class="volume-source-clear" title="删除已选文件" aria-label="删除已选文件" @click.stop="clearVolumeUpload">×</button>
+                    </div>
+                    <div class="volume-modal-files-tip" v-if="volumeManualMode">请分别选择四个模态的 .nii / .nii.gz 文件。</div>
+                    <div class="volume-modal-files-tip" v-else>已自动匹配四个模态，可点击“浏览...”替换单个模态文件。</div>
+                    <div class="volume-inputs">
+                        <div
+                            class="volume-input-row"
+                            v-for="modality in volumeModalities"
+                            :key="modality.key"
+                        >
+                            <span class="volume-modality">{{ modality.label }}</span>
+                            <div class="volume-file-detail">
+                                <div
+                                    :class="['volume-file-name', { empty: !volumeFiles[modality.key] && !archiveSelections[modality.key] }]"
+                                    :title="volumeFiles[modality.key]?.name || archiveSelections[modality.key] || ''"
+                                >
+                                    {{ volumeFiles[modality.key]?.name || archiveSelections[modality.key] || '未选择 .nii / .nii.gz' }}
+                                </div>
+                                <span class="volume-file-confirmed" v-if="volumeFiles[modality.key] || archiveSelections[modality.key]">
+                                    已确认
+                                </span>
+                            </div>
+                            <button
+                                type="button"
+                                class="browse-btn compact"
+                                :disabled="loading"
+                                @click="triggerVolumePicker(modality.key)"
+                            >浏览...</button>
+                            <input
+                                type="file"
+                                :id="`volume-file-${modality.key}`"
+                                accept=".nii,.nii.gz"
+                                style="display: none"
+                                @change="onVolumeFileSelected($event, modality.key)"
+                            />
+                        </div>
+                    </div>
                 </div>
 
                 <button class="recognize-btn" data-testid="start-analysis" v-if="!loading && !taskId" @click="recognizeFromUpload" :disabled="!canRecognize">
-                    {{ loading ? '3D分析中...' : '开始3D分析' }}
+                    {{ loading ? '数据分析中...' : '开始数据分析' }}
                 </button>
 
                 <div class="result-section">
-                    <div class="result-title">识别结果</div>
+                    <div class="result-header">
+                        <div class="result-title">识别结果</div>
+                        <button
+                            type="button"
+                            class="browse-btn compact"
+                            v-if="taskId && !loading"
+                            @click="startNewUpload"
+                        >重新上传病例</button>
+                    </div>
                     <div class="result-box">
                         <div class="result-item">
                             <div class="result-label">状态：</div>
@@ -1788,6 +1855,7 @@
                     volumeFolderLabel: '',
                     volumeDropActive: false,
                     volumeSourceMenuVisible: false,
+                    volumeManualMode: false,
                     volumeSelectionIssues: {},
                     volumeSelectionCandidates: {},
                     volumeCandidateSelections: {},
@@ -1903,6 +1971,29 @@
                 },
                 hasVolumeFolderSelection() {
                     return !this.volumeArchiveFile && Boolean(this.volumeFolderLabel)
+                },
+                volumeSourceSummary() {
+                    if (this.volumeArchiveFile) {
+                        return `已选择压缩包：${this.volumeArchiveFile.name}`
+                    }
+                    if (this.hasVolumeFolderSelection) {
+                        return `已选择文件夹：${this.volumeFolderLabel}`
+                    }
+                    if (this.volumeManualMode) {
+                        return '手动上传各个文件'
+                    }
+                    return ''
+                },
+                volumeModalFilesVisible() {
+                    if (this.showVolumeCorrection) return false
+                    if (this.volumeManualMode || this.hasVolumeFolderSelection) return true
+                    if (this.volumeArchiveFile) {
+                        return this.volumeModalities.some(modality =>
+                            Boolean(this.volumeFiles[modality.key])
+                            || Boolean(this.archiveSelections[modality.key])
+                        )
+                    }
+                    return false
                 },
                 selectedVolumeFiles() {
                     return this.volumeModalities
@@ -2299,6 +2390,7 @@
                     this.volumeFiles = { flair: null, t1ce: null, t1: null, t2: null }
                     this.volumeArchiveFile = null
                     this.volumeFolderLabel = ''
+                    this.volumeManualMode = false
                     this.volumeDropActive = false
                     this.volumeSourceMenuVisible = false
                     this.clearVolumeSelectionState()
@@ -2315,9 +2407,6 @@
 
                     if (resultData.result_files) {
                         const rf = resultData.result_files
-                        addFile('frontend_result.json', rf.frontend, 'json')
-                        addFile('classification.json', rf.classification, 'json')
-                        addFile('segmentation.json', rf.segmentation, 'json')
                         maskPath = rf.mask || maskPath
                     }
                     maskPath = resultData.segmentation?.mask_file || maskPath
@@ -2348,6 +2437,13 @@
                                     : null,
                             },
                         })
+                    }
+
+                    if (resultData.result_files) {
+                        const rf = resultData.result_files
+                        addFile('frontend_result.json', rf.frontend, 'json')
+                        addFile('classification.json', rf.classification, 'json')
+                        addFile('segmentation.json', rf.segmentation, 'json')
                     }
 
                     const downloads = []
@@ -2716,6 +2812,13 @@
                     this.volumeSourceMenuVisible = false
                     document.getElementById('volume-archive-picker')?.click()
                 },
+                triggerVolumeManualPicker() {
+                    this.volumeSourceMenuVisible = false
+                    this.volumeArchiveFile = null
+                    this.volumeFolderLabel = ''
+                    this.clearVolumeSelectionState()
+                    this.volumeManualMode = true
+                },
                 volumeModalityFromFilename(filename) {
                     const normalized = filename
                         .replace(/\.nii(?:\.gz)?$/i, '')
@@ -2769,6 +2872,7 @@
                     this.volumeFiles = selected
                     this.volumeArchiveFile = null
                     this.volumeFolderLabel = this.getVolumeFolderLabel(files, sourceLabel)
+                    this.volumeManualMode = false
                     this.volumeSelectionIssues = issues
                     this.volumeSelectionCandidates = candidates
                     this.volumeCandidateSelections = {}
@@ -2834,6 +2938,7 @@
                     this.volumeArchiveFile = file
                     this.volumeFiles = { flair: null, t1ce: null, t1: null, t2: null }
                     this.volumeFolderLabel = ''
+                    this.volumeManualMode = false
                     this.clearVolumeSelectionState()
                 },
                 getVolumeFolderLabel(files, fallbackLabel) {
@@ -2846,6 +2951,7 @@
                     this.volumeFiles = { flair: null, t1ce: null, t1: null, t2: null }
                     this.volumeArchiveFile = null
                     this.volumeFolderLabel = ''
+                    this.volumeManualMode = false
                     this.volumeSourceMenuVisible = false
                     this.clearVolumeSelectionState()
                 },

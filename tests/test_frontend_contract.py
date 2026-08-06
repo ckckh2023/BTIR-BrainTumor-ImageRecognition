@@ -123,11 +123,17 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("已选择文件夹", self.html)
         self.assertIn("selectedVolumeFiles", self.html)
         self.assertIn("clearVolumeUpload", self.html)
-        self.assertIn("删除已选压缩包", self.html)
+        self.assertIn("删除已选文件", self.html)
+
+    def test_volume_upload_offers_manual_per_modality_picking(self) -> None:
+        self.assertIn("手动上传各个文件", self.html)
+        self.assertIn("triggerVolumeManualPicker", self.html)
+        self.assertIn("volumeManualMode", self.html)
+        self.assertIn("volumeSourceSummary", self.html)
 
     def test_upload_controls_collapse_during_and_after_an_active_task(self) -> None:
         self.assertIn('v-if="!loading && !taskId"', self.html)
-        self.assertIn('v-else-if="taskId && !loading"', self.html)
+        self.assertIn('v-if="taskId && !loading"', self.html)
         self.assertIn("重新上传病例", self.html)
         self.assertIn("startNewUpload()", self.html)
 
