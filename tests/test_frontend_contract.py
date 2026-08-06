@@ -166,6 +166,7 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('v-if="taskId && !loading"', self.html)
         self.assertIn("重新上传病例", self.html)
         self.assertIn("startNewUpload()", self.html)
+        self.assertIn("this.volumeDicomFiles = []", self.html)
 
 
 if __name__ == "__main__":
