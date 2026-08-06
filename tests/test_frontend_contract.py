@@ -98,6 +98,13 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("查看详细数据", self.html)
         self.assertIn("模型观察", self.html)
         self.assertIn("提示肿瘤相关异常", self.html)
+
+    def test_left_panel_keeps_expanded_upload_and_result_in_scroll_area(self) -> None:
+        self.assertIn(".left-panel", self.html)
+        self.assertIn("overflow-y: auto;", self.html)
+        self.assertIn(".result-section", self.html)
+        self.assertIn("min-height: 280px;", self.html)
+        self.assertIn("max-height: 420px;", self.html)
         self.assertIn("未发现明显异常", self.html)
 
     def test_upload_phase_is_included_in_inference_progress(self) -> None:

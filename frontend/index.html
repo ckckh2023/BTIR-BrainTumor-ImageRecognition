@@ -42,6 +42,9 @@
             display: flex;
             flex-direction: column;
             min-width: 0;
+            min-height: 0;
+            overflow-y: auto;
+            padding-right: 8px;
         }
 
         .right-panel {
@@ -386,13 +389,13 @@
         }
 
         .result-section {
-            flex: 1;
+            flex: 0 0 auto;
             display: flex;
             flex-direction: column;
             border-top: 2px solid #e8f0f8;
             margin-top: 20px;
             padding-top: 20px;
-            min-height: 0;
+            min-height: 280px;
         }
 
         .result-title {
@@ -406,9 +409,10 @@
             background: #f7fafc;
             border-radius: 8px;
             padding: 16px;
-            flex: 1;
+            flex: 1 1 auto;
+            min-height: 210px;
+            max-height: 420px;
             overflow-y: auto;
-            min-height: 0;
         }
 
         .result-item {
