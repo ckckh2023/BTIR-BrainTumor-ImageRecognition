@@ -40,6 +40,7 @@ from core.task_records import (
 from core.settings import SETTINGS
 from core.user_records import UserRecord
 from services.task_lock import TaskLockBusyError, TaskLockUnavailableError
+from services.dicom_conversion import DICOMSeriesSelectionRequired
 from services.task_queue import TaskQueueUnavailableError
 from services.task_queue import get_inference_queue_status
 from unittest.mock import Mock, patch
@@ -427,6 +428,50 @@ class TaskHttpEndpointTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         initialize_dicom.assert_called_once()
+
+    def test_dicom_zip_returns_series_candidates_when_modalities_repeat(self) -> None:
+        archive_bytes = BytesIO()
+        with zipfile.ZipFile(archive_bytes, "w") as archive:
+            archive.writestr("case/T1/MR000001.dcm", b"dicom-data")
+        archive_bytes.seek(0)
+        candidates = {
+            "t1": [
+                {
+                    "series_uid": "series-a",
+                    "label": "T1",
+                    "source_name": "T1 axial",
+                    "file_count": 22,
+                },
+                {
+                    "series_uid": "series-b",
+                    "label": "T1",
+                    "source_name": "T1 sagittal",
+                    "file_count": 22,
+                },
+            ]
+        }
+
+        with TemporaryDirectory() as directory:
+            task_dir = Path(directory) / "task-http-dicom-selection-001"
+            task_dir.mkdir()
+            with (
+                patch("api.routes.tasks.task_repository.count", return_value=0),
+                patch("api.routes.tasks.create_task_dir", return_value=task_dir),
+                patch(
+                    "api.routes.tasks.initialize_uploaded_dicom_task",
+                    side_effect=DICOMSeriesSelectionRequired(candidates),
+                ),
+                TestClient(app) as client,
+            ):
+                response = client.post(
+                    "/tasks/3d/archive",
+                    files={"archive": ("dicom-case.zip", archive_bytes.getvalue(), "application/zip")},
+                )
+
+        self.assertEqual(response.status_code, status.HTTP_422_UNPROCESSABLE_CONTENT)
+        detail = response.json()["detail"]
+        self.assertEqual(detail["code"], "dicom_series_selection_required")
+        self.assertEqual(detail["modalities"], candidates)
 
     def test_case_zip_returns_selectable_candidates_when_a_modality_is_duplicated(self) -> None:
         archive_bytes = BytesIO()

@@ -46,7 +46,10 @@ from repositories.task_repository_contracts import (
     TaskQuotaExceededError,
 )
 from services.archive_service import archive_task, restore_task
-from services.dicom_conversion import initialize_uploaded_dicom_task
+from services.dicom_conversion import (
+    DICOMSeriesSelectionRequired,
+    initialize_uploaded_dicom_task,
+)
 from services.task_files import (
     create_task_dir,
     get_task_dir,
@@ -290,6 +293,10 @@ def create_3d_task_from_upload(
 def create_3d_task_from_dicom(
     files: list[UploadFile] = File(...),
     name: str | None = Form(default=None),
+    flair_series_uid: str | None = Form(default=None),
+    t1ce_series_uid: str | None = Form(default=None),
+    t1_series_uid: str | None = Form(default=None),
+    t2_series_uid: str | None = Form(default=None),
     current_user: UserRecord = Depends(require_password_changed),
 ) -> VolumeTaskCreatedResponse:
     '''上传一个病例的 DICOM 文件夹并转换为四模态 NIfTI'''
@@ -308,12 +315,28 @@ def create_3d_task_from_dicom(
             name=name,
             user_id=current_user.user_id,
             max_tasks_per_user=SETTINGS.max_tasks_per_user,
+            selected_series_uids={
+                "flair": flair_series_uid,
+                "t1ce": t1ce_series_uid,
+                "t1": t1_series_uid,
+                "t2": t2_series_uid,
+            },
         )
     except TaskQuotaExceededError as exc:
         discard_incomplete_task_dir(task_dir)
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=str(exc),
+        ) from exc
+    except DICOMSeriesSelectionRequired as exc:
+        discard_incomplete_task_dir(task_dir)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "code": "dicom_series_selection_required",
+                "message": str(exc),
+                "modalities": exc.modalities,
+            },
         ) from exc
     except (RuntimeError, ValueError) as exc:
         discard_incomplete_task_dir(task_dir)
@@ -357,6 +380,10 @@ def create_3d_task_from_archive(
     t1ce_entry: str | None = Form(default=None),
     t1_entry: str | None = Form(default=None),
     t2_entry: str | None = Form(default=None),
+    flair_series_uid: str | None = Form(default=None),
+    t1ce_series_uid: str | None = Form(default=None),
+    t1_series_uid: str | None = Form(default=None),
+    t2_series_uid: str | None = Form(default=None),
     current_user: UserRecord = Depends(require_password_changed),
 ) -> VolumeTaskCreatedResponse:
     '''上传病例 ZIP，自动识别四模态 NIfTI 或 DICOM 序列'''
@@ -435,6 +462,12 @@ def create_3d_task_from_archive(
                     name=name,
                     user_id=current_user.user_id,
                     max_tasks_per_user=SETTINGS.max_tasks_per_user,
+                    selected_series_uids={
+                        "flair": flair_series_uid,
+                        "t1ce": t1ce_series_uid,
+                        "t1": t1_series_uid,
+                        "t2": t2_series_uid,
+                    },
                 )
     except TaskQuotaExceededError as exc:
         discard_incomplete_task_dir(task_dir)
@@ -448,6 +481,16 @@ def create_3d_task_from_archive(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={
                 "code": "archive_modality_selection_required",
+                "message": str(exc),
+                "modalities": exc.modalities,
+            },
+        ) from exc
+    except DICOMSeriesSelectionRequired as exc:
+        discard_incomplete_task_dir(task_dir)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "code": "dicom_series_selection_required",
                 "message": str(exc),
                 "modalities": exc.modalities,
             },

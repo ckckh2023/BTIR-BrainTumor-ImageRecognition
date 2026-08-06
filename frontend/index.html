@@ -187,6 +187,45 @@
             background: #eaf2fc;
         }
 
+        .volume-case-source-picker {
+            position: relative;
+        }
+
+        .volume-case-source-options {
+            position: absolute;
+            left: 0;
+            bottom: calc(100% + 6px);
+            display: flex;
+            gap: 6px;
+            padding: 6px;
+            white-space: nowrap;
+            background: #ffffff;
+            border: 1px solid #bfdbfe;
+            border-radius: 7px;
+            box-shadow: 0 4px 12px rgba(30, 60, 114, 0.16);
+        }
+
+        .dicom-series-selection-panel {
+            display: grid;
+            gap: 10px;
+            margin-top: 12px;
+            padding: 12px;
+            background: #fffaf0;
+            border: 1px solid #fbd38d;
+            border-radius: 8px;
+        }
+
+        .dicom-series-selection-title {
+            color: #9c4221;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .dicom-series-selection-tip {
+            color: #7c5a32;
+            font-size: 12px;
+        }
+
         .volume-source-summary {
             margin: 0 0 10px;
             padding: 8px 10px;
@@ -1290,13 +1329,18 @@
                         @drop.prevent="onVolumeDrop"
                     >
                         <div>
-                            <div class="volume-drop-title">拖入一个病例文件夹或 ZIP 压缩包</div>
-                            <div class="volume-drop-hint">支持四模态 NIfTI 或原始 DICOM 文件</div>
+                            <div class="volume-drop-title">拖入 NIfTI 或 DICOM 病例文件夹，或 ZIP 压缩包</div>
+                            <div class="volume-drop-hint">DICOM 请选包含四组序列的病例根目录</div>
                         </div>
                         <div class="volume-source-menu" v-if="volumeSourceMenuVisible" @click.stop>
-                            <button type="button" @click="triggerVolumeFolderPicker">选择病例文件夹</button>
-                            <button type="button" @click="triggerVolumeArchivePicker">选择 ZIP 压缩包</button>
-                            <button type="button" @click="triggerVolumeManualPicker">手动上传各个文件</button>
+                            <div class="volume-case-source-picker">
+                                <button type="button" @click="toggleVolumeCaseSourceMenu">选择病例数据</button>
+                                <div class="volume-case-source-options" v-if="volumeCaseSourceMenuVisible">
+                                    <button type="button" @click="triggerVolumeCaseFolderPicker">病例文件夹</button>
+                                    <button type="button" @click="triggerVolumeArchivePicker">ZIP 压缩包</button>
+                                </div>
+                            </div>
+                            <button type="button" @click="triggerVolumeManualPicker">手动上传四个 NIfTI 文件</button>
                         </div>
                     </div>
                     <input
@@ -1371,10 +1415,42 @@
                     </div>
                     </div>
                 </div>
-                <div class="volume-source-summary" v-if="!loading && !taskId && volumeArchiveFile && !volumeModalFilesVisible">
+                <div
+                    class="volume-source-summary"
+                    v-if="!loading && !taskId && (volumeArchiveFile || volumeDicomFiles.length) && !volumeModalFilesVisible"
+                >
                     <div class="volume-source-summary-header">
                         <span class="volume-source-summary-label" :title="volumeSourceSummary">{{ volumeSourceSummary }}</span>
                         <button type="button" class="volume-source-clear" title="删除已选压缩包" aria-label="删除已选压缩包" @click.stop="clearVolumeUpload">×</button>
+                    </div>
+                </div>
+                <div
+                    class="dicom-series-selection-panel"
+                    v-if="!loading && !taskId && hasPendingDicomSeriesSelection"
+                >
+                    <div class="dicom-series-selection-title">请选择用于分析的 DICOM 序列</div>
+                    <div class="dicom-series-selection-tip">{{ volumeSourceSummary }}</div>
+                    <div class="dicom-series-selection-tip">检测到同一模态有多组序列</div>
+                    <div class="volume-inputs">
+                        <template v-for="modality in volumeModalities" :key="`dicom-${modality.key}`">
+                            <div
+                                class="volume-input-row"
+                                v-if="dicomSeriesCandidates[modality.key]?.length"
+                            >
+                                <span class="volume-modality">{{ modality.label }}</span>
+                                <select
+                                    class="volume-candidate-picker"
+                                    v-model="dicomSeriesSelections[modality.key]"
+                                >
+                                    <option value="">请选择序列</option>
+                                    <option
+                                        v-for="candidate in dicomSeriesCandidates[modality.key]"
+                                        :key="candidate.series_uid"
+                                        :value="candidate.series_uid"
+                                    >{{ candidate.label }}{{ candidate.source_name ? ` · ${candidate.source_name}` : '' }}（{{ candidate.file_count }} 张）</option>
+                                </select>
+                            </div>
+                        </template>
                     </div>
                 </div>
                 <div class="volume-modal-files-panel" v-if="!loading && !taskId && volumeModalFilesVisible">
@@ -1859,11 +1935,14 @@
                     volumeFolderLabel: '',
                     volumeDropActive: false,
                     volumeSourceMenuVisible: false,
+                    volumeCaseSourceMenuVisible: false,
                     volumeManualMode: false,
                     volumeSelectionIssues: {},
                     volumeSelectionCandidates: {},
                     volumeCandidateSelections: {},
                     archiveSelections: {},
+                    dicomSeriesCandidates: {},
+                    dicomSeriesSelections: {},
                     volumeCorrectionVisible: true,
                     showToast: false,
                     classificationLabel: '',
@@ -1958,6 +2037,11 @@
                     return token ? { 'Authorization': `Bearer ${token}` } : {}
                 },
                 canRecognize() {
+                    if (this.hasPendingDicomSeriesSelection) {
+                        return Object.keys(this.dicomSeriesCandidates).every(
+                            modality => Boolean(this.dicomSeriesSelections[modality])
+                        )
+                    }
                     if (this.volumeDicomFiles.length) return true
                     if (this.volumeArchiveFile) {
                         return this.volumeModalities.every(modality => (
@@ -1979,6 +2063,9 @@
                         && !this.volumeDicomFiles.length
                         && Boolean(this.volumeFolderLabel)
                 },
+                hasPendingDicomSeriesSelection() {
+                    return Object.keys(this.dicomSeriesCandidates).length > 0
+                },
                 volumeSourceSummary() {
                     if (this.volumeArchiveFile) {
                         return `已选择压缩包：${this.volumeArchiveFile.name}`
@@ -1990,7 +2077,7 @@
                         return `已选择文件夹：${this.volumeFolderLabel}`
                     }
                     if (this.volumeManualMode) {
-                        return '手动上传各个文件'
+                        return '手动上传四个 NIfTI 文件'
                     }
                     return ''
                 },
@@ -2404,6 +2491,9 @@
                     this.volumeManualMode = false
                     this.volumeDropActive = false
                     this.volumeSourceMenuVisible = false
+                    this.volumeCaseSourceMenuVisible = false
+                    this.dicomSeriesCandidates = {}
+                    this.dicomSeriesSelections = {}
                     this.clearVolumeSelectionState()
                 },
                 buildFileList(resultData = {}, taskData = null) {
@@ -2713,7 +2803,7 @@
                     })
 
                     if (!runResponse.ok) {
-                        throw new Error(`运行模型失败: ${runResponse.status}`)
+                        throw new Error(await this.responseError(runResponse, '运行模型'))
                     }
 
                     this.analysisPolling = true
@@ -2814,17 +2904,26 @@
                 },
                 toggleVolumeSourceMenu() {
                     this.volumeSourceMenuVisible = !this.volumeSourceMenuVisible
+                    if (!this.volumeSourceMenuVisible) {
+                        this.volumeCaseSourceMenuVisible = false
+                    }
                 },
-                triggerVolumeFolderPicker() {
+                toggleVolumeCaseSourceMenu() {
+                    this.volumeCaseSourceMenuVisible = !this.volumeCaseSourceMenuVisible
+                },
+                triggerVolumeCaseFolderPicker() {
                     this.volumeSourceMenuVisible = false
+                    this.volumeCaseSourceMenuVisible = false
                     document.getElementById('volume-folder-picker')?.click()
                 },
                 triggerVolumeArchivePicker() {
                     this.volumeSourceMenuVisible = false
+                    this.volumeCaseSourceMenuVisible = false
                     document.getElementById('volume-archive-picker')?.click()
                 },
                 triggerVolumeManualPicker() {
                     this.volumeSourceMenuVisible = false
+                    this.volumeCaseSourceMenuVisible = false
                     this.volumeArchiveFile = null
                     this.volumeDicomFiles = []
                     this.volumeFolderLabel = ''
@@ -2894,6 +2993,8 @@
                     this.volumeSelectionCandidates = candidates
                     this.volumeCandidateSelections = {}
                     this.archiveSelections = {}
+                    this.dicomSeriesCandidates = {}
+                    this.dicomSeriesSelections = {}
                     this.volumeCorrectionVisible = true
                     return !Object.keys(issues).length
                 },
@@ -2908,6 +3009,8 @@
                     this.volumeSelectionCandidates = {}
                     this.volumeCandidateSelections = {}
                     this.archiveSelections = {}
+                    this.dicomSeriesCandidates = {}
+                    this.dicomSeriesSelections = {}
                     this.volumeCorrectionVisible = false
                     return true
                 },
@@ -2943,6 +3046,7 @@
                 async onVolumeDrop(event) {
                     this.volumeDropActive = false
                     this.volumeSourceMenuVisible = false
+                    this.volumeCaseSourceMenuVisible = false
                     try {
                         const droppedFiles = Array.from(event.dataTransfer?.files || [])
                         if (droppedFiles.length === 1 && /\.zip$/i.test(droppedFiles[0].name)) {
@@ -2971,6 +3075,8 @@
                     this.volumeDicomFiles = []
                     this.volumeFolderLabel = ''
                     this.volumeManualMode = false
+                    this.dicomSeriesCandidates = {}
+                    this.dicomSeriesSelections = {}
                     this.clearVolumeSelectionState()
                 },
                 getVolumeFolderLabel(files, fallbackLabel) {
@@ -2986,6 +3092,9 @@
                     this.volumeFolderLabel = ''
                     this.volumeManualMode = false
                     this.volumeSourceMenuVisible = false
+                    this.volumeCaseSourceMenuVisible = false
+                    this.dicomSeriesCandidates = {}
+                    this.dicomSeriesSelections = {}
                     this.clearVolumeSelectionState()
                 },
                 applyVolumeCandidate(modality) {
@@ -3131,6 +3240,11 @@
                                     file.webkitRelativePath || file.name
                                 )
                             }
+                            for (const [modality, seriesUid] of Object.entries(this.dicomSeriesSelections)) {
+                                if (seriesUid) {
+                                    formData.append(`${modality}_series_uid`, seriesUid)
+                                }
+                            }
                             endpoint = '/tasks/3d/dicom'
                         } else if (this.volumeArchiveFile) {
                             formData.append('archive', this.volumeArchiveFile)
@@ -3143,6 +3257,12 @@
                                     formData.append(
                                         `${modality.key}_entry`,
                                         this.archiveSelections[modality.key]
+                                    )
+                                }
+                                if (this.dicomSeriesSelections[modality.key]) {
+                                    formData.append(
+                                        `${modality.key}_series_uid`,
+                                        this.dicomSeriesSelections[modality.key]
                                     )
                                 }
                             }
@@ -3164,8 +3284,12 @@
                             }
                         }
                         formData.append('name', 'web-3d-analysis')
+                        const uploadLabel = this.volumeArchiveFile?.name
+                            || this.volumeFolderLabel
+                            || '病例数据'
                         this.statusText =
-                            '<span class="loading-spinner"></span>正在上传...'
+                            '<span class="loading-spinner"></span>正在上传 '
+                            + `${this.escapeHtml(uploadLabel)}...`
 
                         const createData = await this.uploadTaskFiles(formData, endpoint)
                         this.taskId = createData.task_id
@@ -3184,6 +3308,15 @@
                             this.archiveSelections = {}
                             this.volumeCorrectionVisible = true
                             this.statusText = '<span class="status-error">需要确认或补充模态文件后再提交。</span>'
+                            this.analysisProgress = null
+                            return
+                        }
+                        if (selectionDetail?.code === 'dicom_series_selection_required') {
+                            this.loading = false
+                            this.dicomSeriesCandidates = selectionDetail.modalities || {}
+                            this.dicomSeriesSelections = {}
+                            this.volumeCorrectionVisible = false
+                            this.statusText = '<span class="status-error">请确认 DICOM 序列后再开始分析。</span>'
                             this.analysisProgress = null
                             return
                         }

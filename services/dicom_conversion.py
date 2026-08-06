@@ -5,12 +5,21 @@ from __future__ import annotations
 from contextlib import ExitStack
 import re
 import shutil
-from pathlib import Path
-from typing import BinaryIO, Iterable
+from pathlib import Path, PurePosixPath
+from typing import BinaryIO, Iterable, Mapping
 
 from core.settings import SETTINGS
 from core.task_definitions import VOLUME_MODALITIES
 from services.task_files import initialize_uploaded_volume_task
+
+
+class DICOMSeriesSelectionRequired(ValueError):
+    '''DICOM 存在重复模态序列时要求用户确认'''
+
+    def __init__(self, modalities: dict[str, list[dict[str, object]]]) -> None:
+        self.modalities = modalities
+        labels = "、".join(modality.upper() for modality in modalities)
+        super().__init__(f"请为 {labels} 选择用于分析的 DICOM 序列")
 
 
 def initialize_uploaded_dicom_task(
@@ -20,6 +29,7 @@ def initialize_uploaded_dicom_task(
     name: str | None = None,
     user_id: str | None = None,
     max_tasks_per_user: int | None = None,
+    selected_series_uids: Mapping[str, str | None] | None = None,
 ) -> dict[str, Path]:
     '''将同一病例的 DICOM 序列转换为四模态 NIfTI 任务'''
 
@@ -27,8 +37,12 @@ def initialize_uploaded_dicom_task(
     converted_dir = task_dir / ".dicom-converted"
     staging_dir.mkdir(parents=True)
     try:
-        paths = _save_dicom_uploads(staging_dir, uploads)
-        selected_series = _select_dicom_series(paths)
+        paths, source_filenames = _save_dicom_uploads(staging_dir, uploads)
+        selected_series = _select_dicom_series(
+            paths,
+            selected_series_uids,
+            source_filenames,
+        )
         converted_paths = _convert_dicom_series(
             staging_dir,
             converted_dir,
@@ -57,12 +71,13 @@ def initialize_uploaded_dicom_task(
 def _save_dicom_uploads(
     destination: Path,
     uploads: Iterable[tuple[str, BinaryIO]],
-) -> list[Path]:
+) -> tuple[list[Path], dict[Path, str]]:
     '''限制总大小后保存待转换的 DICOM 文件'''
 
     paths: list[Path] = []
+    source_filenames: dict[Path, str] = {}
     total_size = 0
-    for index, (_, upload) in enumerate(uploads, 1):
+    for index, (upload_name, upload) in enumerate(uploads, 1):
         if index > SETTINGS.max_dicom_files:
             raise ValueError(
                 "DICOM 文件数量超过限制"
@@ -77,13 +92,18 @@ def _save_dicom_uploads(
                 output.write(chunk)
         if path.stat().st_size:
             paths.append(path)
+            source_filenames[path] = _dicom_source_directory(upload_name)
 
     if not paths:
         raise ValueError("未收到可转换的 DICOM 文件")
-    return paths
+    return paths, source_filenames
 
 
-def _select_dicom_series(paths: list[Path]) -> dict[str, str]:
+def _select_dicom_series(
+    paths: list[Path],
+    selected_series_uids: Mapping[str, str | None] | None = None,
+    source_filenames: Mapping[Path, str] | None = None,
+) -> dict[str, str]:
     '''按 SeriesInstanceUID 归类并识别四个所需模态'''
 
     try:
@@ -91,7 +111,7 @@ def _select_dicom_series(paths: list[Path]) -> dict[str, str]:
     except ImportError as exc:
         raise RuntimeError("DICOM 转换依赖 pydicom") from exc
 
-    series: dict[str, dict[str, str]] = {}
+    series: dict[str, dict[str, object]] = {}
     for path in paths:
         try:
             dataset = pydicom.dcmread(
@@ -122,31 +142,67 @@ def _select_dicom_series(paths: list[Path]) -> dict[str, str]:
                 "ContrastBolusAgent",
             )
         )
-        series.setdefault(series_uid, {"description": description})
+        item = series.setdefault(
+            series_uid,
+            {
+                "description": description,
+                "label": str(getattr(dataset, "SeriesDescription", "")).strip()
+                or str(getattr(dataset, "ProtocolName", "")).strip()
+                or "未命名序列",
+                "file_count": 0,
+                "source_name": (source_filenames or {}).get(path, ""),
+            },
+        )
+        item["file_count"] = int(item["file_count"]) + 1
 
-    candidates: dict[str, list[tuple[str, str]]] = {
+    candidates: dict[str, list[dict[str, object]]] = {
         modality: [] for modality in VOLUME_MODALITIES
     }
     for series_uid, metadata in series.items():
-        modality = _modality_from_dicom_description(metadata["description"])
+        modality = _modality_from_dicom_description(str(metadata["description"]))
         if modality is not None:
-            candidates[modality].append((series_uid, metadata["description"]))
+            candidates[modality].append(
+                {
+                    "series_uid": series_uid,
+                    "label": str(metadata["label"]),
+                    "file_count": int(metadata["file_count"]),
+                    "source_name": str(metadata["source_name"]),
+                }
+            )
 
     errors: list[str] = []
     selected: dict[str, str] = {}
+    ambiguities: dict[str, list[dict[str, object]]] = {}
     for modality in VOLUME_MODALITIES:
         matches = candidates[modality]
         if not matches:
             errors.append(f"未识别到 {modality.upper()} DICOM 序列")
-        elif len(matches) > 1:
-            errors.append(
-                f"识别到 {len(matches)} 组 {modality.upper()} DICOM 序列，请仅保留一组后上传"
-            )
         else:
-            selected[modality] = matches[0][0]
+            requested_uid = (selected_series_uids or {}).get(modality)
+            if requested_uid:
+                if any(item["series_uid"] == requested_uid for item in matches):
+                    selected[modality] = requested_uid
+                else:
+                    errors.append(f"所选 {modality.upper()} DICOM 序列无效")
+            elif len(matches) == 1:
+                selected[modality] = str(matches[0]["series_uid"])
+            else:
+                ambiguities[modality] = matches
     if errors:
-        raise ValueError("；".join(errors))
+        raise ValueError(
+            "DICOM 病例需同时包含 FLAIR、T1CE、T1、T2 序列；"
+            + "；".join(errors)
+        )
+    if ambiguities:
+        raise DICOMSeriesSelectionRequired(ambiguities)
     return selected
+
+
+def _dicom_source_directory(filename: str) -> str:
+    '''提取上传文件所在的序列目录名称'''
+
+    parent = PurePosixPath(filename.replace("\\", "/")).parent.name
+    return parent if parent not in {"", "."} else ""
 
 
 def _modality_from_dicom_description(description: str) -> str | None:
@@ -158,10 +214,13 @@ def _modality_from_dicom_description(description: str) -> str | None:
     has_t2 = bool(re.search(r"(?:^|[^a-z0-9])t2(?:$|[^a-z0-9])", value)) or "t2" in compact
     if "flair" in compact:
         return "flair"
+    has_contrast_suffix = bool(
+        re.search(r"(?:^|[^a-z0-9])(?:c|ce)(?:$|[^a-z0-9])", value)
+    )
     if has_t1 and any(
         marker in compact
         for marker in ("t1ce", "t1c", "t1gd", "postcontrast", "postcon", "contrast", "enhanc", "+c", "gad")
-    ):
+    ) or (has_t1 and has_contrast_suffix):
         return "t1ce"
     if has_t1:
         return "t1"

@@ -107,11 +107,21 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("max-height: 420px;", self.html)
 
     def test_upload_flow_supports_dicom_folder_conversion(self) -> None:
-        self.assertIn("原始 DICOM 文件", self.html)
+        self.assertIn("DICOM 病例文件夹", self.html)
         self.assertIn("volumeDicomFiles", self.html)
         self.assertIn("selectDicomFiles", self.html)
+        self.assertIn("triggerVolumeCaseFolderPicker", self.html)
+        self.assertIn("onVolumeFolderSelected", self.html)
         self.assertIn("/tasks/3d/dicom", self.html)
         self.assertIn("未发现明显异常", self.html)
+
+    def test_dicom_duplicate_series_requires_user_selection(self) -> None:
+        self.assertIn("dicom_series_selection_required", self.html)
+        self.assertIn("dicomSeriesCandidates", self.html)
+        self.assertIn("dicomSeriesSelections", self.html)
+        self.assertIn("请选择用于分析的 DICOM 序列", self.html)
+        self.assertIn('<template v-for="modality in volumeModalities"', self.html)
+        self.assertIn("正在上传 ", self.html)
 
     def test_upload_phase_is_included_in_inference_progress(self) -> None:
         self.assertIn("uploadTaskFiles", self.html)
@@ -120,7 +130,13 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("正在压缩/上传数据", self.html)
 
     def test_volume_upload_starts_with_drop_zone_and_recovers_from_ambiguity(self) -> None:
-        self.assertIn("拖入一个病例文件夹或 ZIP 压缩包", self.html)
+        self.assertIn("拖入 NIfTI 或 DICOM 病例文件夹，或 ZIP 压缩包", self.html)
+
+    def test_async_run_shows_the_backend_error_detail(self) -> None:
+        self.assertIn(
+            "await this.responseError(runResponse, '运行模型')",
+            self.html,
+        )
         self.assertIn("onVolumeDrop", self.html)
         self.assertIn("showVolumeCorrection", self.html)
         self.assertIn("archive_modality_selection_required", self.html)
@@ -134,12 +150,13 @@ class FrontendContractTests(unittest.TestCase):
 
     def test_selected_folder_and_archive_can_be_reviewed_and_cleared(self) -> None:
         self.assertIn("已选择文件夹", self.html)
+        self.assertIn("volumeArchiveFile || volumeDicomFiles.length", self.html)
         self.assertIn("selectedVolumeFiles", self.html)
         self.assertIn("clearVolumeUpload", self.html)
         self.assertIn("删除已选文件", self.html)
 
     def test_volume_upload_offers_manual_per_modality_picking(self) -> None:
-        self.assertIn("手动上传各个文件", self.html)
+        self.assertIn("手动上传四个 NIfTI 文件", self.html)
         self.assertIn("triggerVolumeManualPicker", self.html)
         self.assertIn("volumeManualMode", self.html)
         self.assertIn("volumeSourceSummary", self.html)
