@@ -3,7 +3,8 @@
     const Vue = global.Vue
     if (!Vue) return
 
-    Vue.component('btir-detail-table', {
+    const registry = global.BtirComponents || (global.BtirComponents = {})
+    registry['btir-detail-table'] = {
         props: {
             sources: { type: Array, default: () => [] },
             fileUrl: { type: Function, required: true },
@@ -257,7 +258,7 @@
                                 </tr>
                                 <tr
                                     v-for="(row, index) in visibleRows(section)"
-                                    :key="\`${section.label}-${index}\`"
+                                    :key="\`\${section.label}-\${index}\`"
                                     :class="['md-table-row', { 'md-table-group': row.hasChildren }]"
                                     @click="row.hasChildren && toggleRow(row)"
                                 >
@@ -288,5 +289,5 @@
                 </template>
             </div>
         `,
-    })
+    }
 })(window)

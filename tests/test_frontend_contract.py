@@ -200,8 +200,9 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("components/btir-toast.js", self.html)
         self.assertIn("<btir-detail-table", self.html)
         self.assertIn("<btir-toast></btir-toast>", self.html)
-        self.assertIn("Vue.component('btir-detail-table'", self.detail_html)
-        self.assertIn("Vue.component('btir-toast'", self.toast_html)
+        self.assertIn("registry['btir-detail-table']", self.detail_html)
+        self.assertIn("registry['btir-toast']", self.toast_html)
+        self.assertIn("btirApp.component(name", self.html)
         self.assertIn("btir:toast", self.toast_html)
 
     def test_json_raw_tabs_removed_and_3d_viewer_stays_default(self) -> None:
