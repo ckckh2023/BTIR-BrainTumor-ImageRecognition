@@ -8,6 +8,40 @@
     <link rel="preconnect" href="https://unpkg.com">
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <style>
+        :root {
+            --btir-primary: #1e3c72;
+            --btir-primary-hover: #2d5aa0;
+            --btir-primary-soft: #eef4fb;
+            --btir-accent: #407eb8;
+            --btir-bg: #eef2f7;
+            --btir-bg-soft: #e3e9f2;
+            --btir-surface: #ffffff;
+            --btir-surface-muted: #f8fafc;
+            --btir-border: #dbe4ef;
+            --btir-border-strong: #b9d2ec;
+            --btir-text: #1e293b;
+            --btir-text-secondary: #64748b;
+            --btir-text-muted: #94a3b8;
+            --btir-success: #18794e;
+            --btir-success-bg: #dcfce7;
+            --btir-warning: #b45309;
+            --btir-warning-bg: #fef3c7;
+            --btir-danger: #b42318;
+            --btir-danger-bg: #fee2e2;
+            --btir-info: #1d4ed8;
+            --btir-info-bg: #dbeafe;
+            --btir-radius-sm: 6px;
+            --btir-radius-md: 10px;
+            --btir-radius-lg: 16px;
+            --btir-shadow-sm: 0 1px 3px rgba(30, 41, 59, 0.08);
+            --btir-shadow-md: 0 6px 18px rgba(30, 41, 59, 0.10);
+            --btir-shadow-lg: 0 18px 50px rgba(30, 41, 59, 0.22);
+            --btir-font: 'Microsoft YaHei', 'PingFang SC', 'Segoe UI', Arial, sans-serif;
+            --btir-mono: 'Consolas', 'Monaco', 'SFMono-Regular', monospace;
+            --btir-transition: 0.2s ease;
+            --btir-transition-slow: 0.3s ease;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -15,8 +49,9 @@
         }
 
         body {
-            font-family: 'Microsoft YaHei', Arial, sans-serif;
-            background: linear-gradient(180deg, #1a3a6b 0%, #2d5aa0 100%);
+            font-family: var(--btir-font);
+            background: linear-gradient(160deg, var(--btir-bg) 0%, var(--btir-bg-soft) 100%);
+            color: var(--btir-text);
             min-height: 100vh;
             display: flex;
             justify-content: center;
@@ -26,15 +61,16 @@
 
         .app-container {
             display: flex;
-            gap: 24px;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-            padding: 40px;
+            gap: 22px;
+            background: var(--btir-surface);
+            border: 1px solid rgba(255, 255, 255, 0.7);
+            border-radius: var(--btir-radius-lg);
+            box-shadow: var(--btir-shadow-lg);
+            padding: 32px 36px;
             width: 95vw;
             max-width: 1400px;
             height: calc(100vh - 40px);
-            max-height: 1000px;
+            max-height: 980px;
         }
 
         .left-panel {
@@ -49,7 +85,7 @@
 
         .right-panel {
             flex: 2;
-            border-left: 2px solid #e8f0f8;
+            border-left: 1px solid var(--btir-border);
             padding-left: 24px;
             display: flex;
             flex-direction: column;
@@ -57,9 +93,9 @@
         }
 
         h1 {
-            color: #1e3c72;
+            color: var(--btir-primary);
             margin-bottom: 28px;
-            font-size: 26px;
+            font-size: 24px;
             flex-shrink: 0;
         }
 
@@ -90,19 +126,19 @@
             min-width: 80px;
             padding: 12px 16px;
             white-space: nowrap;
-            background: linear-gradient(160deg, #2c3e66 0%, #1a2744 100%);
+            background: linear-gradient(160deg, var(--btir-primary-hover) 0%, var(--btir-primary) 100%);
             color: white;
             border: none;
-            border-radius: 8px;
+            border-radius: var(--btir-radius-md);
             font-size: 14px;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: all var(--btir-transition-slow);
         }
 
         .browse-btn:hover:not(:disabled) {
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(30, 60, 114, 0.4);
+            box-shadow: 0 6px 20px rgba(30, 60, 114, 0.32);
         }
 
         .browse-btn:active:not(:disabled) {
@@ -373,10 +409,10 @@
         .volume-candidate-picker {
             width: 100%;
             padding: 7px 9px;
-            color: #334155;
-            background: #ffffff;
+            color: var(--btir-text);
+            background: var(--btir-surface);
             border: 1px solid #cbd5e1;
-            border-radius: 6px;
+            border-radius: var(--btir-radius-sm);
             font-size: 12px;
             transition: border-color 0.15s;
         }
@@ -420,14 +456,14 @@
         button.recognize-btn {
             width: 100%;
             padding: 14px;
-            background: linear-gradient(160deg, #2c3e66 0%, #1a2744 100%);
+            background: linear-gradient(160deg, var(--btir-primary-hover) 0%, var(--btir-primary) 100%);
             color: white;
             border: none;
-            border-radius: 8px;
+            border-radius: var(--btir-radius-md);
             font-size: 16px;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: all var(--btir-transition-slow);
             flex-shrink: 0;
         }
 
@@ -451,22 +487,24 @@
             flex: 0 0 auto;
             display: flex;
             flex-direction: column;
-            border-top: 2px solid #e8f0f8;
+            border-top: 1px solid var(--btir-border);
             margin-top: 20px;
             padding-top: 20px;
             min-height: 280px;
+            animation: slide-up 0.3s ease;
         }
 
         .result-title {
-            color: #1e3c72;
+            color: var(--btir-primary);
             font-size: 18px;
             font-weight: 600;
             flex-shrink: 0;
         }
 
         .result-box {
-            background: #f7fafc;
-            border-radius: 8px;
+            background: var(--btir-surface-muted);
+            border: 1px solid var(--btir-border);
+            border-radius: var(--btir-radius-md);
             padding: 16px;
             flex: 1 1 auto;
             min-height: 210px;
@@ -487,9 +525,17 @@
 
         .result-summary-card {
             padding: 12px;
-            background: #ffffff;
-            border: 1px solid #dbe7f5;
-            border-radius: 8px;
+            background: var(--btir-surface);
+            border: 1px solid var(--btir-border);
+            border-radius: var(--btir-radius-md);
+            box-shadow: var(--btir-shadow-sm);
+            transition: all var(--btir-transition);
+        }
+
+        .result-summary-card:hover {
+            border-color: var(--btir-border-strong);
+            box-shadow: var(--btir-shadow-md);
+            transform: translateY(-2px);
         }
 
         .result-summary-card-label {
@@ -499,16 +545,114 @@
         }
 
         .result-summary-card-value {
-            color: #1e3c72;
+            color: var(--btir-primary);
             font-size: 15px;
             font-weight: 600;
             line-height: 1.45;
+            font-variant-numeric: tabular-nums;
         }
 
         .result-summary-card-meta {
             margin-top: 4px;
             color: #64748b;
             font-size: 12px;
+        }
+
+        .result-ring-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+
+        .result-ring {
+            position: relative;
+            width: 118px;
+            height: 118px;
+            margin: 4px 0 6px;
+        }
+
+        .result-ring-svg {
+            width: 100%;
+            height: 100%;
+            transform: rotate(-90deg);
+        }
+
+        .result-ring-track {
+            fill: none;
+            stroke: #e8eef7;
+            stroke-width: 8;
+        }
+
+        .result-ring-value {
+            fill: none;
+            stroke: #22c55e;
+            stroke-width: 8;
+            stroke-linecap: round;
+            transition: stroke-dashoffset 0.8s ease;
+        }
+
+        .result-ring-value.detected {
+            stroke: #e53e3e;
+        }
+
+        .result-ring-center {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+        }
+
+        .result-ring-percent {
+            color: var(--btir-primary);
+            font-size: 20px;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .result-ring-text {
+            color: var(--btir-success);
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .result-ring-text.detected {
+            color: var(--btir-danger);
+        }
+
+        .result-chart-card {
+            grid-column: 1 / -1;
+        }
+
+        .result-chart-svg {
+            display: block;
+            width: 100%;
+            height: 96px;
+            margin: 6px 0 2px;
+        }
+
+        .result-chart-line {
+            fill: none;
+            stroke: var(--btir-accent);
+            stroke-width: 2;
+            stroke-linejoin: round;
+            stroke-linecap: round;
+            vector-effect: non-scaling-stroke;
+        }
+
+        .result-chart-threshold {
+            stroke: #e53e3e;
+            stroke-width: 1;
+            stroke-dasharray: 4 3;
+            vector-effect: non-scaling-stroke;
+        }
+
+        .result-chart-meta {
+            color: var(--btir-text-secondary);
+            font-size: 11px;
         }
 
         .result-regions {
@@ -518,16 +662,55 @@
         }
 
         .result-region-row {
-            display: flex;
-            justify-content: space-between;
-            gap: 12px;
+            display: grid;
+            grid-template-columns: 86px minmax(0, 1fr) auto;
+            align-items: center;
+            gap: 10px;
             padding: 8px 10px;
             color: #334155;
-            background: #fff;
-            border: 1px solid #e2e8f0;
-            border-radius: 6px;
-            font-family: 'Consolas', 'Monaco', monospace;
+            background: var(--btir-surface);
+            border: 1px solid var(--btir-border);
+            border-radius: var(--btir-radius-sm);
             font-size: 12px;
+        }
+
+        .result-region-name {
+            color: #334155;
+            white-space: nowrap;
+        }
+
+        .result-region-track {
+            height: 8px;
+            border-radius: 999px;
+            background: #eef2f7;
+            overflow: hidden;
+        }
+
+        .result-region-bar {
+            display: block;
+            height: 100%;
+            border-radius: 999px;
+            transition: width 0.5s ease;
+        }
+
+        .result-region-bar.region-1 {
+            background: #e53e3e;
+        }
+
+        .result-region-bar.region-2 {
+            background: #22c55e;
+        }
+
+        .result-region-bar.region-4 {
+            background: #facc15;
+        }
+
+        .result-region-volume {
+            color: #475569;
+            font-family: var(--btir-mono);
+            font-size: 11.5px;
+            white-space: nowrap;
+            font-variant-numeric: tabular-nums;
         }
 
         .result-label {
@@ -739,8 +922,8 @@
             display: flex;
             gap: 4px;
             padding: 3px;
-            background: #edf2f7;
-            border-radius: 8px;
+            background: var(--btir-bg);
+            border-radius: var(--btir-radius-md);
         }
 
         .right-view-tab {
@@ -766,7 +949,7 @@
 
         .right-view-tab.active {
             color: white;
-            background: #1e3c72;
+            background: var(--btir-primary);
         }
 
         .logout-btn {
@@ -796,6 +979,7 @@
             display: flex;
             flex-direction: column;
             min-height: 0;
+            animation: fade-in 0.25s ease;
         }
 
         .file-tabs {
@@ -885,17 +1069,18 @@
 
         .json-viewer {
             flex: 1;
-            background: #1e293b;
+            background: #111c2e;
             color: #e2e8f0;
             border-radius: 8px;
             padding: 16px;
-            font-family: 'Consolas', 'Monaco', monospace;
+            font-family: var(--btir-mono);
             font-size: 13px;
             line-height: 1.6;
             overflow-y: auto;
             min-height: 0;
             white-space: pre-wrap;
             word-break: break-all;
+            animation: fade-in 0.2s ease;
         }
 
         .json-viewer .key {
@@ -917,15 +1102,16 @@
 
         .md-table-viewer {
             flex: 1;
-            background: #ffffff;
-            border: 1px solid #dbe4ef;
-            border-radius: 10px;
+            background: var(--btir-surface);
+            border: 1px solid var(--btir-border);
+            border-radius: var(--btir-radius-md);
             padding: 14px 16px;
             overflow-y: auto;
             min-height: 0;
             font-size: 13px;
             line-height: 1.55;
-            color: #1e293b;
+            color: var(--btir-text);
+            animation: fade-in 0.2s ease;
         }
 
         .md-table-loading {
@@ -968,6 +1154,20 @@
             transform: scale(0.96);
         }
 
+        .md-table-copy svg,
+        .logout-btn svg,
+        .task-small-btn svg,
+        .recognize-btn svg,
+        .cancel-analysis-btn svg {
+            vertical-align: -2px;
+            margin-right: 5px;
+        }
+
+        .task-small-btn svg:last-child {
+            margin-right: 0;
+            margin-left: 5px;
+        }
+
         .md-table-section {
             margin-bottom: 16px;
         }
@@ -999,18 +1199,20 @@
         .md-table-key {
             width: 42%;
             color: #0f4c81;
-            font-family: 'Consolas', 'Monaco', monospace;
+            font-family: var(--btir-mono);
             font-size: 12.5px;
             white-space: pre-wrap;
             word-break: break-all;
+            font-variant-numeric: tabular-nums;
         }
 
         .md-table-value {
             color: #334155;
-            font-family: 'Consolas', 'Monaco', monospace;
+            font-family: var(--btir-mono);
             font-size: 12.5px;
             white-space: pre-wrap;
             word-break: break-all;
+            font-variant-numeric: tabular-nums;
         }
 
         .md-table-group td {
@@ -1102,23 +1304,67 @@
             100% { transform: rotate(360deg); }
         }
 
-        .copy-toast {
+        @keyframes fade-in {
+            from {
+                opacity: 0;
+                transform: translateY(4px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slide-up {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .app-toast {
             position: fixed;
-            bottom: 30px;
+            bottom: 34px;
             left: 50%;
-            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            padding: 10px 18px;
+            border-radius: 999px;
+            font-size: 13px;
+            color: #ffffff;
             background: #1e293b;
-            color: #e2e8f0;
-            padding: 10px 24px;
-            border-radius: 8px;
-            font-size: 14px;
+            box-shadow: var(--btir-shadow-md);
             z-index: 100;
             opacity: 0;
-            transition: opacity 0.3s;
+            transform: translateX(-50%) translateY(12px);
+            transition: opacity 0.25s ease, transform 0.25s ease;
             pointer-events: none;
         }
-        .copy-toast.show {
+
+        .app-toast.show {
             opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .app-toast.success {
+            background: var(--btir-success);
+        }
+
+        .app-toast.error {
+            background: var(--btir-danger);
+        }
+
+        .app-toast.info {
+            background: var(--btir-info);
+        }
+
+        .app-toast-icon {
+            font-weight: 700;
         }
 
         button:focus-visible,
@@ -1145,6 +1391,7 @@
             display: flex;
             flex-direction: column;
             min-height: 0;
+            animation: fade-in 0.25s ease;
         }
 
         .task-list-tabs {
@@ -1298,17 +1545,45 @@
             font-size: 13px;
         }
 
+        .task-skeleton-list {
+            display: grid;
+            gap: 8px;
+        }
+
+        .task-skeleton {
+            padding: 12px;
+            display: grid;
+            gap: 9px;
+            background: var(--btir-surface);
+            border: 1px solid var(--btir-border);
+            border-radius: var(--btir-radius-md);
+        }
+
+        .skeleton-block {
+            height: 12px;
+            border-radius: 6px;
+            background: linear-gradient(90deg, #e8eef7 25%, #f4f8fd 50%, #e8eef7 75%);
+            background-size: 200% 100%;
+            animation: skeleton-shimmer 1.2s ease-in-out infinite;
+        }
+
+        @keyframes skeleton-shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
         .task-card {
             padding: 12px;
             margin-bottom: 8px;
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
+            background: var(--btir-surface);
+            border: 1px solid var(--btir-border);
+            border-radius: var(--btir-radius-md);
             transition: all 0.2s;
+            animation: slide-up 0.25s ease;
         }
 
         .task-card:hover {
-            background: #fbfdff;
+            background: var(--btir-surface);
             border-color: #b9d2ec;
             box-shadow: 0 3px 12px rgba(30, 60, 114, 0.08);
             transform: translateY(-1px);
@@ -1333,9 +1608,10 @@
         .task-card-id {
             margin-top: 4px;
             color: #64748b;
-            font-family: 'Consolas', 'Monaco', monospace;
+            font-family: var(--btir-mono);
             font-size: 11px;
             word-break: break-all;
+            font-variant-numeric: tabular-nums;
         }
 
         .volume-viewer {
@@ -1512,6 +1788,29 @@
             font-size: 11px;
         }
 
+        .task-status.succeeded::before {
+            content: '✓';
+            margin-right: 4px;
+        }
+
+        .task-status.failed::before {
+            content: '✕';
+            margin-right: 4px;
+        }
+
+        .task-status.queued::before,
+        .task-status.running::before,
+        .task-status.cancel_requested::before {
+            content: '';
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            margin-right: 5px;
+            border-radius: 50%;
+            background: currentColor;
+            vertical-align: 1px;
+        }
+
         .task-status.succeeded {
             color: #18794e;
             background: #dcfce7;
@@ -1637,7 +1936,14 @@
                     <h1 style="margin-bottom: 0;">脑肿瘤MRI图像识别</h1>
                     <div style="display: flex; align-items: center; gap: 10px; flex-shrink: 0;">
                         <span v-if="currentUser" style="color: #2a5298; font-size: 13px;">{{ currentUser.username }}</span>
-                        <button v-if="currentUser" data-testid="logout" class="logout-btn" @click="logout">登出</button>
+                        <button v-if="currentUser" data-testid="logout" class="logout-btn" @click="logout">
+                            <svg class="icon" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M9 3H4.5A1.5 1.5 0 0 0 3 4.5v7A1.5 1.5 0 0 0 4.5 13H9"></path>
+                                <path d="M7 8h6.5"></path>
+                                <path d="M11 5.5 13.5 8 11 10.5"></path>
+                            </svg>
+                            登出
+                        </button>
                     </div>
                 </div>
 
@@ -1820,6 +2126,13 @@
                 </div>
 
                 <button class="recognize-btn" data-testid="start-analysis" v-if="!loading && !taskId" @click="recognizeFromUpload" :disabled="!canRecognize">
+                    <svg v-if="!loading" class="icon" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M2 5V3.5A1.5 1.5 0 0 1 3.5 2H5"></path>
+                        <path d="M11 2h1.5A1.5 1.5 0 0 1 14 3.5V5"></path>
+                        <path d="M14 11v1.5a1.5 1.5 0 0 1-1.5 1.5H11"></path>
+                        <path d="M5 14H3.5A1.5 1.5 0 0 1 2 12.5V11"></path>
+                        <path d="M4 8h1.8l1-2 2.4 4 1.2-2H12"></path>
+                    </svg>
                     {{ loading ? '数据分析中...' : '开始数据分析' }}
                 </button>
 
@@ -1858,12 +2171,32 @@
                             </div>
                         </div>
                         <div class="result-overview" v-if="classificationLabel || tumorArea !== null">
-                            <div class="result-summary-card" v-if="classificationLabel">
+                            <div class="result-summary-card result-ring-card" v-if="classificationLabel">
                                 <div class="result-summary-card-label">分类判断</div>
-                                <div :class="['result-summary-card-value', 'result-highlight', classificationLabel === '肿瘤 detected' ? 'detected' : '']">
-                                    {{ classificationLabel === '肿瘤 detected' ? '提示肿瘤相关异常' : '未发现明显异常' }}
+                                <div class="result-ring">
+                                    <svg viewBox="0 0 64 64" class="result-ring-svg">
+                                        <circle cx="32" cy="32" r="26" class="result-ring-track"></circle>
+                                        <circle
+                                            cx="32"
+                                            cy="32"
+                                            r="26"
+                                            class="result-ring-value"
+                                            :class="classificationLabel === '肿瘤 detected' ? 'detected' : 'normal'"
+                                            :stroke-dasharray="ringCircumference"
+                                            :stroke-dashoffset="ringDashOffset"
+                                        ></circle>
+                                    </svg>
+                                    <div class="result-ring-center">
+                                        <div class="result-ring-percent">{{ ringPercent }}%</div>
+                                        <div
+                                            class="result-ring-text"
+                                            :class="classificationLabel === '肿瘤 detected' ? 'detected' : 'normal'"
+                                        >
+                                            {{ classificationLabel === '肿瘤 detected' ? '提示肿瘤相关异常' : '未发现明显异常' }}
+                                        </div>
+                                    </div>
                                 </div>
-                                <div class="result-summary-card-meta" v-if="confidence">模型概率 {{ (confidence * 100).toFixed(1) }}%</div>
+                                <div class="result-summary-card-meta" v-if="confidence">模型概率 {{ (confidence * 100).toFixed(1) }}% · 阈值 {{ thresholdText }}</div>
                             </div>
                             <div class="result-summary-card" v-if="tumorArea !== null">
                                 <div class="result-summary-card-label">分割判断</div>
@@ -1871,6 +2204,20 @@
                                     {{ tumorArea > 0 ? '检出非背景区域' : '未检出非背景区域' }}
                                 </div>
                                 <div class="result-summary-card-meta">区域占比 {{ (tumorArea * 100).toFixed(2) }}%</div>
+                            </div>
+                            <div class="result-summary-card result-chart-card" v-if="probabilitySeries.length >= 2">
+                                <div class="result-summary-card-label">切片阳性概率曲线</div>
+                                <svg viewBox="0 0 280 96" class="result-chart-svg" preserveAspectRatio="none">
+                                    <line
+                                        x1="0"
+                                        :y1="probabilityThresholdY"
+                                        x2="280"
+                                        :y2="probabilityThresholdY"
+                                        class="result-chart-threshold"
+                                    ></line>
+                                    <polyline :points="probabilityPoints" class="result-chart-line"></polyline>
+                                </svg>
+                                <div class="result-chart-meta">阈值 {{ thresholdText }} · 采样 {{ probabilitySeries.length }} 个切片</div>
                             </div>
                         </div>
                         <div class="result-item" v-if="modelConsensus">
@@ -1913,8 +2260,15 @@
                                     <div class="result-details-heading">BraTS 区域体积</div>
                                     <div class="result-regions">
                                         <div class="result-region-row" v-for="region in regionStats" :key="region.label">
-                                            <span>{{ region.label }} · {{ region.name }}</span>
-                                            <span>{{ formatVolume(region.volumeMm3) }} mm³</span>
+                                            <span class="result-region-name">{{ region.label }} · {{ region.name }}</span>
+                                            <span class="result-region-track">
+                                                <span
+                                                    class="result-region-bar"
+                                                    :class="`region-${region.label}`"
+                                                    :style="{ width: regionBarWidth(region) }"
+                                                ></span>
+                                            </span>
+                                            <span class="result-region-volume">{{ formatVolume(region.volumeMm3) }} mm³</span>
                                         </div>
                                     </div>
                                 </div>
@@ -2056,7 +2410,13 @@
                         <template v-else>
                             <div class="md-table-overview" v-if="integratedSections.length">
                                 <span>{{ integratedRowCount }} 个键值项</span>
-                                <button class="md-table-copy" @click="copyJson">复制</button>
+                                <button class="md-table-copy" @click="copyJson">
+                                    <svg class="icon" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                                        <rect x="5.5" y="5.5" width="8" height="8" rx="1.5"></rect>
+                                        <path d="M10.5 5.5V4A1.5 1.5 0 0 0 9 2.5H4A1.5 1.5 0 0 0 2.5 4v5A1.5 1.5 0 0 0 4 10.5h1.5"></path>
+                                    </svg>
+                                    复制
+                                </button>
                             </div>
                             <div
                                 class="md-table-section"
@@ -2152,6 +2512,10 @@
                             <option value="canceled">已取消</option>
                         </select>
                         <button class="task-small-btn primary" @click="searchTasks" :disabled="taskHistoryLoading">
+                            <svg class="icon" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+                                <circle cx="7" cy="7" r="4.5"></circle>
+                                <path d="M10.5 10.5 14 14"></path>
+                            </svg>
                             查询
                         </button>
                     </div>
@@ -2161,7 +2525,14 @@
                     </div>
 
                     <div class="task-list">
-                        <div class="task-empty" v-if="taskHistoryLoading">正在查询任务...</div>
+                        <div class="task-skeleton-list" v-if="taskHistoryLoading" data-testid="task-skeleton">
+                            <div class="task-skeleton" v-for="index in 3" :key="`skeleton-${index}`">
+                                <div class="skeleton-block" style="width: 38%;"></div>
+                                <div class="skeleton-block" style="width: 62%;"></div>
+                                <div class="skeleton-block" style="width: 85%;"></div>
+                                <div class="skeleton-block" style="width: 46%;"></div>
+                            </div>
+                        </div>
                         <div class="task-empty" v-else-if="!taskItems.length">暂无符合条件的任务</div>
                         <div class="task-card" v-for="task in taskItems" :key="task.task_id">
                             <div class="task-card-header">
@@ -2195,13 +2566,26 @@
                                     v-if="taskListMode === 'active'"
                                     @click="viewTaskResult(task)"
                                     :disabled="taskActionId === task.task_id"
-                                >{{ taskActionId === task.task_id ? '读取中...' : '查看结果' }}</button>
+                                >
+                                    <svg class="icon" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M1.5 8s2.5-4 6.5-4 6.5 4 6.5 4-2.5 4-6.5 4-6.5-4-6.5-4Z"></path>
+                                        <circle cx="8" cy="8" r="1.8"></circle>
+                                    </svg>
+                                    {{ taskActionId === task.task_id ? '读取中...' : '查看结果' }}
+                                </button>
                                 <button
                                     class="task-small-btn"
                                     v-if="taskListMode === 'active'"
                                     @click="toggleTaskRunHistory(task)"
                                     :disabled="taskRunHistoryLoading"
-                                >{{ taskRunHistoryLoading && taskRunHistoryTaskId === task.task_id
+                                >
+                                    <svg class="icon" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+                                        <path d="M5 4h8M5 8h8M5 12h8"></path>
+                                        <circle cx="2.4" cy="4" r="0.9" fill="currentColor" stroke="none"></circle>
+                                        <circle cx="2.4" cy="8" r="0.9" fill="currentColor" stroke="none"></circle>
+                                        <circle cx="2.4" cy="12" r="0.9" fill="currentColor" stroke="none"></circle>
+                                    </svg>
+                                    {{ taskRunHistoryLoading && taskRunHistoryTaskId === task.task_id
                                     ? '读取中...'
                                     : (taskRunHistoryTaskId === task.task_id ? '收起记录' : '运行记录') }}</button>
                                 <button
@@ -2210,26 +2594,50 @@
                                     :data-testid="`task-retry-${task.task_id}`"
                                     @click="retryTask(task)"
                                     :disabled="taskActionId === task.task_id"
-                                >重试</button>
+                                >
+                                    <svg class="icon" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"></path>
+                                        <path d="M13.5 1.5v3.2h-3.2"></path>
+                                    </svg>
+                                    重试
+                                </button>
                                 <button
                                     class="task-small-btn danger"
                                     v-if="taskListMode === 'active' && canCancelTask(task.status)"
                                     :data-testid="`task-cancel-${task.task_id}`"
                                     @click="cancelTask(task)"
                                     :disabled="taskActionId === task.task_id"
-                                >{{ taskActionId === task.task_id ? '处理中...' : '取消' }}</button>
+                                >
+                                    <svg class="icon" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+                                        <path d="M4 4l8 8M12 4l-8 8"></path>
+                                    </svg>
+                                    {{ taskActionId === task.task_id ? '处理中...' : '取消' }}
+                                </button>
                                 <button
                                     class="task-small-btn danger"
                                     v-if="taskListMode === 'active' && canArchiveTask(task.status)"
                                     @click="archiveTask(task)"
                                     :disabled="taskActionId === task.task_id"
-                                >归档删除</button>
+                                >
+                                    <svg class="icon" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M3 5.5h10l-0.9 8H3.9L3 5.5Z"></path>
+                                        <path d="M2 2.5h12"></path>
+                                        <path d="M6.5 8h3"></path>
+                                    </svg>
+                                    归档删除
+                                </button>
                                 <button
                                     class="task-small-btn primary"
                                     v-if="taskListMode === 'archived'"
                                     @click="restoreArchivedTask(task)"
                                     :disabled="taskActionId === task.task_id"
-                                >{{ taskActionId === task.task_id ? '恢复中...' : '恢复任务' }}</button>
+                                >
+                                    <svg class="icon" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M3.5 8a4.5 4.5 0 1 1 1.3 3.2"></path>
+                                        <path d="M3.5 14v-3h3"></path>
+                                    </svg>
+                                    {{ taskActionId === task.task_id ? '恢复中...' : '恢复任务' }}
+                                </button>
                             </div>
                             <div
                                 class="task-run-history"
@@ -2259,19 +2667,33 @@
                             class="task-small-btn"
                             @click="changeTaskPage(-1)"
                             :disabled="taskHistoryLoading || taskOffset === 0"
-                        >上一页</button>
+                        >
+                            <svg class="icon" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M9.5 4 5 8l4.5 4"></path>
+                            </svg>
+                            上一页
+                        </button>
                         <span>第 {{ taskPage }} / {{ taskPageCount }} 页，共 {{ taskTotal }} 项</span>
                         <button
                             class="task-small-btn"
                             @click="changeTaskPage(1)"
                             :disabled="taskHistoryLoading || taskOffset + taskLimit >= taskTotal"
-                        >下一页</button>
+                        >
+                            下一页
+                            <svg class="icon" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M6.5 4 11 8l-4.5 4"></path>
+                            </svg>
+                        </button>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div class="copy-toast" :class="{ show: showToast }">已复制到剪贴板</div>
+        <div class="app-toast" :class="[toastType, { show: toastVisible }]">
+            <span class="app-toast-icon" v-if="toastType === 'success'">✓</span>
+            <span class="app-toast-icon" v-else-if="toastType === 'error'">✕</span>
+            <span>{{ toastMessage }}</span>
+        </div>
     </div>
 
     <script src="./volume_viewer.js"></script>
@@ -2315,7 +2737,9 @@
                     dicomSeriesCandidates: {},
                     dicomSeriesSelections: {},
                     volumeCorrectionVisible: true,
-                    showToast: false,
+                    toastVisible: false,
+                    toastType: 'success',
+                    toastMessage: '已复制到剪贴板',
                     classificationLabel: '',
                     confidence: 0,
                     tumorArea: null,
@@ -2330,6 +2754,8 @@
                     selectedFileLabel: '',
                     fileLoading: false,
                     integratedSections: [],
+                    probabilitySeries: [],
+                    probabilityThreshold: 0.548381,
                     volumeViewer: null,
                     volumeViewerSources: null,
                     volumeViewerLoading: false,
@@ -2482,6 +2908,33 @@
                         0,
                     )
                 },
+                ringCircumference() {
+                    return 2 * Math.PI * 26
+                },
+                ringDashOffset() {
+                    const ratio = Math.max(0, Math.min(1, this.confidence || 0))
+                    return this.ringCircumference * (1 - ratio)
+                },
+                ringPercent() {
+                    return Math.round((this.confidence || 0) * 1000) / 10
+                },
+                thresholdText() {
+                    return `${Math.round((this.probabilityThreshold || 0) * 1000) / 10}%`
+                },
+                probabilityPoints() {
+                    const series = this.probabilitySeries
+                    if (!Array.isArray(series) || series.length < 2) return ''
+                    return series.map((item, index) => {
+                        const x = (index / (series.length - 1)) * 280
+                        const ratio = Math.max(0, Math.min(1, Number(item.yes_probability) || 0))
+                        const y = 94 - ratio * 90
+                        return `${x.toFixed(2)},${y.toFixed(2)}`
+                    }).join(' ')
+                },
+                probabilityThresholdY() {
+                    const ratio = Math.max(0, Math.min(1, this.probabilityThreshold || 0))
+                    return 94 - ratio * 90
+                },
             },
             methods: {
                 switchRightView(view) {
@@ -2538,6 +2991,12 @@
                     return Number.isFinite(number)
                         ? number.toLocaleString('zh-CN', { maximumFractionDigits: 3 })
                         : '0'
+                },
+                regionBarWidth(region) {
+                    const max = Math.max(...this.regionStats.map(item => item.volumeMm3), 0)
+                    if (!max) return '0%'
+                    const ratio = Math.max(0, Math.min(1, region.volumeMm3 / max))
+                    return `${Math.max(3, ratio * 100).toFixed(1)}%`
                 },
                 formatInferenceTime(value) {
                     if (value === null || value === undefined || value === '') return '未记录'
@@ -2856,6 +3315,8 @@
                     this.confidence = 0
                     this.tumorArea = null
                     this.regionStats = []
+                    this.probabilitySeries = []
+                    this.probabilityThreshold = 0.548381
                     this.modelConsensus = null
                     this.supplementaryAnalysis = null
                 },
@@ -3306,6 +3767,8 @@
                     this.confidence = 0
                     this.tumorArea = null
                     this.regionStats = []
+                    this.probabilitySeries = []
+                    this.probabilityThreshold = 0.548381
                     this.modelConsensus = resultData.model_consensus || null
                     this.supplementaryAnalysis = resultData.supplementary_analysis || null
                     if (resultData.classification) {
@@ -3314,6 +3777,10 @@
                             ? '肿瘤 detected'
                             : '正常'
                         this.confidence = classification.confidence
+                        this.probabilitySeries = Array.isArray(
+                            classification.slice_probability_series
+                        ) ? classification.slice_probability_series : []
+                        this.probabilityThreshold = classification.threshold || 0.548381
                     }
                     if (resultData.segmentation) {
                         const regions = resultData.segmentation.regions || {}
@@ -3895,8 +4362,7 @@
                         }).join('\n\n')
                     }
                     navigator.clipboard.writeText(text).then(() => {
-                        this.showToast = true
-                        setTimeout(() => { this.showToast = false }, 2000)
+                        this.showToastMessage()
                     }).catch(() => {
                         const ta = document.createElement('textarea')
                         ta.value = text
@@ -3904,9 +4370,17 @@
                         ta.select()
                         document.execCommand('copy')
                         document.body.removeChild(ta)
-                        this.showToast = true
-                        setTimeout(() => { this.showToast = false }, 2000)
+                        this.showToastMessage()
                     })
+                },
+                showToastMessage(message = '已复制到剪贴板', type = 'success') {
+                    this.toastMessage = message
+                    this.toastType = type
+                    this.toastVisible = true
+                    clearTimeout(this._toastTimer)
+                    this._toastTimer = setTimeout(() => {
+                        this.toastVisible = false
+                    }, 2200)
                 },
                 logout() {
                     localStorage.removeItem('btir_token')

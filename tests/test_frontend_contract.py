@@ -199,6 +199,18 @@ class FrontendContractTests(unittest.TestCase):
             self.html.index("label: '详细结果'"),
         )
 
+    def test_modern_ui_tokens_toast_skeleton_and_visualization(self) -> None:
+        self.assertIn("--btir-primary:", self.html)
+        self.assertIn("app-toast", self.html)
+        self.assertIn("showToastMessage", self.html)
+        self.assertIn("task-skeleton", self.html)
+        self.assertIn("skeleton-shimmer", self.html)
+        self.assertIn("result-ring", self.html)
+        self.assertIn("result-chart-line", self.html)
+        self.assertIn("regionBarWidth", self.html)
+        self.assertIn("probabilityPoints", self.html)
+        self.assertIn('class="icon"', self.html)
+
 
 if __name__ == "__main__":
     unittest.main()
