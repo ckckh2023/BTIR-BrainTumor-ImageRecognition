@@ -12,7 +12,7 @@ POST /auth/register 或 POST /auth/login
     ↓
 后续请求携带 Authorization: Bearer <access_token>
     ↓
-POST /tasks/3d 或 /tasks/3d/archive 创建 3D 任务
+POST /tasks/3d、/tasks/3d/dicom 或 /tasks/3d/archive 创建 3D 任务
     ↓
 POST /tasks/{task_id}/run-async 提交异步推理
     ↓
@@ -60,7 +60,8 @@ POST /tasks/{task_id}/restore 恢复所选任务
 | `POST` | `/admin/users/{user_id}/tasks/{task_id}/restore` | 管理员恢复指定用户归档任务 |
 | `GET` | `/admin/audit` | 管理员分页、筛选安全审计记录 |
 | `POST` | `/tasks/3d` | 上传四模态 NIfTI 并创建 3D 任务 |
-| `POST` | `/tasks/3d/archive` | 上传病例 ZIP，自动识别四模态 NIfTI |
+| `POST` | `/tasks/3d/dicom` | 上传病例 DICOM 文件夹并转换创建 3D 任务 |
+| `POST` | `/tasks/3d/archive` | 上传病例 ZIP，自动识别四模态 NIfTI 或 DICOM 序列 |
 | `GET` | `/tasks` | 分页、筛选历史任务 |
 | `GET` | `/tasks/archived` | 分页、筛选尚未永久清除的归档任务 |
 | `GET` | `/tasks/{task_id}` | 查询任务状态与最新结果 |
@@ -98,7 +99,8 @@ Content-Type: application/json
 Authorization: Bearer <access_token>
 ```
 
-用户名长度为 3～32，只允许字母、数字、下划线和连字符<br>
+用户名为 2～32 个字符（纯 ASCII 用户名至少 3 个字符），支持各语言字母、数字、
+下划线和连字符<br>
 账号匹配不区分字母大小写，
 但响应会保留注册时的显示形式，因此 `Alice` 和 `alice` 不能注册为两个账号<br>
 注册是否开放由
@@ -248,21 +250,39 @@ BraTS 命名规则，模态由表单字段确定<br>
 `BTIR_MAX_3D_UPLOAD_BYTES` 限制，解压后的单个体积还受
 `BTIR_MAX_3D_VOXELS` 限制
 
+也可使用 `POST /tasks/3d/dicom` 上传同一病例的原始 DICOM 文件夹：表单字段
+`files` 携带一组 DICOM 文件（最多 `BTIR_MAX_DICOM_FILES` 个，总大小受
+`BTIR_MAX_3D_UPLOAD_BYTES` 限制），`name` 可选<br>
+服务按 `SeriesInstanceUID` 归类，并结合序列描述（SeriesDescription、
+ProtocolName、SequenceName、ImageType、ContrastBolusAgent）识别
+`FLAIR`、`T1CE`、`T1`、`T2` 序列，随后全部重采样到 FLAIR 空间并转为
+`.nii.gz`<br>
+缺失所需序列时返回 `400`；某一模态存在多个候选序列时返回
+`422`，响应为
+`{"code":"dicom_series_selection_required","message":"...","modalities":{...}}`，
+前端需让用户选择生效序列<br>
+用户选择后可用
+`flair_series_uid`、`t1ce_series_uid`、`t1_series_uid`、`t2_series_uid`
+重新提交，转换与空间校验流程与 NIfTI 上传一致
+
 也可使用 `POST /tasks/3d/archive`，提交字段 `archive`（`.zip`）和可选的
 `name`<br>
-服务会只按 BraTS 风格文件名中的完整模态词自动选取唯一的
+压缩包内若识别到 NIfTI，服务会只按 BraTS 风格文件名中的完整模态词自动选取唯一的
 `FLAIR`、`T1CE`、`T1`、`T2` 文件；目录结构可以存在，`*_seg.nii[.gz]`
 等标注和其他无关文件会被忽略<br>
 缺少模态或同一模态存在多个候选文件时，接口返回
 `422` 和候选文件清单；前端需让用户选择生效项或补充上传相应模态后重新提交，避免混入
-不同病例<br>
+不同病例（响应为
+`{"code":"archive_modality_selection_required","message":"...","modalities":{...}}`）<br>
 ZIP 不会被整体解压到服务端，只会读取被选中的四个文件
 压缩包必须是未加密且可由标准 ZIP 读取的文件
 
-校正后仍调用 `/tasks/3d/archive`：可用 `<modality>_entry` 指定 ZIP 内生效条目，
-或使用同名文件字段（`flair`、`t1ce`、`t1`、`t2`）上传替代文件<br>
-替代文件优先于
-ZIP 条目，最终四个文件仍执行同一套空间一致性校验
+压缩包内没有可识别的 NIfTI 时按 DICOM 序列处理，识别与选择规则同
+`/tasks/3d/dicom`；DICOM 压缩包不能与单个 NIfTI 文件混合上传<br>
+校正后仍调用 `/tasks/3d/archive`：NIfTI 可用 `<modality>_entry` 指定 ZIP
+内生效条目，或使用同名文件字段（`flair`、`t1ce`、`t1`、`t2`）上传替代文件；
+DICOM 可用 `<modality>_series_uid` 指定生效序列<br>
+替代文件优先于 ZIP 条目，最终四个文件仍执行同一套空间一致性校验
 
 成功返回 `201 Created`：
 
@@ -392,7 +412,7 @@ GET /tasks/{task_id}
     "class": "yes",
     "confidence": 0.977611,
     "probabilities": {"no": 0.022389, "yes": 0.977611},
-    "threshold": 0.5,
+    "threshold": 0.548381,
     "method": "vit_binary_multislice_mean",
     "experimental": true,
     "modality": "flair",

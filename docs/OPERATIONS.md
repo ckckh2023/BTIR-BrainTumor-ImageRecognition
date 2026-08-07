@@ -220,7 +220,7 @@ python Main.py purge-archive --apply
 
 处理规则：
 
-- 只归档超过保留期的 `succeeded`、`failed` 和 `canceled` 终态任务
+- 只归档超过保留期的 `succeeded` 和 `canceled` 终态任务
 - 操作前再次确认任务不是活动状态
 - 先将整个任务目录移动到 `archive/tasks/`
 - 超过 `BTIR_TASK_ARCHIVE_GRACE_DAYS` 后才可永久删除
