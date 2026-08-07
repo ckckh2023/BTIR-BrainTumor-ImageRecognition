@@ -12,6 +12,12 @@ class FrontendContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.html = FRONTEND_HTML.read_text(encoding="utf-8")
+        cls.detail_html = (
+            PROJECT_ROOT / "frontend" / "components" / "btir-detail-table.js"
+        ).read_text(encoding="utf-8")
+        cls.toast_html = (
+            PROJECT_ROOT / "frontend" / "components" / "btir-toast.js"
+        ).read_text(encoding="utf-8")
 
     def test_3d_result_does_not_render_an_outdated_hint(self) -> None:
         self.assertNotIn("当前 3D 路线仅提供分割与定量统计", self.html)
@@ -171,24 +177,32 @@ class FrontendContractTests(unittest.TestCase):
     def test_result_integrated_view_flattens_json_key_value_pairs(self) -> None:
         self.assertIn("详细结果", self.html)
         self.assertIn("type: 'integrated'", self.html)
-        self.assertIn("openIntegratedView", self.html)
-        self.assertIn("flattenKeyValuePairs", self.html)
         self.assertIn("md-table-viewer", self.html)
         self.assertNotIn("md-table-title", self.html)
         self.assertNotIn("md-table-th-key", self.html)
         self.assertNotIn("键</th>", self.html)
         self.assertNotIn("# {{ section.label }}", self.html)
         self.assertNotIn('class="copy-btn"', self.html)
-        self.assertIn("md-table-copy", self.html)
-        self.assertIn('@click="copyJson"', self.html)
-        self.assertIn("integratedRowCount", self.html)
-        self.assertIn("visibleRows(section)", self.html)
-        self.assertIn("toggleRow(row)", self.html)
-        self.assertIn("collapsed: Boolean(hasChildren)", self.html)
-        self.assertIn("md-table-toggle", self.html)
         self.assertIn("label: 'frontend_result.json', path: rf.frontend", self.html)
         self.assertNotIn("classification.json', 'classification'", self.html)
         self.assertNotIn("segmentation.json', 'segmentation'", self.html)
+        self.assertIn("flattenKeyValuePairs", self.detail_html)
+        self.assertIn("visibleRows(section)", self.detail_html)
+        self.assertIn("toggleRow(row)", self.detail_html)
+        self.assertIn("collapsed: Boolean(hasChildren)", self.detail_html)
+        self.assertIn("md-table-copy", self.detail_html)
+        self.assertIn('@click="copyDetail"', self.detail_html)
+        self.assertIn("rowCount", self.detail_html)
+        self.assertIn("md-table-toggle", self.html)
+
+    def test_detail_table_and_toast_are_extracted_components(self) -> None:
+        self.assertIn("components/btir-detail-table.js", self.html)
+        self.assertIn("components/btir-toast.js", self.html)
+        self.assertIn("<btir-detail-table", self.html)
+        self.assertIn("<btir-toast></btir-toast>", self.html)
+        self.assertIn("Vue.component('btir-detail-table'", self.detail_html)
+        self.assertIn("Vue.component('btir-toast'", self.toast_html)
+        self.assertIn("btir:toast", self.toast_html)
 
     def test_json_raw_tabs_removed_and_3d_viewer_stays_default(self) -> None:
         self.assertNotIn("addFile('frontend_result.json'", self.html)
