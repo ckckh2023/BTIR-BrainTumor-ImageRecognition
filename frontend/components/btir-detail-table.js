@@ -193,7 +193,7 @@
                     }))
                     this.sections = loaded.map(({ label, data }) => ({
                         label,
-                        rows: this.flattenKeyValuePairs(data),
+                        rows: this.buildCuratedRows(data),
                     }))
                 } catch (err) {
                     this._loaded = false
@@ -290,6 +290,170 @@
                 if (typeof key !== 'string' || !key) return key
                 if (key.startsWith('[') || key === '…') return key
                 return KEY_LABELS[key] || key
+            },
+            buildCuratedRows(data) {
+                const rows = []
+                const formatLeaf = (value) => {
+                    if (Array.isArray(value)) {
+                        return `[${value.map(item => this.formatListValue(item)).join(', ')}]`
+                    }
+                    return this.formatListValue(value)
+                }
+                const addLeaf = (key, value, level) => {
+                    if (value === undefined || value === null || value === '') return
+                    const full = (
+                        typeof value === 'string' && value.length > 240
+                    ) ? value : ''
+                    rows.push({
+                        key: this.translateKey(key),
+                        rawKey: '',
+                        value: formatLeaf(value),
+                        level,
+                        hasChildren: false,
+                        full,
+                        collapsed: false,
+                    })
+                }
+                const addGroup = (key, level, collapsed, buildChildren) => {
+                    const start = rows.length
+                    buildChildren()
+                    const count = rows.length - start
+                    rows.splice(start, 0, {
+                        key: this.translateKey(key),
+                        rawKey: '',
+                        value: '',
+                        level,
+                        hasChildren: true,
+                        full: `${count} 项`,
+                        collapsed,
+                    })
+                }
+
+                const classification = data.classification || {}
+                const segmentation = data.segmentation || {}
+                const consensus = data.model_consensus || null
+                const supplementary = data.supplementary_analysis || null
+                const timing = data.timing || {}
+
+                addGroup('任务信息', 0, false, () => {
+                    addLeaf('task_id', data.task_id, 1)
+                    addLeaf('status', data.status, 1)
+                    addLeaf('created_at', data.created_at, 1)
+                    addLeaf('updated_at', data.updated_at, 1)
+                    addLeaf('completed_models', data.completed_models, 1)
+                })
+
+                addGroup('分类判断', 0, false, () => {
+                    addLeaf('model', classification.model, 1)
+                    addLeaf('class', classification.class, 1)
+                    addLeaf('confidence', classification.confidence, 1)
+                    addLeaf('threshold', classification.threshold, 1)
+                    addLeaf('modality', classification.modality, 1)
+                    addLeaf('method', classification.method, 1)
+                    addLeaf('evaluated_slices', classification.evaluated_slices, 1)
+                    addLeaf('positive_slices', classification.positive_slices, 1)
+                    if (classification.probabilities) {
+                        addGroup('概率', 1, true, () => {
+                            addLeaf('no', classification.probabilities.no, 2)
+                            addLeaf('yes', classification.probabilities.yes, 2)
+                        })
+                    }
+                })
+
+                addGroup('分割判断', 0, false, () => {
+                    addLeaf('model', segmentation.model, 1)
+                    if (segmentation.spatial) {
+                        addGroup('空间信息', 1, true, () => {
+                            addLeaf('shape', segmentation.spatial.shape, 2)
+                            addLeaf('voxel_spacing_mm', segmentation.spatial.voxel_spacing_mm, 2)
+                            addLeaf('orientation', segmentation.spatial.orientation, 2)
+                        })
+                    }
+                    if (segmentation.regions) {
+                        addGroup('区域', 1, true, () => {
+                            for (const [label, region] of Object.entries(segmentation.regions)) {
+                                if (label === '0') continue
+                                addGroup(label === '0' ? '背景' : label, 2, true, () => {
+                                    addLeaf('name', region && region.name, 3)
+                                    addLeaf('volume_mm3', region && region.volume_mm3, 3)
+                                    addLeaf('ratio', region && region.ratio, 3)
+                                    addLeaf('voxels', region && region.voxels, 3)
+                                })
+                            }
+                        })
+                    }
+                    if (segmentation.composites) {
+                        addGroup('复合区域', 1, true, () => {
+                            for (const [label, composite] of Object.entries(segmentation.composites)) {
+                                addGroup(label, 2, true, () => {
+                                    addLeaf('volume_mm3', composite && composite.volume_mm3, 3)
+                                    addLeaf('ratio', composite && composite.ratio, 3)
+                                    addLeaf('voxels', composite && composite.voxels, 3)
+                                })
+                            }
+                        })
+                    }
+                })
+
+                if (consensus) {
+                    addGroup('模型共识', 0, false, () => {
+                        addLeaf('consistency', consensus.consistency, 1)
+                        addLeaf('primary_evidence', consensus.primary_evidence, 1)
+                        addLeaf('segmentation_detected', consensus.segmentation_detected, 1)
+                        addLeaf('segmentation_volume_mm3', consensus.segmentation_volume_mm3, 1)
+                        addLeaf('segmentation_voxel_count', consensus.segmentation_voxel_count, 1)
+                        addLeaf('requires_review', consensus.requires_review, 1)
+                        addLeaf('summary', consensus.summary, 1)
+                    })
+                }
+
+                if (supplementary && supplementary.status !== 'disabled') {
+                    addGroup('综合分析', 0, true, () => {
+                        addLeaf('status', supplementary.status, 1)
+                        if (supplementary.status === 'succeeded') {
+                            addLeaf('provider', supplementary.provider, 1)
+                            addLeaf('model', supplementary.model, 1)
+                            const content = supplementary.content || {}
+                            addLeaf('summary', content.summary, 1)
+                            addLeaf('consistency', content.consistency, 1)
+                            addLeaf('observations', content.observations, 1)
+                            addLeaf('uncertainties', content.uncertainties, 1)
+                            addLeaf('follow_up', content.follow_up, 1)
+                        } else {
+                            addLeaf('message', supplementary.message, 1)
+                        }
+                    })
+                }
+
+                if (Object.keys(timing).length) {
+                    addGroup('性能耗时', 0, true, () => {
+                        for (const [key, value] of Object.entries(timing)) {
+                            if (value && typeof value === 'object' && !Array.isArray(value)) {
+                                addGroup(key, 1, true, () => {
+                                    for (const [childKey, childValue] of Object.entries(value)) {
+                                        addLeaf(childKey, childValue, 2)
+                                    }
+                                })
+                            } else {
+                                addLeaf(key, value, 1)
+                            }
+                        }
+                    })
+                }
+
+                const rawRows = this.flattenKeyValuePairs(data)
+                if (rawRows.length) {
+                    addGroup('全部字段', 0, true, () => {
+                        for (const row of rawRows) {
+                            rows.push({
+                                ...row,
+                                level: row.level + 1,
+                            })
+                        }
+                    })
+                }
+
+                return rows
             },
             visibleRows(section) {
                 const visible = []

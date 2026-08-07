@@ -1901,7 +1901,7 @@
             border: 1px solid var(--btir-border);
             border-radius: var(--btir-radius-md);
             transition: all 0.2s;
-            animation: slide-up 0.25s ease;
+            animation: slide-up 0.25s ease backwards;
         }
 
         .task-card:hover {
@@ -3801,6 +3801,21 @@
                             }
                         }
                     }
+
+                    const jsonFiles = []
+                    if (rf && rf.frontend) {
+                        jsonFiles.push({ label: 'frontend_result.json', path: rf.frontend })
+                    }
+                    if (jsonFiles.length) {
+                        this.integratedSources = jsonFiles
+                        files.push({
+                            label: '详细结果',
+                            path: '@integrated',
+                            type: 'integrated',
+                            sources: { files: jsonFiles },
+                        })
+                    }
+
                     if (Object.keys(modalities).length) {
                         files.push({
                             label: '3D查看',
@@ -3815,20 +3830,6 @@
                                     }
                                     : null,
                             },
-                        })
-                    }
-
-                    const jsonFiles = []
-                    if (rf && rf.frontend) {
-                        jsonFiles.push({ label: 'frontend_result.json', path: rf.frontend })
-                    }
-                    if (jsonFiles.length) {
-                        this.integratedSources = jsonFiles
-                        files.push({
-                            label: '详细结果',
-                            path: '@integrated',
-                            type: 'integrated',
-                            sources: { files: jsonFiles },
                         })
                     }
 
