@@ -7,6 +7,15 @@
     <link rel="icon" type="image/png" href="/assets/icon_exp.png">
     <link rel="preconnect" href="https://unpkg.com">
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script>
+        (function () {
+            var theme = 'dark'
+            try {
+                theme = localStorage.getItem('btir_theme') || 'light'
+            } catch (e) { /* 忽略存储不可用 */ }
+            document.documentElement.setAttribute('data-theme', theme)
+        })()
+    </script>
     <style>
         :root {
             --btir-primary: #1e3c72;
@@ -40,6 +49,108 @@
             --btir-mono: 'Consolas', 'Monaco', 'SFMono-Regular', monospace;
             --btir-transition: 0.2s ease;
             --btir-transition-slow: 0.3s ease;
+            --btir-surface-hover: #f1f7ff;
+        }
+
+        [data-theme="dark"] {
+            --btir-primary: #4d7fc2;
+            --btir-primary-hover: #5d92d6;
+            --btir-primary-soft: #1d3456;
+            --btir-accent: #6ea8e8;
+            --btir-bg: #0b1220;
+            --btir-bg-soft: #131c2e;
+            --btir-surface: #16213a;
+            --btir-surface-muted: #1b2742;
+            --btir-surface-hover: #22304f;
+            --btir-border: #2b3a57;
+            --btir-border-strong: #3c4f73;
+            --btir-text: #e5ebf4;
+            --btir-text-secondary: #9fb0c8;
+            --btir-text-muted: #6b7c96;
+            --btir-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.45);
+            --btir-shadow-md: 0 6px 18px rgba(0, 0, 0, 0.5);
+            --btir-shadow-lg: 0 18px 50px rgba(0, 0, 0, 0.6);
+        }
+
+        [data-theme="dark"] .volume-drop-zone {
+            color: #b9d2ec;
+            background: #101b30;
+            border-color: #33507a;
+        }
+
+        [data-theme="dark"] .volume-drop-zone:hover {
+            background: #16233c;
+        }
+
+        [data-theme="dark"] .volume-drop-zone.dragging {
+            color: #cfe1f7;
+            background: #1a2c4d;
+            border-color: #4f83c4;
+        }
+
+        [data-theme="dark"] .result-ring-track {
+            stroke: #25334d;
+        }
+
+        [data-theme="dark"] .md-table-key {
+            color: #8ab4ff;
+        }
+
+        [data-theme="dark"] .md-table-group .md-table-key {
+            color: #a9c7f0;
+        }
+
+        [data-theme="dark"] .md-table-row:hover td {
+            background: #1c2942;
+        }
+
+        [data-theme="dark"] .md-table-group td {
+            background: #1a2640;
+        }
+
+        [data-theme="dark"] .md-table-group:hover td {
+            background: #243355;
+        }
+
+        [data-theme="dark"] .skeleton-block {
+            background: linear-gradient(90deg, #1e2c49 25%, #273756 50%, #1e2c49 75%);
+            background-size: 200% 100%;
+        }
+
+        [data-theme="dark"] .task-status {
+            color: #b6c3d6;
+            background: #2b3a57;
+        }
+
+        [data-theme="dark"] .result-consensus-review {
+            color: #fbbf24;
+        }
+
+        [data-theme="dark"] .volume-correction-panel,
+        [data-theme="dark"] .dicom-series-selection-panel {
+            background: #241f12;
+            border-color: #6b5522;
+        }
+
+        [data-theme="dark"] .volume-source-menu,
+        [data-theme="dark"] .volume-case-source-options {
+            border-color: #3c4f73;
+        }
+
+        [data-theme="dark"] .task-message.error {
+            color: #fca5a5;
+            background: #3b1a1a;
+        }
+
+        [data-theme="dark"] .result-details[open] summary {
+            color: #cfe1f7;
+            background: #1d3456;
+            border-color: #33507a;
+        }
+
+        [data-theme="dark"] .loading-spinner {
+            border-color: #2b3a57;
+            border-top-color: #6ea8e8;
         }
 
         * {
@@ -116,7 +227,7 @@
         label {
             display: block;
             margin-bottom: 8px;
-            color: #2a5298;
+            color: var(--btir-accent);
             font-weight: 500;
         }
 
@@ -180,25 +291,25 @@
         }
 
         .volume-drop-zone:hover {
-            background: #f1f7ff;
-            border-color: #2a5298;
+            background: var(--btir-surface-hover);
+            border-color: var(--btir-accent);
         }
 
         .volume-drop-zone.dragging {
-            color: #1e3c72;
+            color: var(--btir-primary);
             background: #edf5ff;
-            border-color: #2a5298;
+            border-color: var(--btir-accent);
         }
 
         .volume-drop-title {
-            color: #1e3c72;
+            color: var(--btir-primary);
             font-size: 15px;
             font-weight: 600;
         }
 
         .volume-drop-hint {
             margin-top: 5px;
-            color: #64748b;
+            color: var(--btir-text-secondary);
             font-size: 12px;
         }
 
@@ -209,7 +320,7 @@
             gap: 6px;
             bottom: 10px;
             padding: 6px;
-            background: #ffffff;
+            background: var(--btir-surface);
             border: 1px solid #bfdbfe;
             border-radius: 7px;
             box-shadow: 0 4px 12px rgba(30, 60, 114, 0.16);
@@ -217,9 +328,9 @@
 
         .volume-source-menu button {
             padding: 5px 8px;
-            color: #1e3c72;
-            background: #f8fafc;
-            border: 1px solid #cbd5e1;
+            color: var(--btir-primary);
+            background: var(--btir-surface-muted);
+            border: 1px solid var(--btir-border);
             border-radius: 5px;
             font-size: 12px;
             cursor: pointer;
@@ -248,7 +359,7 @@
             gap: 6px;
             padding: 6px;
             white-space: nowrap;
-            background: #ffffff;
+            background: var(--btir-surface);
             border: 1px solid #bfdbfe;
             border-radius: 7px;
             box-shadow: 0 4px 12px rgba(30, 60, 114, 0.16);
@@ -278,7 +389,7 @@
         .volume-source-summary {
             margin: 0 0 10px;
             padding: 8px 10px;
-            color: #1e3c72;
+            color: var(--btir-primary);
             background: #eef6ff;
             border: 1px solid #bfdbfe;
             border-radius: 7px;
@@ -328,8 +439,8 @@
             max-width: 100%;
             padding: 3px 6px;
             overflow: hidden;
-            color: #315a93;
-            background: #fff;
+            color: var(--btir-accent);
+            background: var(--btir-surface);
             border-radius: 4px;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -377,7 +488,7 @@
         }
 
         .volume-modal-files-title {
-            color: #1e3c72;
+            color: var(--btir-primary);
             font-size: 13px;
             font-weight: 600;
             overflow: hidden;
@@ -387,7 +498,7 @@
 
         .volume-modal-files-tip {
             margin: 4px 0 10px;
-            color: #315a93;
+            color: var(--btir-accent);
             font-size: 12px;
             line-height: 1.5;
         }
@@ -411,7 +522,7 @@
             padding: 7px 9px;
             color: var(--btir-text);
             background: var(--btir-surface);
-            border: 1px solid #cbd5e1;
+            border: 1px solid var(--btir-border);
             border-radius: var(--btir-radius-sm);
             font-size: 12px;
             transition: border-color 0.15s;
@@ -429,7 +540,7 @@
         }
 
         .volume-modality {
-            color: #1e3c72;
+            color: var(--btir-primary);
             font-size: 12px;
             font-weight: 700;
             letter-spacing: 0.02em;
@@ -439,9 +550,9 @@
             min-width: 0;
             padding: 9px 11px;
             overflow: hidden;
-            color: #475569;
-            background: #f8fafc;
-            border: 1px solid #cbd5e1;
+            color: var(--btir-text-secondary);
+            background: var(--btir-surface-muted);
+            border: 1px solid var(--btir-border);
             border-radius: 7px;
             font-size: 12px;
             text-overflow: ellipsis;
@@ -449,7 +560,7 @@
         }
 
         .volume-file-name.empty {
-            color: #94a3b8;
+            color: var(--btir-text-muted);
         }
 
 
@@ -540,7 +651,7 @@
 
         .result-summary-card-label {
             margin-bottom: 5px;
-            color: #64748b;
+            color: var(--btir-text-secondary);
             font-size: 12px;
         }
 
@@ -554,7 +665,7 @@
 
         .result-summary-card-meta {
             margin-top: 4px;
-            color: #64748b;
+            color: var(--btir-text-secondary);
             font-size: 12px;
         }
 
@@ -667,7 +778,7 @@
             align-items: center;
             gap: 10px;
             padding: 8px 10px;
-            color: #334155;
+            color: var(--btir-text);
             background: var(--btir-surface);
             border: 1px solid var(--btir-border);
             border-radius: var(--btir-radius-sm);
@@ -675,14 +786,14 @@
         }
 
         .result-region-name {
-            color: #334155;
+            color: var(--btir-text);
             white-space: nowrap;
         }
 
         .result-region-track {
             height: 8px;
             border-radius: 999px;
-            background: #eef2f7;
+            background: var(--btir-bg);
             overflow: hidden;
         }
 
@@ -706,7 +817,7 @@
         }
 
         .result-region-volume {
-            color: #475569;
+            color: var(--btir-text-secondary);
             font-family: var(--btir-mono);
             font-size: 11.5px;
             white-space: nowrap;
@@ -714,13 +825,13 @@
         }
 
         .result-label {
-            color: #4a5568;
+            color: var(--btir-text-secondary);
             font-size: 13px;
             margin-bottom: 4px;
         }
 
         .result-value {
-            color: #1e3c72;
+            color: var(--btir-primary);
             font-size: 14px;
             word-break: break-all;
             font-family: 'Consolas', 'Monaco', monospace;
@@ -735,7 +846,7 @@
 
         .result-analysis-provider {
             margin-top: 2px;
-            color: #4b668f;
+            color: var(--btir-text-secondary);
             font-size: 12px;
         }
 
@@ -754,9 +865,9 @@
         .result-details summary {
             width: fit-content;
             padding: 4px 12px 4px 10px;
-            color: #2a5298;
-            background: #eef4fb;
-            border: 1px solid #d7e3f0;
+            color: var(--btir-accent);
+            background: var(--btir-primary-soft);
+            border: 1px solid var(--btir-border-strong);
             border-radius: 999px;
             font-size: 13px;
             font-weight: 600;
@@ -774,7 +885,7 @@
             content: '▸';
             display: inline-block;
             margin-right: 5px;
-            color: #2a5298;
+            color: var(--btir-accent);
             transition: transform 0.2s;
         }
 
@@ -784,8 +895,8 @@
 
         .result-details summary:hover {
             color: #ffffff;
-            background: #2a5298;
-            border-color: #2a5298;
+            background: var(--btir-accent);
+            border-color: var(--btir-accent);
         }
 
         .result-details summary:hover::before {
@@ -793,7 +904,7 @@
         }
 
         .result-details[open] summary {
-            color: #1e3c72;
+            color: var(--btir-primary);
             background: #dbeafe;
             border-color: #b9d2ec;
         }
@@ -803,8 +914,8 @@
             gap: 12px;
             margin-top: 12px;
             padding: 12px;
-            background: #ffffff;
-            border: 1px solid #dbe7f5;
+            background: var(--btir-surface);
+            border: 1px solid var(--btir-border);
             border-radius: 8px;
         }
 
@@ -814,7 +925,7 @@
         }
 
         .result-details-heading {
-            color: #4a5568;
+            color: var(--btir-text-secondary);
             font-size: 12px;
             font-weight: 600;
         }
@@ -822,7 +933,7 @@
         .result-detail-list {
             display: grid;
             gap: 5px;
-            color: #334155;
+            color: var(--btir-text);
             font-size: 13px;
             line-height: 1.5;
         }
@@ -869,7 +980,7 @@
         .analysis-progress-track {
             width: 50%;
             height: 6px;
-            background: #e2e8f0;
+            background: var(--btir-border);
             border-radius: 999px;
             overflow: hidden;
         }
@@ -882,7 +993,7 @@
         }
 
         .analysis-progress-label {
-            color: #64748b;
+            color: var(--btir-text-secondary);
             font-size: 12px;
         }
 
@@ -897,7 +1008,7 @@
         }
 
         .status-loading {
-            color: #2a5298;
+            color: var(--btir-accent);
             font-style: italic;
         }
 
@@ -928,7 +1039,7 @@
 
         .right-view-tab {
             padding: 6px 12px;
-            color: #64748b;
+            color: var(--btir-text-secondary);
             background: transparent;
             border: none;
             border-radius: 6px;
@@ -939,8 +1050,8 @@
         }
 
         .right-view-tab:hover:not(.active) {
-            color: #1e3c72;
-            background: #ffffff;
+            color: var(--btir-primary);
+            background: var(--btir-surface);
         }
 
         .right-view-tab:active {
@@ -955,9 +1066,9 @@
         .logout-btn {
             flex-shrink: 0;
             padding: 4px 12px;
-            color: #475569;
-            background: #e2e8f0;
-            border: 1px solid #cbd5e1;
+            color: var(--btir-text-secondary);
+            background: var(--btir-border);
+            border: 1px solid var(--btir-border);
             border-radius: 6px;
             font-size: 12px;
             cursor: pointer;
@@ -967,11 +1078,37 @@
         .logout-btn:hover {
             color: #ffffff;
             background: #475569;
-            border-color: #475569;
+            border-color: var(--btir-text-secondary);
         }
 
         .logout-btn:active {
             transform: scale(0.96);
+        }
+
+        .theme-toggle {
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 26px;
+            padding: 0;
+            color: var(--btir-text-secondary);
+            background: var(--btir-border);
+            border: 1px solid var(--btir-border-strong);
+            border-radius: var(--btir-radius-sm);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .theme-toggle:hover {
+            color: #ffffff;
+            background: var(--btir-primary);
+            border-color: var(--btir-primary);
+        }
+
+        .theme-toggle svg {
+            vertical-align: middle;
         }
 
         .right-content {
@@ -995,9 +1132,9 @@
             border-radius: 6px;
             font-size: 12px;
             cursor: pointer;
-            background: #f1f5f9;
-            color: #475569;
-            border: 1px solid #e2e8f0;
+            background: var(--btir-bg);
+            color: var(--btir-text-secondary);
+            border: 1px solid var(--btir-border);
             transition: all 0.2s;
             white-space: nowrap;
             max-width: 180px;
@@ -1009,13 +1146,13 @@
         }
 
         .file-tab:hover {
-            background: #e2e8f0;
+            background: var(--btir-border);
         }
 
         .file-tab.active {
             background: #1e3c72;
             color: white;
-            border-color: #1e3c72;
+            border-color: var(--btir-primary);
         }
 
         .file-tab.loading {
@@ -1038,7 +1175,7 @@
         }
 
         .file-downloads-title {
-            color: #64748b;
+            color: var(--btir-text-secondary);
             white-space: nowrap;
         }
 
@@ -1049,9 +1186,9 @@
             padding: 5px 12px;
             border-radius: 6px;
             font-size: 12px;
-            background: #f1f5f9;
-            color: #475569;
-            border: 1px solid #e2e8f0;
+            background: var(--btir-bg);
+            color: var(--btir-text-secondary);
+            border: 1px solid var(--btir-border);
             cursor: pointer;
             white-space: nowrap;
             text-decoration: none;
@@ -1059,8 +1196,8 @@
         }
 
         .file-download-link:hover {
-            background: #e2e8f0;
-            color: #1e3c72;
+            background: var(--btir-border);
+            color: var(--btir-primary);
         }
 
         .file-download-link:active {
@@ -1117,7 +1254,7 @@
         .md-table-loading {
             display: flex;
             align-items: center;
-            color: #64748b;
+            color: var(--btir-text-secondary);
         }
 
         .md-table-overview {
@@ -1125,9 +1262,9 @@
             gap: 8px;
             align-items: center;
             justify-content: space-between;
-            color: #64748b;
+            color: var(--btir-text-secondary);
             font-size: 12px;
-            background: #f1f5f9;
+            background: var(--btir-bg);
             border-radius: 8px;
             padding: 6px 12px;
             margin-bottom: 12px;
@@ -1136,9 +1273,9 @@
         .md-table-copy {
             flex-shrink: 0;
             padding: 4px 12px;
-            background: #1e3c72;
+            background: var(--btir-primary);
             color: #ffffff;
-            border: 1px solid #1e3c72;
+            border: 1px solid var(--btir-primary);
             border-radius: 6px;
             font-size: 12px;
             cursor: pointer;
@@ -1146,8 +1283,8 @@
         }
 
         .md-table-copy:hover {
-            background: #2d5aa0;
-            border-color: #2d5aa0;
+            background: var(--btir-primary-hover);
+            border-color: var(--btir-primary-hover);
         }
 
         .md-table-copy:active {
@@ -1180,13 +1317,13 @@
             width: 100%;
             table-layout: fixed;
             border-collapse: collapse;
-            border: 1px solid #d7e3f0;
+            border: 1px solid var(--btir-border-strong);
             border-radius: 8px;
             overflow: hidden;
         }
 
         .md-table-row td {
-            border-bottom: 1px solid #eef2f7;
+            border-bottom: 1px solid var(--btir-border);
             padding: 3px 10px;
             vertical-align: top;
             transition: background-color 0.15s;
@@ -1207,7 +1344,7 @@
         }
 
         .md-table-value {
-            color: #334155;
+            color: var(--btir-text);
             font-family: var(--btir-mono);
             font-size: 12.5px;
             white-space: pre-wrap;
@@ -1216,40 +1353,40 @@
         }
 
         .md-table-group td {
-            background: #f4f7fb;
+            background: var(--btir-surface-muted);
         }
 
         .md-table-group .md-table-key {
             font-weight: 700;
-            color: #1e3c72;
+            color: var(--btir-primary);
         }
 
         .md-table-group .md-table-value {
-            color: #94a3b8;
+            color: var(--btir-text-muted);
         }
 
         .md-table-count {
-            color: #94a3b8;
+            color: var(--btir-text-muted);
             font-weight: 400;
             font-size: 11.5px;
         }
 
         .md-table-toggle {
             display: inline-block;
-            color: #94a3b8;
+            color: var(--btir-text-muted);
             font-size: 11px;
             margin-right: 4px;
             transition: color 0.15s, transform 0.15s;
         }
 
         .md-table-hint {
-            color: #94a3b8;
+            color: var(--btir-text-muted);
             font-size: 11.5px;
             transition: color 0.15s;
         }
 
         .md-table-group:hover .md-table-hint {
-            color: #1e3c72;
+            color: var(--btir-primary);
             text-decoration: underline;
         }
 
@@ -1258,13 +1395,13 @@
         }
 
         .md-table-empty {
-            color: #94a3b8;
+            color: var(--btir-text-muted);
             text-align: center;
             padding: 12px;
         }
 
         .md-table-row:hover td {
-            background: #f1f7ff;
+            background: var(--btir-surface-hover);
         }
 
         .md-table-group:hover td {
@@ -1272,16 +1409,16 @@
         }
 
         .md-table-group:hover .md-table-key {
-            color: #1e3c72;
+            color: var(--btir-primary);
         }
 
         .md-table-group:hover .md-table-toggle {
-            color: #1e3c72;
+            color: var(--btir-primary);
             transform: translateX(2px);
         }
 
         .json-placeholder {
-            color: #94a3b8;
+            color: var(--btir-text-muted);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -1404,7 +1541,7 @@
 
         .task-list-tab {
             padding: 6px 2px 8px;
-            color: #64748b;
+            color: var(--btir-text-secondary);
             background: transparent;
             border: none;
             border-bottom: 2px solid transparent;
@@ -1415,13 +1552,13 @@
         }
 
         .task-list-tab:hover {
-            color: #1e3c72;
+            color: var(--btir-primary);
             border-bottom-color: #94b7d3;
         }
 
         .task-list-tab.active {
-            color: #1e3c72;
-            border-bottom-color: #1e3c72;
+            color: var(--btir-primary);
+            border-bottom-color: var(--btir-primary);
         }
 
         .task-query-row {
@@ -1435,9 +1572,9 @@
         .task-query-row select {
             min-width: 0;
             padding: 9px 10px;
-            color: #334155;
-            background: white;
-            border: 1px solid #cbd5e1;
+            color: var(--btir-text);
+            background: var(--btir-surface);
+            border: 1px solid var(--btir-border);
             border-radius: 6px;
             font-size: 13px;
             transition: border-color 0.15s, box-shadow 0.15s;
@@ -1466,9 +1603,9 @@
         .task-small-btn {
             flex-shrink: 0;
             padding: 8px 12px;
-            color: #334155;
-            background: #f8fafc;
-            border: 1px solid #cbd5e1;
+            color: var(--btir-text);
+            background: var(--btir-surface-muted);
+            border: 1px solid var(--btir-border);
             border-radius: 6px;
             font-size: 12px;
             cursor: pointer;
@@ -1484,17 +1621,17 @@
         .task-small-btn.primary {
             color: white;
             background: #1e3c72;
-            border-color: #1e3c72;
+            border-color: var(--btir-primary);
         }
 
         .task-small-btn.primary:hover:not(:disabled) {
-            background: #2d5aa0;
-            border-color: #2d5aa0;
+            background: var(--btir-primary-hover);
+            border-color: var(--btir-primary-hover);
         }
 
         .task-small-btn.danger {
             color: #b42318;
-            background: #fff;
+            background: var(--btir-surface);
             border-color: #f0b7b2;
         }
 
@@ -1516,8 +1653,8 @@
         .task-message {
             padding: 8px 10px;
             margin-bottom: 10px;
-            color: #285b83;
-            background: #edf6fc;
+            color: var(--btir-accent);
+            background: var(--btir-primary-soft);
             border-radius: 6px;
             font-size: 12px;
             line-height: 1.5;
@@ -1541,7 +1678,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            color: #94a3b8;
+            color: var(--btir-text-muted);
             font-size: 13px;
         }
 
@@ -1597,7 +1734,7 @@
         }
 
         .task-card-name {
-            color: #1e3c72;
+            color: var(--btir-primary);
             font-size: 13px;
             font-weight: 600;
             overflow: hidden;
@@ -1607,7 +1744,7 @@
 
         .task-card-id {
             margin-top: 4px;
-            color: #64748b;
+            color: var(--btir-text-secondary);
             font-family: var(--btir-mono);
             font-size: 11px;
             word-break: break-all;
@@ -1761,7 +1898,7 @@
             flex-wrap: wrap;
             gap: 12px;
             padding: 7px 10px;
-            color: #94a3b8;
+            color: var(--btir-text-muted);
             background: #0e1828;
             border-top: 1px solid #26364d;
             font-size: 10px;
@@ -1783,8 +1920,8 @@
             flex-shrink: 0;
             padding: 3px 7px;
             border-radius: 999px;
-            color: #475569;
-            background: #e2e8f0;
+            color: var(--btir-text-secondary);
+            background: var(--btir-border);
             font-size: 11px;
         }
 
@@ -1840,7 +1977,7 @@
 
         .task-meta {
             margin-top: 8px;
-            color: #64748b;
+            color: var(--btir-text-secondary);
             font-size: 11px;
             line-height: 1.6;
         }
@@ -1873,24 +2010,24 @@
             grid-template-columns: 48px minmax(0, 1fr) auto;
             align-items: center;
             gap: 8px;
-            color: #64748b;
+            color: var(--btir-text-secondary);
             font-size: 11px;
             border-radius: 4px;
             transition: background 0.15s;
         }
 
         .task-run-history-row:hover {
-            background: #eef4fb;
+            background: var(--btir-primary-soft);
         }
 
         .task-run-history-model {
-            color: #1e3c72;
+            color: var(--btir-primary);
             font-weight: 600;
         }
 
         .task-run-history-empty {
             padding: 3px 0;
-            color: #94a3b8;
+            color: var(--btir-text-muted);
             font-size: 11px;
         }
 
@@ -1900,7 +2037,7 @@
             align-items: center;
             gap: 8px;
             padding-top: 10px;
-            color: #64748b;
+            color: var(--btir-text-secondary);
             font-size: 12px;
             flex-shrink: 0;
         }
@@ -1935,7 +2072,21 @@
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                     <h1 style="margin-bottom: 0;">脑肿瘤MRI图像识别</h1>
                     <div style="display: flex; align-items: center; gap: 10px; flex-shrink: 0;">
-                        <span v-if="currentUser" style="color: #2a5298; font-size: 13px;">{{ currentUser.username }}</span>
+                        <span v-if="currentUser" style="color: var(--btir-accent); font-size: 13px;">{{ currentUser.username }}</span>
+                        <button
+                            type="button"
+                            class="theme-toggle"
+                            :title="theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'"
+                            @click="toggleTheme"
+                        >
+                            <svg v-if="theme === 'dark'" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                                <circle cx="8" cy="8" r="3.2"></circle>
+                                <path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.4 3.4l1.3 1.3M11.3 11.3l1.3 1.3M12.7 3.4l-1.3 1.3M4.7 11.3l-1.3 1.3"></path>
+                            </svg>
+                            <svg v-else viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M13 9.5A5.5 5.5 0 0 1 6.5 3 5.5 5.5 0 1 0 13 9.5Z"></path>
+                            </svg>
+                        </button>
                         <button v-if="currentUser" data-testid="logout" class="logout-btn" @click="logout">
                             <svg class="icon" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M9 3H4.5A1.5 1.5 0 0 0 3 4.5v7A1.5 1.5 0 0 0 4.5 13H9"></path>
@@ -2402,64 +2553,13 @@
                             <span>滚轮切片 · 拖动调节窗宽窗位</span>
                         </div>
                     </div>
-                    <div class="md-table-viewer" v-else-if="selectedFileType === 'integrated'">
-                        <div class="md-table-loading" v-if="fileLoading">
-                            <span class="loading-spinner"></span>
-                            正在整合结果文件...
-                        </div>
-                        <template v-else>
-                            <div class="md-table-overview" v-if="integratedSections.length">
-                                <span>{{ integratedRowCount }} 个键值项</span>
-                                <button class="md-table-copy" @click="copyJson">
-                                    <svg class="icon" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                                        <rect x="5.5" y="5.5" width="8" height="8" rx="1.5"></rect>
-                                        <path d="M10.5 5.5V4A1.5 1.5 0 0 0 9 2.5H4A1.5 1.5 0 0 0 2.5 4v5A1.5 1.5 0 0 0 4 10.5h1.5"></path>
-                                    </svg>
-                                    复制
-                                </button>
-                            </div>
-                            <div
-                                class="md-table-section"
-                                v-for="section in integratedSections"
-                                :key="section.label"
-                            >
-                                <table class="md-table">
-                                    <tbody>
-                                        <tr v-if="!section.rows.length">
-                                            <td colspan="2" class="md-table-empty">（空）</td>
-                                        </tr>
-                                        <tr
-                                            v-for="(row, index) in visibleRows(section)"
-                                            :key="`${section.label}-${index}`"
-                                            :class="['md-table-row', { 'md-table-group': row.hasChildren }]"
-                                            @click="row.hasChildren && toggleRow(row)"
-                                        >
-                                            <td
-                                                class="md-table-key"
-                                                :style="{ paddingLeft: (12 + row.level * 20) + 'px' }"
-                                            >
-                                                <template v-if="row.hasChildren">
-                                                    <span class="md-table-toggle">{{ row.collapsed ? '▸' : '▾' }}</span>
-                                                    {{ row.key }}
-                                                    <span class="md-table-count" v-if="row.full">（{{ row.full }}）</span>
-                                                </template>
-                                                <template v-else>{{ row.key }}</template>
-                                            </td>
-                                            <td
-                                                class="md-table-value"
-                                                :title="row.full || row.value"
-                                            >
-                                                <span v-if="row.hasChildren" class="md-table-hint">
-                                                    {{ row.collapsed ? '点击展开' : '点击折叠' }}
-                                                </span>
-                                                <template v-else>{{ row.value }}</template>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </template>
-                    </div>
+                    <btir-detail-table
+                        v-else-if="selectedFileType === 'integrated'"
+                        :sources="integratedSources"
+                        :file-url="taskFileUrl"
+                        :headers="authHeaders"
+                        @copied="showToastMessage()"
+                    ></btir-detail-table>
                     <div
                         class="json-viewer"
                         v-else-if="selectedFileType === 'json' && selectedFileContent"
@@ -2689,14 +2789,12 @@
             </div>
         </div>
 
-        <div class="app-toast" :class="[toastType, { show: toastVisible }]">
-            <span class="app-toast-icon" v-if="toastType === 'success'">✓</span>
-            <span class="app-toast-icon" v-else-if="toastType === 'error'">✕</span>
-            <span>{{ toastMessage }}</span>
-        </div>
+        <btir-toast></btir-toast>
     </div>
 
     <script src="./volume_viewer.js"></script>
+    <script src="./components/btir-detail-table.js"></script>
+    <script src="./components/btir-toast.js"></script>
     <script>
         const { createApp } = Vue
 
@@ -2737,9 +2835,6 @@
                     dicomSeriesCandidates: {},
                     dicomSeriesSelections: {},
                     volumeCorrectionVisible: true,
-                    toastVisible: false,
-                    toastType: 'success',
-                    toastMessage: '已复制到剪贴板',
                     classificationLabel: '',
                     confidence: 0,
                     tumorArea: null,
@@ -2753,7 +2848,7 @@
                     selectedFileType: '',
                     selectedFileLabel: '',
                     fileLoading: false,
-                    integratedSections: [],
+                    integratedSources: [],
                     probabilitySeries: [],
                     probabilityThreshold: 0.548381,
                     volumeViewer: null,
@@ -2781,6 +2876,7 @@
                     taskMessage: '',
                     taskMessageIsError: false,
                     currentUser: null,
+                    theme: 'light',
                 }
             },
             computed: {
@@ -2900,12 +2996,6 @@
                     const sources = this.volumeViewerSources?.modalities || {}
                     return this.volumeModalities.filter(
                         modality => Boolean(sources[modality.key])
-                    )
-                },
-                integratedRowCount() {
-                    return this.integratedSections.reduce(
-                        (sum, section) => sum + section.rows.length,
-                        0,
                     )
                 },
                 ringCircumference() {
@@ -3307,7 +3397,7 @@
                     this.selectedFileContent = ''
                     this.selectedFileType = ''
                     this.selectedFileLabel = ''
-                    this.integratedSections = []
+                    this.integratedSources = []
                     this.volumeViewerSources = null
                     this.volumeViewerError = ''
                     this.volumeViewerLoading = false
@@ -3339,6 +3429,7 @@
                 },
                 buildFileList(resultData = {}, taskData = null) {
                     const files = []
+                    this.integratedSources = []
                     let maskPath = ''
                     const rf = resultData.result_files || null
                     if (rf) {
@@ -3379,6 +3470,7 @@
                         jsonFiles.push({ label: 'frontend_result.json', path: rf.frontend })
                     }
                     if (jsonFiles.length) {
+                        this.integratedSources = jsonFiles
                         files.push({
                             label: '详细结果',
                             path: '@integrated',
@@ -3463,175 +3555,6 @@
                     await this.$nextTick()
                     await this.loadSelectedVolume()
                 },
-                async openIntegratedView() {
-                    const sources = this.fileList.find(
-                        file => file.type === 'integrated'
-                    )?.sources?.files || []
-                    if (!sources.length) return
-                    if (
-                        this.selectedFileType === 'integrated'
-                        && this.integratedSections.length
-                    ) {
-                        return
-                    }
-
-                    this.destroyVolumeViewer()
-                    this.fileLoading = true
-                    this.selectedFilePath = '@integrated'
-                    this.selectedFileContent = ''
-                    this.selectedFileType = 'integrated'
-                    this.selectedFileLabel = '详细结果'
-                    this.integratedSections = []
-                    try {
-                        const loaded = await Promise.all(sources.map(async (source) => {
-                            const response = await fetch(this.taskFileUrl(source.path), {
-                                headers: this.authHeaders,
-                            })
-                            if (!response.ok) {
-                                throw new Error(`HTTP ${response.status}`)
-                            }
-                            const text = await response.text()
-                            let data = {}
-                            try {
-                                data = JSON.parse(text)
-                            } catch {
-                                data = {}
-                            }
-                            return { label: source.label, data }
-                        }))
-                        this.integratedSections = loaded.map(({ label, data }) => ({
-                            label,
-                            rows: this.flattenKeyValuePairs(data),
-                        }))
-                    } catch (err) {
-                        this.integratedSections = [{
-                            label: '读取失败',
-                            rows: [{
-                                key: 'error',
-                                value: `读取结果文件失败：${err.message}`,
-                                full: '',
-                                level: 0,
-                                hasChildren: false,
-                            }],
-                        }]
-                    } finally {
-                        this.fileLoading = false
-                    }
-                },
-                flattenKeyValuePairs(data) {
-                    const rows = []
-                    const append = (key, value, level, hasChildren, full) => {
-                        rows.push({
-                            key,
-                            value,
-                            level,
-                            hasChildren: Boolean(hasChildren),
-                            full: full || '',
-                            collapsed: Boolean(hasChildren),
-                        })
-                    }
-                    const walk = (node, displayKey, level) => {
-                        if (node === null) {
-                            append(displayKey, 'null', level)
-                            return
-                        }
-                        if (Array.isArray(node)) {
-                            if (node.length === 0) {
-                                append(displayKey, '[]', level)
-                                return
-                            }
-                            if (node.every(item => item === null || typeof item !== 'object')) {
-                                append(
-                                    displayKey,
-                                    `[${node.map(item => this.formatListValue(item)).join(', ')}]`,
-                                    level,
-                                )
-                                return
-                            }
-                            append(displayKey, '', level, true, `共 ${node.length} 项`)
-                            const visibleCount = Math.min(node.length, 12)
-                            for (let index = 0; index < visibleCount; index++) {
-                                const item = node[index]
-                                if (item !== null && typeof item === 'object') {
-                                    walk(item, `[${index}]`, level + 1)
-                                } else {
-                                    append(`[${index}]`, this.formatListValue(item), level + 1)
-                                }
-                            }
-                            if (node.length > visibleCount) {
-                                append(
-                                    '…',
-                                    `共 ${node.length} 项，仅显示前 ${visibleCount} 项`,
-                                    level + 1,
-                                )
-                            }
-                            return
-                        }
-                        if (typeof node === 'object') {
-                            const entries = Object.entries(node)
-                            if (entries.length === 0) {
-                                append(displayKey, '{}', level)
-                                return
-                            }
-                            append(displayKey, '', level, true, `${entries.length} 项`)
-                            for (const [childKey, childValue] of entries) {
-                                walk(childValue, childKey, level + 1)
-                            }
-                            return
-                        }
-                        const formatted = this.formatListValue(node)
-                        const full = (
-                            typeof node === 'string' && node.length > 240
-                        ) ? node : ''
-                        append(displayKey, formatted, level, false, full)
-                    }
-                    for (const [key, value] of Object.entries(data)) {
-                        walk(value, key, 0)
-                    }
-                    return rows
-                },
-                visibleRows(section) {
-                    const visible = []
-                    const collapsedAncestors = []
-                    for (const row of section.rows) {
-                        while (
-                            collapsedAncestors.length
-                            && row.level <= collapsedAncestors[collapsedAncestors.length - 1]
-                        ) {
-                            collapsedAncestors.pop()
-                        }
-                        if (!collapsedAncestors.length) {
-                            visible.push(row)
-                        }
-                        if (row.hasChildren && row.collapsed) {
-                            collapsedAncestors.push(row.level)
-                        }
-                    }
-                    return visible
-                },
-                toggleRow(row) {
-                    if (row.hasChildren) {
-                        row.collapsed = !row.collapsed
-                    }
-                },
-                formatListValue(value) {
-                    if (value === null) return 'null'
-                    if (typeof value === 'boolean') {
-                        return value ? 'true' : 'false'
-                    }
-                    if (typeof value === 'number') {
-                        if (!Number.isFinite(value)) return String(value)
-                        if (Number.isInteger(value)) return String(value)
-                        return String(Math.round(value * 1e6) / 1e6)
-                    }
-                    if (typeof value === 'string') {
-                        if (value.length > 240) {
-                            return `${value.slice(0, 240)}…`
-                        }
-                        return value
-                    }
-                    return String(value)
-                },
                 async loadSelectedVolume() {
                     const sources = this.volumeViewerSources
                     const base = sources?.modalities?.[this.selectedVolumeModality]
@@ -3713,7 +3636,11 @@
                         return
                     }
                     if (f.type === 'integrated') {
-                        this.openIntegratedView()
+                        this.destroyVolumeViewer()
+                        this.selectedFilePath = f.path
+                        this.selectedFileContent = ''
+                        this.selectedFileType = 'integrated'
+                        this.selectedFileLabel = f.label
                         return
                     }
                     if (this.selectedFilePath === f.path) return
@@ -3804,7 +3731,6 @@
                     this.selectedFilePath = ''
                     this.selectedFileContent = ''
                     this.selectedFileType = ''
-                    this.integratedSections = []
                     this.volumeViewerSources = null
                     this.volumeViewerError = ''
                     this.activeRightView = 'results'
@@ -4347,40 +4273,18 @@
                         this.loading = false
                     }
                 },
-                copyJson() {
-                    let text = this.selectedFileContent
-                    if (this.selectedFileType === 'integrated') {
-                        text = this.integratedSections.map((section) => {
-                            const lines = section.rows.map((row) => {
-                                const indent = '  '.repeat(row.level)
-                                const line = row.hasChildren
-                                    ? `- ${row.key}${row.full ? `（${row.full}）` : ''}`
-                                    : `- ${row.key}: ${row.value}`
-                                return `${indent}${line}`
-                            })
-                            return lines.join('\n')
-                        }).join('\n\n')
-                    }
-                    navigator.clipboard.writeText(text).then(() => {
-                        this.showToastMessage()
-                    }).catch(() => {
-                        const ta = document.createElement('textarea')
-                        ta.value = text
-                        document.body.appendChild(ta)
-                        ta.select()
-                        document.execCommand('copy')
-                        document.body.removeChild(ta)
-                        this.showToastMessage()
-                    })
-                },
                 showToastMessage(message = '已复制到剪贴板', type = 'success') {
-                    this.toastMessage = message
-                    this.toastType = type
-                    this.toastVisible = true
-                    clearTimeout(this._toastTimer)
-                    this._toastTimer = setTimeout(() => {
-                        this.toastVisible = false
-                    }, 2200)
+                    window.dispatchEvent(new CustomEvent('btir:toast', {
+                        detail: { message, type },
+                    }))
+                },
+                applyTheme() {
+                    document.documentElement.setAttribute('data-theme', this.theme)
+                },
+                toggleTheme() {
+                    this.theme = this.theme === 'dark' ? 'light' : 'dark'
+                    localStorage.setItem('btir_theme', this.theme)
+                    this.applyTheme()
                 },
                 logout() {
                     localStorage.removeItem('btir_token')
@@ -4389,6 +4293,10 @@
                 },
             },
             async mounted() {
+                const savedTheme = localStorage.getItem('btir_theme')
+                this.theme = savedTheme || 'light'
+                this.applyTheme()
+
                 const token = localStorage.getItem('btir_token')
                 if (!token) {
                     window.location.href = '/login/login.html'
