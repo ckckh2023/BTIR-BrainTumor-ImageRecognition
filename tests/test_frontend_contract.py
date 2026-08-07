@@ -168,6 +168,37 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("startNewUpload()", self.html)
         self.assertIn("this.volumeDicomFiles = []", self.html)
 
+    def test_result_integrated_view_flattens_json_key_value_pairs(self) -> None:
+        self.assertIn("详细结果", self.html)
+        self.assertIn("type: 'integrated'", self.html)
+        self.assertIn("openIntegratedView", self.html)
+        self.assertIn("flattenKeyValuePairs", self.html)
+        self.assertIn("md-table-viewer", self.html)
+        self.assertNotIn("md-table-title", self.html)
+        self.assertNotIn("md-table-th-key", self.html)
+        self.assertNotIn("键</th>", self.html)
+        self.assertNotIn("# {{ section.label }}", self.html)
+        self.assertNotIn('class="copy-btn"', self.html)
+        self.assertIn("md-table-copy", self.html)
+        self.assertIn('@click="copyJson"', self.html)
+        self.assertIn("integratedRowCount", self.html)
+        self.assertIn("visibleRows(section)", self.html)
+        self.assertIn("toggleRow(row)", self.html)
+        self.assertIn("collapsed: Boolean(hasChildren)", self.html)
+        self.assertIn("md-table-toggle", self.html)
+        self.assertIn("label: 'frontend_result.json', path: rf.frontend", self.html)
+        self.assertNotIn("classification.json', 'classification'", self.html)
+        self.assertNotIn("segmentation.json', 'segmentation'", self.html)
+
+    def test_json_raw_tabs_removed_and_3d_viewer_stays_default(self) -> None:
+        self.assertNotIn("addFile('frontend_result.json'", self.html)
+        self.assertNotIn("addFile('classification.json'", self.html)
+        self.assertNotIn("addFile('segmentation.json'", self.html)
+        self.assertLess(
+            self.html.index("label: '3D查看'"),
+            self.html.index("label: '详细结果'"),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
