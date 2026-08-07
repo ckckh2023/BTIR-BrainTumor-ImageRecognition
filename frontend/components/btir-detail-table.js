@@ -3,6 +3,134 @@
     const Vue = global.Vue
     if (!Vue) return
 
+    const KEY_LABELS = {
+        schema_version: '协议版本',
+        task_id: '任务ID',
+        created_at: '创建时间',
+        updated_at: '更新时间',
+        analysis_mode: '分析模式',
+        status: '状态',
+        completed_models: '已完成模型',
+        result_files: '结果文件',
+        frontend: '前端结果',
+        classification: '分类结果',
+        segmentation: '分割结果',
+        mask: '分割掩码',
+        input_files: '输入文件',
+        flair: 'FLAIR',
+        t1ce: 'T1CE',
+        t1: 'T1',
+        t2: 'T2',
+        latest_runs: '最新运行',
+        run_id: '运行ID',
+        run_directory: '运行目录',
+        model: '模型',
+        model_metadata: '模型元数据',
+        name: '名称',
+        variant: '变体',
+        weights: '权重',
+        inference_mode: '推理模式',
+        device: '设备',
+        checkpoint: '检查点',
+        spatial: '空间信息',
+        shape: '尺寸',
+        voxel_spacing_mm: '体素间距(mm)',
+        orientation: '方向',
+        affine: '仿射矩阵',
+        labels: '标签',
+        scheme: '标签方案',
+        values: '取值',
+        regions: '区域',
+        volume_mm3: '体积(mm³)',
+        voxels: '体素数',
+        ratio: '占比',
+        composites: '复合区域',
+        morphology: '形态学',
+        connected_components: '连通域数',
+        largest_component_voxels: '最大连通域体素数',
+        largest_component_volume_mm3: '最大连通域体积(mm³)',
+        largest_component_ratio: '最大连通域占比',
+        bounding_box_size_voxels: '包围盒尺寸(体素)',
+        bounding_box_size_mm: '包围盒尺寸(mm)',
+        bounding_box_fill_ratio: '包围盒填充率',
+        centroid_normalized: '归一化质心',
+        timing: '耗时',
+        classification_inference_ms: '分类推理耗时(ms)',
+        classification_breakdown: '分类耗时明细',
+        prepare_ms: '预处理(ms)',
+        model_setup_ms: '模型加载(ms)',
+        model_inference_ms: '模型推理(ms)',
+        postprocess_ms: '后处理(ms)',
+        segmentation_inference_ms: '分割推理耗时(ms)',
+        segmentation_breakdown: '分割耗时明细',
+        load_validate_ms: '读取校验(ms)',
+        normalize_ms: '归一化(ms)',
+        save_ms: '保存(ms)',
+        total_ms: '总计(ms)',
+        supplementary_analysis: '综合分析',
+        provider: '提供方',
+        prompt_version: '提示词版本',
+        generated_at: '生成时间',
+        duration_ms: '耗时(ms)',
+        usage: '用量',
+        prompt_tokens: '提示词Token数',
+        completion_tokens: '生成Token数',
+        total_tokens: '总Token数',
+        content: '内容',
+        summary: '结论摘要',
+        observations: '观察项',
+        consistency: '一致性',
+        uncertainties: '不确定项',
+        follow_up: '建议',
+        model_consensus: '模型共识',
+        version: '版本',
+        primary_evidence: '主要证据',
+        segmentation_detected: '检出分割区域',
+        segmentation_volume_mm3: '分割体积(mm³)',
+        segmentation_voxel_count: '分割体素数',
+        requires_review: '需要复核',
+        probabilities: '概率',
+        no: '阴性',
+        yes: '阳性',
+        threshold: '阈值',
+        method: '方法',
+        experimental: '实验性',
+        modality: '模态',
+        axis: '切面',
+        evaluated_slices: '评估切片数',
+        positive_slices: '阳性切片数',
+        probability_statistics: '概率统计',
+        mean_yes_probability: '阳性概率均值',
+        stddev_yes_probability: '阳性概率标准差',
+        min_yes_probability: '最小阳性概率',
+        max_yes_probability: '最大阳性概率',
+        median_yes_probability: '中位阳性概率',
+        positive_slice_ratio: '阳性切片占比',
+        threshold_margin: '阈值差值',
+        positive_slice_structure: '阳性切片结构',
+        positive_runs: '阳性连续段数',
+        longest_positive_run_samples: '最长连续段',
+        positive_span_samples: '阳性跨度',
+        probability_histogram: '概率直方图',
+        lower: '下界',
+        upper: '上界',
+        count: '数量',
+        slice_probability_series: '切片概率序列',
+        slice_index: '切片序号',
+        yes_probability: '阳性概率',
+        aggregation: '聚合方式',
+        evidence_slices: '证据切片',
+        input_summary: '输入摘要',
+        canonical_shape: '标准尺寸',
+        foreground_slices: '前景切片数',
+        intensity_window: '强度窗',
+        class: '结论',
+        class_id: '结论ID',
+        confidence: '置信度',
+        label: '标签',
+        error: '错误',
+    }
+
     const registry = global.BtirComponents || (global.BtirComponents = {})
     registry['btir-detail-table'] = {
         props: {
@@ -87,8 +215,10 @@
             flattenKeyValuePairs(data) {
                 const rows = []
                 const append = (key, value, level, hasChildren, full) => {
+                    const displayKey = this.translateKey(key)
                     rows.push({
-                        key,
+                        key: displayKey,
+                        rawKey: displayKey === key ? '' : key,
                         value,
                         level,
                         hasChildren: Boolean(hasChildren),
@@ -155,6 +285,11 @@
                     walk(value, key, 0)
                 }
                 return rows
+            },
+            translateKey(key) {
+                if (typeof key !== 'string' || !key) return key
+                if (key.startsWith('[') || key === '…') return key
+                return KEY_LABELS[key] || key
             },
             visibleRows(section) {
                 const visible = []
@@ -265,6 +400,7 @@
                                     <td
                                         class="md-table-key"
                                         :style="{ paddingLeft: (12 + row.level * 20) + 'px' }"
+                                        :title="row.rawKey || undefined"
                                     >
                                         <template v-if="row.hasChildren">
                                             <span class="md-table-toggle">{{ row.collapsed ? '▸' : '▾' }}</span>

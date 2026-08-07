@@ -21,6 +21,9 @@ class FrontendContractTests(unittest.TestCase):
         cls.login_html = (
             PROJECT_ROOT / "frontend" / "login.html"
         ).read_text(encoding="utf-8")
+        cls.viewer_html = (
+            PROJECT_ROOT / "frontend" / "volume_viewer.js"
+        ).read_text(encoding="utf-8")
 
     def test_3d_result_does_not_render_an_outdated_hint(self) -> None:
         self.assertNotIn("当前 3D 路线仅提供分割与定量统计", self.html)
@@ -252,6 +255,59 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('aria-label="退出登录"', self.html)
         self.assertIn(".logout-btn:hover", self.html)
         self.assertIn("border-radius: 50%", self.html)
+
+    def test_segmentation_judgment_uses_ring_and_legend(self) -> None:
+        self.assertIn("result-ring-value seg", self.html)
+        self.assertIn("segRingDashOffset", self.html)
+        self.assertIn("segPercent", self.html)
+        self.assertIn("segTotalVolume", self.html)
+        self.assertIn("result-seg-legend", self.html)
+        self.assertIn("result-seg-dot", self.html)
+
+    def test_task_flow_optimizations(self) -> None:
+        self.assertNotIn("this.taskListMode = 'archived'", self.html)
+        self.assertNotIn("✓ 3D分析完成", self.html)
+        self.assertIn(
+            "statusText || analysisProgress || (analysisPolling && taskId && !analysisCancelled)",
+            self.html,
+        )
+
+    def test_niivue_preload_warms_3d_viewer(self) -> None:
+        self.assertIn(
+            '<link rel="preload" href="./vendor/niivue.umd.js" as="script">',
+            self.html,
+        )
+        self.assertIn("window.BtirVolumeViewer?.preload?.()", self.html)
+        self.assertIn("global.BtirVolumeViewer.preload = preloadNiiVue", self.viewer_html)
+        self.assertIn("function preloadNiiVue", self.viewer_html)
+
+    def test_probability_chart_nodes_show_hover_values(self) -> None:
+        self.assertIn("chartPoints", self.html)
+        self.assertIn("result-chart-node", self.html)
+        self.assertIn("showChartPoint", self.html)
+        self.assertIn("result-chart-tooltip", self.html)
+        self.assertIn("probabilityText", self.html)
+        self.assertIn("chartHoverVisible", self.html)
+        self.assertIn("transition: opacity 0.45s ease", self.html)
+
+    def test_scroll_reveal_and_chart_draw_animations(self) -> None:
+        self.assertIn("[data-reveal]", self.html)
+        self.assertIn("initRevealObserver", self.html)
+        self.assertIn("IntersectionObserver", self.html)
+        self.assertIn("ringDisplayOffset", self.html)
+        self.assertIn("segRingDisplayOffset", self.html)
+        self.assertIn("probLineLength", self.html)
+        self.assertIn("probLineDrawn", self.html)
+        self.assertIn("animationDelay", self.html)
+        self.assertIn("animation: fade-in 0.2s ease", self.html)
+
+    def test_detail_table_translates_json_keys_to_chinese(self) -> None:
+        self.assertIn("KEY_LABELS", self.detail_html)
+        self.assertIn("translateKey", self.detail_html)
+        self.assertIn("rawKey", self.detail_html)
+        self.assertIn("分类结果", self.detail_html)
+        self.assertIn("协议版本", self.detail_html)
+        self.assertIn("置信度", self.detail_html)
 
 
 if __name__ == "__main__":
