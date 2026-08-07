@@ -3,7 +3,8 @@
     const Vue = global.Vue
     if (!Vue) return
 
-    Vue.component('btir-toast', {
+    const registry = global.BtirComponents || (global.BtirComponents = {})
+    registry['btir-toast'] = {
         data() {
             return {
                 visible: false,
@@ -37,5 +38,5 @@
                 <span>{{ message }}</span>
             </div>
         `,
-    })
+    }
 })(window)
