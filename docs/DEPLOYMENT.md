@@ -30,7 +30,8 @@ models/segmentation3d/model/model_epoch_297.pth
 ```
 
 3D 路线还依赖 `nibabel`、`einops`、`MONAI 1.3`、`transformers` 与
-`safetensors`，均已写入 `requirements.txt`，不需要单独复制原模型的训练环境
+`safetensors`，原始 DICOM 转换依赖 `pydicom` 与 `SimpleITK`，均已写入
+`requirements.txt`，不需要单独复制原模型的训练环境
 默认 ViT 模型完整保存在 `models/classification/vit-binary/`，运行时强制离线
 加载<br>
 目录必须保留 `config.json`、`model.safetensors` 与

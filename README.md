@@ -158,8 +158,10 @@ python -m unittest tests.test_browser_e2e -v
 
 ```text
 frontend/        浏览器页面、上传交互与 3D 查看
+assets/          页面图标等静态资源
 api/             FastAPI 应用、鉴权和路由
 contracts/       API 请求与响应模型
+processing/      体积切片预处理与分类聚合
 core/            配置、任务状态和持久化记录
 services/        任务、推理、队列、锁、归档、审计等业务逻辑
 repositories/    SQLite 任务与用户仓储
@@ -168,6 +170,7 @@ models/          分类、分割模型实现与权重
 accelerator/     CPU、CUDA、ROCm 适配
 scripts/         Linux 进程守护脚本
 tests/           自动化测试
+docs/            部署、运维与 API 文档
 Main.py          开发调试和维护命令
 ```
 
@@ -187,6 +190,8 @@ python Main.py help
 python Main.py reconcile-tasks
 python Main.py archive-tasks
 python Main.py purge-archive
+python Main.py claim-legacy-tasks <username> --apply
+python Main.py evaluate-3d <BraTS数据集目录>
 python Main.py clear --dry-run
 ```
 
