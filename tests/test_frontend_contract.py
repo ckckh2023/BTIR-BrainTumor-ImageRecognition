@@ -239,6 +239,20 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("probabilityPoints", self.html)
         self.assertIn('class="icon"', self.html)
 
+    def test_logo_uses_theme_mask_without_frame(self) -> None:
+        self.assertIn("mask: url('/assets/icon_exp.png')", self.html)
+        self.assertIn('[data-theme="dark"] .app-logo', self.html)
+        self.assertIn('class="app-logo"', self.html)
+        self.assertNotIn("border-radius: 12px", self.html)
+
+    def test_topbar_actions_are_embedded_icon_buttons(self) -> None:
+        self.assertNotIn(">登出</button>", self.html)
+        self.assertNotIn("四模态脑肿瘤 MRI 智能分析平台", self.html)
+        self.assertIn('title="退出登录"', self.html)
+        self.assertIn('aria-label="退出登录"', self.html)
+        self.assertIn(".logout-btn:hover", self.html)
+        self.assertIn("border-radius: 50%", self.html)
+
 
 if __name__ == "__main__":
     unittest.main()
