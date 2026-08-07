@@ -6,141 +6,305 @@
     <title>登录 - 脑肿瘤MRI图像识别</title>
     <link rel="icon" type="image/png" href="/assets/icon_exp.png">
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script>
+        (function () {
+            var theme = 'light'
+            try {
+                theme = localStorage.getItem('btir_theme') || 'light'
+            } catch (e) { /* 忽略存储不可用 */ }
+            document.documentElement.setAttribute('data-theme', theme)
+        })()
+    </script>
     <style>
+        :root {
+            --btir-primary: #1e3c72;
+            --btir-primary-hover: #2d5aa0;
+            --btir-primary-soft: #eef4fb;
+            --btir-accent: #407eb8;
+            --btir-bg: #eef2f7;
+            --btir-bg-soft: #e3e9f2;
+            --btir-surface: #ffffff;
+            --btir-surface-muted: #f8fafc;
+            --btir-border: #dbe4ef;
+            --btir-border-strong: #b9d2ec;
+            --btir-text: #1e293b;
+            --btir-text-secondary: #64748b;
+            --btir-text-muted: #94a3b8;
+            --btir-danger: #b42318;
+            --btir-danger-bg: #fee2e2;
+            --btir-success: #18794e;
+            --btir-success-bg: #dcfce7;
+            --btir-radius-sm: 6px;
+            --btir-radius-md: 10px;
+            --btir-radius-lg: 16px;
+            --btir-shadow-sm: 0 1px 3px rgba(30, 41, 59, 0.08);
+            --btir-shadow-md: 0 6px 18px rgba(30, 41, 59, 0.10);
+            --btir-shadow-lg: 0 18px 50px rgba(30, 41, 59, 0.22);
+            --btir-font: 'Microsoft YaHei', 'PingFang SC', 'Segoe UI', Arial, sans-serif;
+            --btir-transition: 0.2s ease;
+        }
+
+        [data-theme="dark"] {
+            --btir-primary: #4d7fc2;
+            --btir-primary-hover: #5d92d6;
+            --btir-primary-soft: #1d3456;
+            --btir-accent: #6ea8e8;
+            --btir-bg: #0b1220;
+            --btir-bg-soft: #131c2e;
+            --btir-surface: #16213a;
+            --btir-surface-muted: #1b2742;
+            --btir-border: #2b3a57;
+            --btir-border-strong: #3c4f73;
+            --btir-text: #e5ebf4;
+            --btir-text-secondary: #9fb0c8;
+            --btir-text-muted: #6b7c96;
+            --btir-shadow-lg: 0 18px 50px rgba(0, 0, 0, 0.6);
+        }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
+
         body {
-            font-family: 'Microsoft YaHei', Arial, sans-serif;
-            background: linear-gradient(180deg, #1a3a6b 0%, #2d5aa0 100%);
+            font-family: var(--btir-font);
+            background: linear-gradient(160deg, var(--btir-bg) 0%, var(--btir-bg-soft) 100%);
+            color: var(--btir-text);
             min-height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
             padding: 20px;
         }
+
+        .theme-toggle {
+            position: fixed;
+            top: 18px;
+            right: 18px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 34px;
+            height: 32px;
+            padding: 0;
+            color: var(--btir-text-secondary);
+            background: var(--btir-surface);
+            border: 1px solid var(--btir-border-strong);
+            border-radius: var(--btir-radius-sm);
+            cursor: pointer;
+            box-shadow: var(--btir-shadow-sm);
+            transition: all var(--btir-transition);
+        }
+
+        .theme-toggle:hover {
+            color: #ffffff;
+            background: var(--btir-primary);
+            border-color: var(--btir-primary);
+            transform: translateY(-1px);
+        }
+
+        .theme-toggle:active {
+            transform: scale(0.95);
+        }
+
+        .theme-toggle svg {
+            vertical-align: middle;
+        }
+
         .auth-card {
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            background: var(--btir-surface);
+            border: 1px solid rgba(255, 255, 255, 0.7);
+            border-radius: var(--btir-radius-lg);
+            box-shadow: var(--btir-shadow-lg);
             padding: 44px 48px;
             width: 470px;
             max-width: 100%;
+            animation: slide-up 0.3s ease;
         }
+
         h1 {
-            color: #1e3c72;
+            color: var(--btir-primary);
             margin-bottom: 8px;
             font-size: 24px;
             text-align: center;
         }
+
         .subtitle {
-            color: #64748b;
+            color: var(--btir-text-secondary);
             font-size: 14px;
             text-align: center;
             margin-bottom: 28px;
         }
+
         .tabs {
             display: flex;
             gap: 4px;
             padding: 3px;
-            background: #edf2f7;
-            border-radius: 8px;
+            background: var(--btir-bg);
+            border-radius: var(--btir-radius-md);
             margin-bottom: 24px;
         }
+
         .tab {
             flex: 1;
             padding: 8px 16px;
-            color: #64748b;
+            color: var(--btir-text-secondary);
             background: transparent;
             border: none;
-            border-radius: 6px;
+            border-radius: var(--btir-radius-sm);
             font-size: 14px;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all var(--btir-transition);
         }
+
+        .tab:hover:not(.active) {
+            color: var(--btir-primary);
+            background: var(--btir-surface);
+        }
+
+        .tab:active {
+            transform: scale(0.98);
+        }
+
         .tab.active {
             color: white;
-            background: #1e3c72;
+            background: var(--btir-primary);
         }
+
         .form-group {
             margin-bottom: 16px;
         }
+
         label {
             display: block;
             margin-bottom: 6px;
-            color: #2a5298;
+            color: var(--btir-accent);
             font-weight: 500;
             font-size: 13px;
         }
+
         input {
             width: 100%;
             padding: 10px 14px;
-            border: 2px solid #b8d4e8;
-            border-radius: 8px;
+            color: var(--btir-text);
+            background: var(--btir-surface-muted);
+            border: 1px solid var(--btir-border-strong);
+            border-radius: var(--btir-radius-sm);
             font-size: 14px;
-            transition: border-color 0.3s, box-shadow 0.3s;
+            transition: border-color var(--btir-transition), box-shadow var(--btir-transition);
         }
+
+        input:hover {
+            border-color: var(--btir-accent);
+        }
+
         input:focus {
             outline: none;
-            border-color: #335fb1;
-            box-shadow: 0 0 0 3px rgba(51, 95, 177, 0.12);
+            border-color: var(--btir-accent);
+            box-shadow: 0 0 0 3px rgba(64, 126, 184, 0.14);
         }
+
         .submit-btn {
             width: 100%;
             padding: 12px;
-            background: linear-gradient(160deg, #2c3e66 0%, #1a2744 100%);
+            background: linear-gradient(160deg, var(--btir-primary-hover) 0%, var(--btir-primary) 100%);
             color: white;
             border: none;
-            border-radius: 8px;
+            border-radius: var(--btir-radius-md);
             font-size: 15px;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: all var(--btir-transition);
             margin-top: 8px;
         }
+
         .submit-btn:hover:not(:disabled) {
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(30, 60, 114, 0.4);
+            box-shadow: 0 6px 20px rgba(30, 60, 114, 0.32);
         }
+
+        .submit-btn:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
         .submit-btn:disabled {
             background: #a0aec0;
             cursor: not-allowed;
             transform: none;
             box-shadow: none;
         }
+
         .message {
             padding: 10px 12px;
             margin-bottom: 16px;
-            border-radius: 6px;
+            border-radius: var(--btir-radius-sm);
             font-size: 13px;
             line-height: 1.5;
+            animation: fade-in 0.2s ease;
         }
+
         .message.error {
-            color: #b42318;
-            background: #fef3f2;
+            color: var(--btir-danger);
+            background: var(--btir-danger-bg);
         }
+
         .message.success {
-            color: #18794e;
-            background: #dcfce7;
+            color: var(--btir-success);
+            background: var(--btir-success-bg);
         }
+
+        [data-theme="dark"] .message.error {
+            color: #fca5a5;
+            background: #3b1a1a;
+        }
+
+        [data-theme="dark"] .message.success {
+            color: #86efac;
+            background: #14351f;
+        }
+
         .loading-spinner {
             display: inline-block;
             width: 14px;
             height: 14px;
-            border: 2px solid #e8f0f8;
-            border-top: 2px solid #407eb8;
+            border: 2px solid rgba(255, 255, 255, 0.45);
+            border-top-color: #ffffff;
             border-radius: 50%;
             animation: spin 1s linear infinite;
             margin-right: 6px;
             vertical-align: middle;
         }
+
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
+        }
+
+        @keyframes fade-in {
+            from { opacity: 0; transform: translateY(4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes slide-up {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
     </style>
 </head>
 <body>
     <div id="app">
+        <button
+            type="button"
+            class="theme-toggle"
+            :title="theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'"
+            @click="toggleTheme"
+        >
+            <svg v-if="theme === 'dark'" viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                <circle cx="8" cy="8" r="3.2"></circle>
+                <path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.4 3.4l1.3 1.3M11.3 11.3l1.3 1.3M12.7 3.4l-1.3 1.3M4.7 11.3l-1.3 1.3"></path>
+            </svg>
+            <svg v-else viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M13 9.5A5.5 5.5 0 0 1 6.5 3 5.5 5.5 0 1 0 13 9.5Z"></path>
+            </svg>
+        </button>
         <div class="auth-card">
             <h1>脑肿瘤MRI图像识别</h1>
             <div class="subtitle">多用户认证系统</div>
@@ -198,9 +362,18 @@
                     loading: false,
                     msg: '',
                     msgType: 'error',
+                    theme: 'light',
                 }
             },
             methods: {
+                applyTheme() {
+                    document.documentElement.setAttribute('data-theme', this.theme)
+                },
+                toggleTheme() {
+                    this.theme = this.theme === 'dark' ? 'light' : 'dark'
+                    localStorage.setItem('btir_theme', this.theme)
+                    this.applyTheme()
+                },
                 switchMode(mode) {
                     this.mode = mode
                     this.msg = ''
@@ -296,6 +469,10 @@
                 },
             },
             async mounted() {
+                const savedTheme = localStorage.getItem('btir_theme')
+                this.theme = savedTheme || 'light'
+                this.applyTheme()
+
                 const token = localStorage.getItem('btir_token')
                 if (!token) return
                 try {

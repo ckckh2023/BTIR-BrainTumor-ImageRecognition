@@ -18,6 +18,9 @@ class FrontendContractTests(unittest.TestCase):
         cls.toast_html = (
             PROJECT_ROOT / "frontend" / "components" / "btir-toast.js"
         ).read_text(encoding="utf-8")
+        cls.login_html = (
+            PROJECT_ROOT / "frontend" / "login.html"
+        ).read_text(encoding="utf-8")
 
     def test_3d_result_does_not_render_an_outdated_hint(self) -> None:
         self.assertNotIn("当前 3D 路线仅提供分割与定量统计", self.html)
@@ -204,6 +207,16 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("registry['btir-toast']", self.toast_html)
         self.assertIn("btirApp.component(name", self.html)
         self.assertIn("btir:toast", self.toast_html)
+
+    def test_login_page_synced_with_design_tokens(self) -> None:
+        self.assertIn("--btir-primary:", self.login_html)
+        self.assertIn('[data-theme="dark"]', self.login_html)
+        self.assertIn("theme-toggle", self.login_html)
+        self.assertIn("toggleTheme", self.login_html)
+        self.assertIn(".tab:hover:not(.active)", self.login_html)
+        self.assertIn("input:hover", self.login_html)
+        self.assertIn("submit-btn:hover:not(:disabled)", self.login_html)
+        self.assertNotIn("linear-gradient(180deg, #1a3a6b", self.login_html)
 
     def test_json_raw_tabs_removed_and_3d_viewer_stays_default(self) -> None:
         self.assertNotIn("addFile('frontend_result.json'", self.html)
