@@ -75,9 +75,6 @@
         }
 
         .theme-toggle {
-            position: fixed;
-            top: 18px;
-            right: 18px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -109,6 +106,7 @@
         }
 
         .auth-card {
+            position: relative;
             background: var(--btir-surface);
             border: 1px solid rgba(255, 255, 255, 0.7);
             border-radius: var(--btir-radius-lg);
@@ -119,18 +117,25 @@
             animation: slide-up 0.3s ease;
         }
 
-        h1 {
-            color: var(--btir-primary);
-            margin-bottom: 8px;
-            font-size: 24px;
-            text-align: center;
+        .auth-card .theme-toggle {
+            position: absolute;
+            top: 14px;
+            right: 14px;
+            box-shadow: none;
+            background: transparent;
+            border-color: transparent;
         }
 
-        .subtitle {
-            color: var(--btir-text-secondary);
-            font-size: 14px;
+        .auth-card .theme-toggle:hover {
+            background: var(--btir-primary-soft);
+            border-color: transparent;
+        }
+
+        h1 {
+            color: var(--btir-primary);
+            margin-bottom: 22px;
+            font-size: 24px;
             text-align: center;
-            margin-bottom: 28px;
         }
 
         .tabs {
@@ -291,23 +296,22 @@
 </head>
 <body>
     <div id="app">
-        <button
-            type="button"
-            class="theme-toggle"
-            :title="theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'"
-            @click="toggleTheme"
-        >
-            <svg v-if="theme === 'dark'" viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-                <circle cx="8" cy="8" r="3.2"></circle>
-                <path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.4 3.4l1.3 1.3M11.3 11.3l1.3 1.3M12.7 3.4l-1.3 1.3M4.7 11.3l-1.3 1.3"></path>
-            </svg>
-            <svg v-else viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M13 9.5A5.5 5.5 0 0 1 6.5 3 5.5 5.5 0 1 0 13 9.5Z"></path>
-            </svg>
-        </button>
         <div class="auth-card">
+            <button
+                type="button"
+                class="theme-toggle"
+                :title="theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'"
+                @click="toggleTheme"
+            >
+                <svg v-if="theme === 'dark'" viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                    <circle cx="8" cy="8" r="3.2"></circle>
+                    <path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.4 3.4l1.3 1.3M11.3 11.3l1.3 1.3M12.7 3.4l-1.3 1.3M4.7 11.3l-1.3 1.3"></path>
+                </svg>
+                <svg v-else viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M13 9.5A5.5 5.5 0 0 1 6.5 3 5.5 5.5 0 1 0 13 9.5Z"></path>
+                </svg>
+            </button>
             <h1>脑肿瘤MRI图像识别</h1>
-            <div class="subtitle">多用户认证系统</div>
 
             <div class="tabs">
                 <button :class="['tab', { active: mode === 'login' }]" @click="switchMode('login')">登录</button>

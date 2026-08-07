@@ -220,14 +220,16 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("input:hover", self.login_html)
         self.assertIn("submit-btn:hover:not(:disabled)", self.login_html)
         self.assertNotIn("linear-gradient(180deg, #1a3a6b", self.login_html)
+        self.assertNotIn("多用户认证系统", self.login_html)
+        self.assertIn(".auth-card .theme-toggle", self.login_html)
 
-    def test_json_raw_tabs_removed_and_3d_viewer_stays_default(self) -> None:
+    def test_json_raw_tabs_removed_and_detail_results_first(self) -> None:
         self.assertNotIn("addFile('frontend_result.json'", self.html)
         self.assertNotIn("addFile('classification.json'", self.html)
         self.assertNotIn("addFile('segmentation.json'", self.html)
         self.assertLess(
-            self.html.index("label: '3D查看'"),
             self.html.index("label: '详细结果'"),
+            self.html.index("label: '3D查看'"),
         )
 
     def test_modern_ui_tokens_toast_skeleton_and_visualization(self) -> None:
@@ -308,6 +310,16 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("分类结果", self.detail_html)
         self.assertIn("协议版本", self.detail_html)
         self.assertIn("置信度", self.detail_html)
+
+    def test_detail_table_uses_curated_sections(self) -> None:
+        self.assertIn("buildCuratedRows", self.detail_html)
+        self.assertIn("addGroup('任务信息'", self.detail_html)
+        self.assertIn("addGroup('分类判断'", self.detail_html)
+        self.assertIn("addGroup('分割判断'", self.detail_html)
+        self.assertIn("addGroup('模型共识'", self.detail_html)
+        self.assertIn("addGroup('综合分析'", self.detail_html)
+        self.assertIn("addGroup('性能耗时'", self.detail_html)
+        self.assertIn("addGroup('全部字段'", self.detail_html)
 
 
 if __name__ == "__main__":
