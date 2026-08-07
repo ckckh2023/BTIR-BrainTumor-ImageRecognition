@@ -703,22 +703,6 @@
             min-height: 0;
         }
 
-        .copy-btn {
-            flex-shrink: 0;
-            padding: 6px 14px;
-            background: #334155;
-            color: #e2e8f0;
-            border: 1px solid #475569;
-            border-radius: 6px;
-            font-size: 12px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .copy-btn:hover {
-            background: #475569;
-        }
-
         .file-tabs {
             display: flex;
             flex-wrap: wrap;
@@ -826,6 +810,147 @@
         .json-viewer .null {
             color: #ef9a9a;
             font-style: italic;
+        }
+
+        .md-table-viewer {
+            flex: 1;
+            background: #ffffff;
+            border: 1px solid #dbe4ef;
+            border-radius: 10px;
+            padding: 14px 16px;
+            overflow-y: auto;
+            min-height: 0;
+            font-size: 13px;
+            line-height: 1.55;
+            color: #1e293b;
+        }
+
+        .md-table-loading {
+            display: flex;
+            align-items: center;
+            color: #64748b;
+        }
+
+        .md-table-overview {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            justify-content: space-between;
+            color: #64748b;
+            font-size: 12px;
+            background: #f1f5f9;
+            border-radius: 8px;
+            padding: 6px 12px;
+            margin-bottom: 12px;
+        }
+
+        .md-table-copy {
+            flex-shrink: 0;
+            padding: 4px 12px;
+            background: #1e3c72;
+            color: #ffffff;
+            border: 1px solid #1e3c72;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .md-table-copy:hover {
+            background: #2d5aa0;
+            border-color: #2d5aa0;
+        }
+
+        .md-table-section {
+            margin-bottom: 16px;
+        }
+
+        .md-table-section:last-child {
+            margin-bottom: 0;
+        }
+
+        .md-table {
+            width: 100%;
+            table-layout: fixed;
+            border-collapse: collapse;
+            border: 1px solid #d7e3f0;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .md-table-row td {
+            border-bottom: 1px solid #eef2f7;
+            padding: 3px 10px;
+            vertical-align: top;
+        }
+
+        .md-table-row:last-child td {
+            border-bottom: none;
+        }
+
+        .md-table-key {
+            width: 42%;
+            color: #0f4c81;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 12.5px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .md-table-value {
+            color: #334155;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 12.5px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .md-table-group td {
+            background: #f4f7fb;
+        }
+
+        .md-table-group .md-table-key {
+            font-weight: 700;
+            color: #1e3c72;
+        }
+
+        .md-table-group .md-table-value {
+            color: #94a3b8;
+        }
+
+        .md-table-count {
+            color: #94a3b8;
+            font-weight: 400;
+            font-size: 11.5px;
+        }
+
+        .md-table-toggle {
+            color: #94a3b8;
+            font-size: 11px;
+            margin-right: 4px;
+        }
+
+        .md-table-hint {
+            color: #94a3b8;
+            font-size: 11.5px;
+        }
+
+        .md-table-group {
+            cursor: pointer;
+        }
+
+        .md-table-empty {
+            color: #94a3b8;
+            text-align: center;
+            padding: 12px;
+        }
+
+        .md-table-row:hover td {
+            background: #f7fafd;
+        }
+
+        .md-table-group:hover td {
+            background: #eef4fb;
         }
 
         .json-placeholder {
@@ -1628,11 +1753,6 @@
                             @click="switchRightView('tasks')"
                         >任务管理</button>
                     </div>
-                    <button
-                        class="copy-btn"
-                        v-if="activeRightView === 'results' && selectedFileType === 'json' && selectedFileContent"
-                        @click="copyJson"
-                    >复制</button>
                 </div>
 
                 <div class="right-content" v-if="activeRightView === 'results'">
@@ -1728,6 +1848,58 @@
                             </span>
                             <span>滚轮切片 · 拖动调节窗宽窗位</span>
                         </div>
+                    </div>
+                    <div class="md-table-viewer" v-else-if="selectedFileType === 'integrated'">
+                        <div class="md-table-loading" v-if="fileLoading">
+                            <span class="loading-spinner"></span>
+                            正在整合结果文件...
+                        </div>
+                        <template v-else>
+                            <div class="md-table-overview" v-if="integratedSections.length">
+                                <span>{{ integratedRowCount }} 个键值项</span>
+                                <button class="md-table-copy" @click="copyJson">复制</button>
+                            </div>
+                            <div
+                                class="md-table-section"
+                                v-for="section in integratedSections"
+                                :key="section.label"
+                            >
+                                <table class="md-table">
+                                    <tbody>
+                                        <tr v-if="!section.rows.length">
+                                            <td colspan="2" class="md-table-empty">（空）</td>
+                                        </tr>
+                                        <tr
+                                            v-for="(row, index) in visibleRows(section)"
+                                            :key="`${section.label}-${index}`"
+                                            :class="['md-table-row', { 'md-table-group': row.hasChildren }]"
+                                            @click="row.hasChildren && toggleRow(row)"
+                                        >
+                                            <td
+                                                class="md-table-key"
+                                                :style="{ paddingLeft: (12 + row.level * 20) + 'px' }"
+                                            >
+                                                <template v-if="row.hasChildren">
+                                                    <span class="md-table-toggle">{{ row.collapsed ? '▸' : '▾' }}</span>
+                                                    {{ row.key }}
+                                                    <span class="md-table-count" v-if="row.full">（{{ row.full }}）</span>
+                                                </template>
+                                                <template v-else>{{ row.key }}</template>
+                                            </td>
+                                            <td
+                                                class="md-table-value"
+                                                :title="row.full || row.value"
+                                            >
+                                                <span v-if="row.hasChildren" class="md-table-hint">
+                                                    {{ row.collapsed ? '点击展开' : '点击折叠' }}
+                                                </span>
+                                                <template v-else>{{ row.value }}</template>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </template>
                     </div>
                     <div
                         class="json-viewer"
@@ -1958,6 +2130,7 @@
                     selectedFileType: '',
                     selectedFileLabel: '',
                     fileLoading: false,
+                    integratedSections: [],
                     volumeViewer: null,
                     volumeViewerSources: null,
                     volumeViewerLoading: false,
@@ -2102,6 +2275,12 @@
                     const sources = this.volumeViewerSources?.modalities || {}
                     return this.volumeModalities.filter(
                         modality => Boolean(sources[modality.key])
+                    )
+                },
+                integratedRowCount() {
+                    return this.integratedSections.reduce(
+                        (sum, section) => sum + section.rows.length,
+                        0,
                     )
                 },
             },
@@ -2470,6 +2649,7 @@
                     this.selectedFileContent = ''
                     this.selectedFileType = ''
                     this.selectedFileLabel = ''
+                    this.integratedSections = []
                     this.volumeViewerSources = null
                     this.volumeViewerError = ''
                     this.volumeViewerLoading = false
@@ -2499,16 +2679,9 @@
                 },
                 buildFileList(resultData = {}, taskData = null) {
                     const files = []
-                    const paths = new Set()
                     let maskPath = ''
-                    const addFile = (label, path, type) => {
-                        if (!path || paths.has(path)) return
-                        paths.add(path)
-                        files.push({ label, path, type })
-                    }
-
-                    if (resultData.result_files) {
-                        const rf = resultData.result_files
+                    const rf = resultData.result_files || null
+                    if (rf) {
                         maskPath = rf.mask || maskPath
                     }
                     maskPath = resultData.segmentation?.mask_file || maskPath
@@ -2541,11 +2714,17 @@
                         })
                     }
 
-                    if (resultData.result_files) {
-                        const rf = resultData.result_files
-                        addFile('frontend_result.json', rf.frontend, 'json')
-                        addFile('classification.json', rf.classification, 'json')
-                        addFile('segmentation.json', rf.segmentation, 'json')
+                    const jsonFiles = []
+                    if (rf && rf.frontend) {
+                        jsonFiles.push({ label: 'frontend_result.json', path: rf.frontend })
+                    }
+                    if (jsonFiles.length) {
+                        files.push({
+                            label: '详细结果',
+                            path: '@integrated',
+                            type: 'integrated',
+                            sources: { files: jsonFiles },
+                        })
                     }
 
                     const downloads = []
@@ -2623,6 +2802,175 @@
                     }
                     await this.$nextTick()
                     await this.loadSelectedVolume()
+                },
+                async openIntegratedView() {
+                    const sources = this.fileList.find(
+                        file => file.type === 'integrated'
+                    )?.sources?.files || []
+                    if (!sources.length) return
+                    if (
+                        this.selectedFileType === 'integrated'
+                        && this.integratedSections.length
+                    ) {
+                        return
+                    }
+
+                    this.destroyVolumeViewer()
+                    this.fileLoading = true
+                    this.selectedFilePath = '@integrated'
+                    this.selectedFileContent = ''
+                    this.selectedFileType = 'integrated'
+                    this.selectedFileLabel = '详细结果'
+                    this.integratedSections = []
+                    try {
+                        const loaded = await Promise.all(sources.map(async (source) => {
+                            const response = await fetch(this.taskFileUrl(source.path), {
+                                headers: this.authHeaders,
+                            })
+                            if (!response.ok) {
+                                throw new Error(`HTTP ${response.status}`)
+                            }
+                            const text = await response.text()
+                            let data = {}
+                            try {
+                                data = JSON.parse(text)
+                            } catch {
+                                data = {}
+                            }
+                            return { label: source.label, data }
+                        }))
+                        this.integratedSections = loaded.map(({ label, data }) => ({
+                            label,
+                            rows: this.flattenKeyValuePairs(data),
+                        }))
+                    } catch (err) {
+                        this.integratedSections = [{
+                            label: '读取失败',
+                            rows: [{
+                                key: 'error',
+                                value: `读取结果文件失败：${err.message}`,
+                                full: '',
+                                level: 0,
+                                hasChildren: false,
+                            }],
+                        }]
+                    } finally {
+                        this.fileLoading = false
+                    }
+                },
+                flattenKeyValuePairs(data) {
+                    const rows = []
+                    const append = (key, value, level, hasChildren, full) => {
+                        rows.push({
+                            key,
+                            value,
+                            level,
+                            hasChildren: Boolean(hasChildren),
+                            full: full || '',
+                            collapsed: Boolean(hasChildren),
+                        })
+                    }
+                    const walk = (node, displayKey, level) => {
+                        if (node === null) {
+                            append(displayKey, 'null', level)
+                            return
+                        }
+                        if (Array.isArray(node)) {
+                            if (node.length === 0) {
+                                append(displayKey, '[]', level)
+                                return
+                            }
+                            if (node.every(item => item === null || typeof item !== 'object')) {
+                                append(
+                                    displayKey,
+                                    `[${node.map(item => this.formatListValue(item)).join(', ')}]`,
+                                    level,
+                                )
+                                return
+                            }
+                            append(displayKey, '', level, true, `共 ${node.length} 项`)
+                            const visibleCount = Math.min(node.length, 12)
+                            for (let index = 0; index < visibleCount; index++) {
+                                const item = node[index]
+                                if (item !== null && typeof item === 'object') {
+                                    walk(item, `[${index}]`, level + 1)
+                                } else {
+                                    append(`[${index}]`, this.formatListValue(item), level + 1)
+                                }
+                            }
+                            if (node.length > visibleCount) {
+                                append(
+                                    '…',
+                                    `共 ${node.length} 项，仅显示前 ${visibleCount} 项`,
+                                    level + 1,
+                                )
+                            }
+                            return
+                        }
+                        if (typeof node === 'object') {
+                            const entries = Object.entries(node)
+                            if (entries.length === 0) {
+                                append(displayKey, '{}', level)
+                                return
+                            }
+                            append(displayKey, '', level, true, `${entries.length} 项`)
+                            for (const [childKey, childValue] of entries) {
+                                walk(childValue, childKey, level + 1)
+                            }
+                            return
+                        }
+                        const formatted = this.formatListValue(node)
+                        const full = (
+                            typeof node === 'string' && node.length > 240
+                        ) ? node : ''
+                        append(displayKey, formatted, level, false, full)
+                    }
+                    for (const [key, value] of Object.entries(data)) {
+                        walk(value, key, 0)
+                    }
+                    return rows
+                },
+                visibleRows(section) {
+                    const visible = []
+                    const collapsedAncestors = []
+                    for (const row of section.rows) {
+                        while (
+                            collapsedAncestors.length
+                            && row.level <= collapsedAncestors[collapsedAncestors.length - 1]
+                        ) {
+                            collapsedAncestors.pop()
+                        }
+                        if (!collapsedAncestors.length) {
+                            visible.push(row)
+                        }
+                        if (row.hasChildren && row.collapsed) {
+                            collapsedAncestors.push(row.level)
+                        }
+                    }
+                    return visible
+                },
+                toggleRow(row) {
+                    if (row.hasChildren) {
+                        row.collapsed = !row.collapsed
+                    }
+                },
+                formatListValue(value) {
+                    if (value === null) return 'null'
+                    if (typeof value === 'boolean') {
+                        return value ? 'true' : 'false'
+                    }
+                    if (typeof value === 'number') {
+                        if (!Number.isFinite(value)) return String(value)
+                        if (Number.isInteger(value)) return String(value)
+                        return String(Math.round(value * 1e6) / 1e6)
+                    }
+                    if (typeof value === 'string') {
+                        if (value.length > 240) {
+                            return `${value.slice(0, 240)}…`
+                        }
+                        return value
+                    }
+                    return String(value)
                 },
                 async loadSelectedVolume() {
                     const sources = this.volumeViewerSources
@@ -2702,6 +3050,10 @@
                     }
                     if (f.type === 'volume') {
                         this.openVolumeViewer(f)
+                        return
+                    }
+                    if (f.type === 'integrated') {
+                        this.openIntegratedView()
                         return
                     }
                     if (this.selectedFilePath === f.path) return
@@ -2786,6 +3138,7 @@
                     this.selectedFilePath = ''
                     this.selectedFileContent = ''
                     this.selectedFileType = ''
+                    this.integratedSections = []
                     this.volumeViewerSources = null
                     this.volumeViewerError = ''
                     this.activeRightView = 'results'
@@ -3329,7 +3682,19 @@
                     }
                 },
                 copyJson() {
-                    const text = this.selectedFileContent
+                    let text = this.selectedFileContent
+                    if (this.selectedFileType === 'integrated') {
+                        text = this.integratedSections.map((section) => {
+                            const lines = section.rows.map((row) => {
+                                const indent = '  '.repeat(row.level)
+                                const line = row.hasChildren
+                                    ? `- ${row.key}${row.full ? `（${row.full}）` : ''}`
+                                    : `- ${row.key}: ${row.value}`
+                                return `${indent}${line}`
+                            })
+                            return lines.join('\n')
+                        }).join('\n\n')
+                    }
                     navigator.clipboard.writeText(text).then(() => {
                         this.showToast = true
                         setTimeout(() => { this.showToast = false }, 2000)
