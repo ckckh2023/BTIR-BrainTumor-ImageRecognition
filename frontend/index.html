@@ -140,6 +140,12 @@
             border-radius: 9px;
             cursor: pointer;
             text-align: center;
+            transition: all 0.2s;
+        }
+
+        .volume-drop-zone:hover {
+            background: #f1f7ff;
+            border-color: #2a5298;
         }
 
         .volume-drop-zone.dragging {
@@ -181,10 +187,17 @@
             border-radius: 5px;
             font-size: 12px;
             cursor: pointer;
+            transition: all 0.15s;
         }
 
         .volume-source-menu button:hover {
             background: #eaf2fc;
+            border-color: #94b7d3;
+            transform: translateY(-1px);
+        }
+
+        .volume-source-menu button:active {
+            transform: translateY(0);
         }
 
         .volume-case-source-picker {
@@ -260,10 +273,12 @@
             font-size: 18px;
             line-height: 1;
             cursor: pointer;
+            transition: color 0.15s, transform 0.15s;
         }
 
         .volume-source-clear:hover {
             color: #b91c1c;
+            transform: scale(1.2);
         }
 
         .volume-folder-file-list {
@@ -363,6 +378,11 @@
             border: 1px solid #cbd5e1;
             border-radius: 6px;
             font-size: 12px;
+            transition: border-color 0.15s;
+        }
+
+        .volume-candidate-picker:hover {
+            border-color: #94b7d3;
         }
 
         .volume-input-row {
@@ -550,10 +570,49 @@
 
         .result-details summary {
             width: fit-content;
+            padding: 4px 12px 4px 10px;
             color: #2a5298;
+            background: #eef4fb;
+            border: 1px solid #d7e3f0;
+            border-radius: 999px;
             font-size: 13px;
+            font-weight: 600;
             cursor: pointer;
             user-select: none;
+            list-style: none;
+            transition: all 0.2s;
+        }
+
+        .result-details summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .result-details summary::before {
+            content: '▸';
+            display: inline-block;
+            margin-right: 5px;
+            color: #2a5298;
+            transition: transform 0.2s;
+        }
+
+        .result-details[open] summary::before {
+            transform: rotate(90deg);
+        }
+
+        .result-details summary:hover {
+            color: #ffffff;
+            background: #2a5298;
+            border-color: #2a5298;
+        }
+
+        .result-details summary:hover::before {
+            color: #ffffff;
+        }
+
+        .result-details[open] summary {
+            color: #1e3c72;
+            background: #dbeafe;
+            border-color: #b9d2ec;
         }
 
         .result-details-content {
@@ -611,6 +670,10 @@
 
         .cancel-analysis-btn:hover {
             background: #c53030;
+        }
+
+        .cancel-analysis-btn:active {
+            transform: scale(0.96);
         }
 
         .analysis-progress {
@@ -689,11 +752,43 @@
             font-size: 13px;
             font-weight: 600;
             cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .right-view-tab:hover:not(.active) {
+            color: #1e3c72;
+            background: #ffffff;
+        }
+
+        .right-view-tab:active {
+            transform: scale(0.96);
         }
 
         .right-view-tab.active {
             color: white;
             background: #1e3c72;
+        }
+
+        .logout-btn {
+            flex-shrink: 0;
+            padding: 4px 12px;
+            color: #475569;
+            background: #e2e8f0;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .logout-btn:hover {
+            color: #ffffff;
+            background: #475569;
+            border-color: #475569;
+        }
+
+        .logout-btn:active {
+            transform: scale(0.96);
         }
 
         .right-content {
@@ -744,6 +839,10 @@
             cursor: wait;
         }
 
+        .file-tab:active {
+            transform: scale(0.97);
+        }
+
         .file-downloads {
             display: flex;
             flex-wrap: wrap;
@@ -778,6 +877,10 @@
         .file-download-link:hover {
             background: #e2e8f0;
             color: #1e3c72;
+        }
+
+        .file-download-link:active {
+            transform: scale(0.97);
         }
 
         .json-viewer {
@@ -861,6 +964,10 @@
             border-color: #2d5aa0;
         }
 
+        .md-table-copy:active {
+            transform: scale(0.96);
+        }
+
         .md-table-section {
             margin-bottom: 16px;
         }
@@ -882,6 +989,7 @@
             border-bottom: 1px solid #eef2f7;
             padding: 3px 10px;
             vertical-align: top;
+            transition: background-color 0.15s;
         }
 
         .md-table-row:last-child td {
@@ -925,14 +1033,22 @@
         }
 
         .md-table-toggle {
+            display: inline-block;
             color: #94a3b8;
             font-size: 11px;
             margin-right: 4px;
+            transition: color 0.15s, transform 0.15s;
         }
 
         .md-table-hint {
             color: #94a3b8;
             font-size: 11.5px;
+            transition: color 0.15s;
+        }
+
+        .md-table-group:hover .md-table-hint {
+            color: #1e3c72;
+            text-decoration: underline;
         }
 
         .md-table-group {
@@ -946,16 +1062,24 @@
         }
 
         .md-table-row:hover td {
-            background: #f7fafd;
+            background: #f1f7ff;
         }
 
         .md-table-group:hover td {
-            background: #eef4fb;
+            background: #dcebfa;
+        }
+
+        .md-table-group:hover .md-table-key {
+            color: #1e3c72;
+        }
+
+        .md-table-group:hover .md-table-toggle {
+            color: #1e3c72;
+            transform: translateX(2px);
         }
 
         .json-placeholder {
             color: #94a3b8;
-            font-style: italic;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -997,6 +1121,21 @@
             opacity: 1;
         }
 
+        button:focus-visible,
+        .file-tab:focus-visible,
+        .file-download-link:focus-visible,
+        .task-list-tab:focus-visible,
+        .right-view-tab:focus-visible,
+        .volume-drop-zone:focus-visible,
+        .result-details summary:focus-visible {
+            outline: 2px solid #407eb8;
+            outline-offset: 2px;
+        }
+
+        button:disabled {
+            cursor: not-allowed;
+        }
+
         .file-fetch-error {
             color: #ef9a9a;
         }
@@ -1025,6 +1164,12 @@
             font-size: 12px;
             font-weight: 600;
             cursor: pointer;
+            transition: color 0.2s, border-bottom-color 0.2s;
+        }
+
+        .task-list-tab:hover {
+            color: #1e3c72;
+            border-bottom-color: #94b7d3;
         }
 
         .task-list-tab.active {
@@ -1048,6 +1193,12 @@
             border: 1px solid #cbd5e1;
             border-radius: 6px;
             font-size: 13px;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        .task-query-row input:hover,
+        .task-query-row select:hover {
+            border-color: #94b7d3;
         }
 
         .task-query-row input {
@@ -1074,11 +1225,13 @@
             border-radius: 6px;
             font-size: 12px;
             cursor: pointer;
+            transition: all 0.15s;
         }
 
         .task-small-btn:hover:not(:disabled) {
             background: #e8f0f8;
             border-color: #94b7d3;
+            transform: translateY(-1px);
         }
 
         .task-small-btn.primary {
@@ -1087,10 +1240,25 @@
             border-color: #1e3c72;
         }
 
+        .task-small-btn.primary:hover:not(:disabled) {
+            background: #2d5aa0;
+            border-color: #2d5aa0;
+        }
+
         .task-small-btn.danger {
             color: #b42318;
             background: #fff;
             border-color: #f0b7b2;
+        }
+
+        .task-small-btn.danger:hover:not(:disabled) {
+            color: #ffffff;
+            background: #e53e3e;
+            border-color: #e53e3e;
+        }
+
+        .task-small-btn:active:not(:disabled) {
+            transform: translateY(0);
         }
 
         .task-small-btn:disabled {
@@ -1136,6 +1304,14 @@
             background: #f8fafc;
             border: 1px solid #e2e8f0;
             border-radius: 8px;
+            transition: all 0.2s;
+        }
+
+        .task-card:hover {
+            background: #fbfdff;
+            border-color: #b9d2ec;
+            box-shadow: 0 3px 12px rgba(30, 60, 114, 0.08);
+            transform: translateY(-1px);
         }
 
         .task-card-header {
@@ -1198,10 +1374,16 @@
             border-radius: 5px;
             font-size: 11px;
             cursor: pointer;
+            transition: all 0.15s;
         }
 
         .volume-viewer-button:hover:not(:disabled) {
             background: #23324a;
+            border-color: #4b6b93;
+        }
+
+        .volume-viewer-button:active:not(:disabled) {
+            transform: scale(0.95);
         }
 
         .volume-viewer-button.active {
@@ -1222,6 +1404,7 @@
             margin-left: auto;
             color: #cbd5e1;
             font-weight: 400;
+            accent-color: #407eb8;
         }
 
         .volume-viewer-mask-control input[type="range"] {
@@ -1344,6 +1527,16 @@
         .task-status.cancel_requested {
             color: #1d4ed8;
             background: #dbeafe;
+            animation: status-pulse 1.6s ease-in-out infinite;
+        }
+
+        @keyframes status-pulse {
+            0%, 100% {
+                box-shadow: 0 0 0 0 rgba(29, 78, 216, 0);
+            }
+            50% {
+                box-shadow: 0 0 0 4px rgba(29, 78, 216, 0.14);
+            }
         }
 
         .task-meta {
@@ -1383,6 +1576,12 @@
             gap: 8px;
             color: #64748b;
             font-size: 11px;
+            border-radius: 4px;
+            transition: background 0.15s;
+        }
+
+        .task-run-history-row:hover {
+            background: #eef4fb;
         }
 
         .task-run-history-model {
@@ -1438,7 +1637,7 @@
                     <h1 style="margin-bottom: 0;">脑肿瘤MRI图像识别</h1>
                     <div style="display: flex; align-items: center; gap: 10px; flex-shrink: 0;">
                         <span v-if="currentUser" style="color: #2a5298; font-size: 13px;">{{ currentUser.username }}</span>
-                        <button v-if="currentUser" data-testid="logout" @click="logout" style="padding: 4px 12px; background: #e2e8f0; color: #475569; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">登出</button>
+                        <button v-if="currentUser" data-testid="logout" class="logout-btn" @click="logout">登出</button>
                     </div>
                 </div>
 
