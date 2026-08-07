@@ -24,6 +24,9 @@ class FrontendContractTests(unittest.TestCase):
         cls.viewer_html = (
             PROJECT_ROOT / "frontend" / "volume_viewer.js"
         ).read_text(encoding="utf-8")
+        cls.guide_html = (
+            PROJECT_ROOT / "frontend" / "guide.html"
+        ).read_text(encoding="utf-8")
 
     def test_3d_result_does_not_render_an_outdated_hint(self) -> None:
         self.assertNotIn("当前 3D 路线仅提供分割与定量统计", self.html)
@@ -320,6 +323,25 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("addGroup('综合分析'", self.detail_html)
         self.assertIn("addGroup('性能耗时'", self.detail_html)
         self.assertIn("addGroup('全部字段'", self.detail_html)
+
+    def test_sample_download_entry_near_upload(self) -> None:
+        self.assertIn("sample-download", self.html)
+        self.assertIn("sample-download-link", self.html)
+        self.assertIn("去下载测试样例", self.html)
+        self.assertNotIn("48.5 MB", self.html)
+        self.assertIn("评委测试包", self.guide_html)
+
+    def test_sample_download_opens_guide_subpage(self) -> None:
+        self.assertIn("openSampleGuide", self.html)
+        self.assertIn("window.location.href = 'guide.html'", self.html)
+        self.assertIn("guide-back", self.guide_html)
+        self.assertIn("guide-download", self.guide_html)
+        self.assertIn("guideTheme", self.guide_html)
+        self.assertIn("renderMarkdown", self.guide_html)
+        self.assertIn("/assets/guide.md", self.guide_html)
+        self.assertIn("48.5 MB", self.guide_html)
+        self.assertIn("window.location.href = 'index.html'", self.guide_html)
+        self.assertNotIn("guide-md-source", self.guide_html)
 
 
 if __name__ == "__main__":

@@ -378,6 +378,42 @@
             font-size: 12px;
         }
 
+        .sample-download {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 2px;
+            color: var(--btir-text-secondary);
+            font-size: 12px;
+        }
+
+        .sample-download .icon {
+            color: var(--btir-accent);
+        }
+
+        .sample-download-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 10px;
+            border-radius: 999px;
+            background: var(--btir-primary-soft);
+            border: 1px solid var(--btir-border);
+            color: var(--btir-primary);
+            font-weight: 600;
+            font-family: inherit;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .sample-download-link:hover {
+            background: var(--btir-primary);
+            border-color: var(--btir-primary);
+            color: #ffffff;
+        }
+
         .volume-source-menu {
             position: absolute;
             z-index: 2;
@@ -2294,7 +2330,6 @@
                 <div class="left-panel">
 
                 <div class="input-group" v-if="!loading && !taskId">
-                    <label>病例影像：</label>
                     <div
                         :class="['volume-drop-zone', { dragging: volumeDropActive }]"
                         data-testid="volume-drop-zone"
@@ -2318,6 +2353,17 @@
                             </div>
                             <button type="button" @click="triggerVolumeManualPicker">手动上传四个 NIfTI 文件</button>
                         </div>
+                    </div>
+                    <div class="sample-download">
+                        <svg class="icon" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M8 2.5v7"></path>
+                            <path d="M5 6.5 8 9.5l3-3"></path>
+                            <path d="M2.5 11v2A1.5 1.5 0 0 0 4 14.5h8a1.5 1.5 0 0 0 1.5-1.5v-2"></path>
+                        </svg>
+                        <span>首次体验？</span>
+                        <button type="button" class="sample-download-link" @click="openSampleGuide">
+                            去下载测试样例
+                        </button>
                     </div>
                     <input
                         type="file"
@@ -3779,6 +3825,9 @@
                     this.dicomSeriesCandidates = {}
                     this.dicomSeriesSelections = {}
                     this.clearVolumeSelectionState()
+                },
+                openSampleGuide() {
+                    window.location.href = 'guide.html'
                 },
                 buildFileList(resultData = {}, taskData = null) {
                     const files = []
