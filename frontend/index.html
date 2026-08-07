@@ -6,6 +6,7 @@
     <title>脑肿瘤MRI图像识别</title>
     <link rel="icon" type="image/png" href="/assets/icon_exp.png">
     <link rel="preconnect" href="https://unpkg.com">
+    <link rel="preload" href="./vendor/niivue.umd.js" as="script">
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script>
         (function () {
@@ -742,8 +743,8 @@
 
         .result-ring {
             position: relative;
-            width: 134px;
-            height: 134px;
+            width: 148px;
+            height: 148px;
             margin: 6px 0 8px;
         }
 
@@ -762,9 +763,9 @@
         .result-ring-value {
             fill: none;
             stroke: #22c55e;
-            stroke-width: 8;
+            stroke-width: 6;
             stroke-linecap: round;
-            transition: stroke-dashoffset 0.8s ease;
+            transition: stroke-dashoffset 0.7s cubic-bezier(0.4, 0, 0.2, 1) 0.2s;
         }
 
         .result-ring-value.detected {
@@ -778,14 +779,14 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 2px;
-            padding: 0 16px;
+            gap: 3px;
+            padding: 0 22px;
             text-align: center;
         }
 
         .result-ring-percent {
             color: var(--btir-primary);
-            font-size: 21px;
+            font-size: 20px;
             font-weight: 700;
             line-height: 1.1;
             font-variant-numeric: tabular-nums;
@@ -793,26 +794,153 @@
 
         .result-ring-text {
             color: var(--btir-success);
-            font-size: 11px;
+            font-size: 10.5px;
             font-weight: 600;
             line-height: 1.3;
             max-width: 100%;
             white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .result-ring-text.detected {
             color: var(--btir-danger);
         }
 
+        .result-ring-value.seg {
+            stroke: var(--btir-accent);
+        }
+
+        .result-ring-value.seg.empty {
+            stroke: var(--btir-border-strong);
+        }
+
+        .result-ring-text.seg {
+            color: var(--btir-text-secondary);
+        }
+
+        .result-ring-text.seg.empty {
+            color: var(--btir-text-muted);
+        }
+
+        .result-seg-legend {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 5px 10px;
+            margin-top: 2px;
+            color: var(--btir-text-secondary);
+            font-size: 11px;
+            line-height: 1.5;
+        }
+
+        .result-seg-legend-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .result-seg-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .result-seg-dot.region-1 {
+            background: #e53e3e;
+        }
+
+        .result-seg-dot.region-2 {
+            background: #22c55e;
+        }
+
+        .result-seg-dot.region-4 {
+            background: #facc15;
+        }
+
+        .result-seg-vol {
+            color: var(--btir-text-muted);
+            font-family: var(--btir-mono);
+            font-variant-numeric: tabular-nums;
+        }
+
         .result-chart-card {
             grid-column: 1 / -1;
+        }
+
+        .result-chart-wrap {
+            position: relative;
+            margin: 6px 0 2px;
+            height: 96px;
         }
 
         .result-chart-svg {
             display: block;
             width: 100%;
-            height: 96px;
-            margin: 6px 0 2px;
+            height: 100%;
+        }
+
+        .result-chart-node {
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            transform: translate(-50%, -50%);
+            cursor: pointer;
+        }
+
+        .result-chart-node::before {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--btir-accent);
+            transform: translate(-50%, -50%);
+            transition: background-color 0.15s ease;
+        }
+
+        .result-chart-node:hover::before {
+            background: #e53e3e;
+        }
+
+        .result-chart-tooltip {
+            position: absolute;
+            transform: translate(-50%, calc(-100% - 8px));
+            padding: 4px 9px;
+            background: #111c2e;
+            color: #e2e8f0;
+            border-radius: 6px;
+            font-size: 11px;
+            line-height: 1.45;
+            white-space: nowrap;
+            pointer-events: none;
+            z-index: 2;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.45s ease, visibility 0s linear 0.45s;
+        }
+
+        .result-chart-tooltip.visible {
+            opacity: 1;
+            visibility: visible;
+            transition: opacity 0.35s ease;
+        }
+
+        .result-chart-tooltip.below {
+            transform: translate(-50%, 10px);
+        }
+
+        .result-chart-tip-slice {
+            color: #94a3b8;
+        }
+
+        .result-chart-tip-value {
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
         }
 
         .result-chart-line {
@@ -1084,10 +1212,6 @@
 
         .status-error {
             color: #e53e3e;
-        }
-
-        .status-success {
-            color: #38a169;
         }
 
         .right-header {
@@ -1515,6 +1639,15 @@
             }
         }
 
+        [data-reveal] {
+            opacity: 0;
+            transition: opacity 0.4s ease;
+        }
+
+        [data-reveal].revealed {
+            opacity: 1;
+        }
+
         .app-toast {
             position: fixed;
             bottom: 34px;
@@ -1811,6 +1944,7 @@
             overflow: hidden;
             background: #09111f;
             border-radius: 8px;
+            animation: fade-in 0.2s ease;
         }
 
         .volume-viewer-toolbar {
@@ -2359,7 +2493,10 @@
                         >重新上传病例</button>
                     </div>
                     <div class="result-box">
-                        <div class="result-item">
+                        <div
+                            class="result-item"
+                            v-if="statusText || analysisProgress || (analysisPolling && taskId && !analysisCancelled)"
+                        >
                             <div class="result-label">状态：</div>
                             <div class="result-item-status-row">
                                 <div class="result-value" v-html="statusText"></div>
@@ -2383,7 +2520,12 @@
                             </div>
                         </div>
                         <div class="result-overview" v-if="classificationLabel || tumorArea !== null">
-                            <div class="result-summary-card result-ring-card" v-if="classificationLabel">
+                            <div
+                                class="result-summary-card result-ring-card"
+                                data-reveal
+                                data-ring="classification"
+                                v-if="classificationLabel"
+                            >
                                 <div class="result-summary-card-label">分类判断</div>
                                 <div class="result-ring">
                                     <svg viewBox="0 0 64 64" class="result-ring-svg">
@@ -2395,7 +2537,7 @@
                                             class="result-ring-value"
                                             :class="classificationLabel === '肿瘤 detected' ? 'detected' : 'normal'"
                                             :stroke-dasharray="ringCircumference"
-                                            :stroke-dashoffset="ringDashOffset"
+                                            :stroke-dashoffset="ringDisplayOffset"
                                         ></circle>
                                     </svg>
                                     <div class="result-ring-center">
@@ -2410,29 +2552,114 @@
                                 </div>
                                 <div class="result-summary-card-meta" v-if="confidence">模型概率 {{ (confidence * 100).toFixed(1) }}% · 阈值 {{ thresholdText }}</div>
                             </div>
-                            <div class="result-summary-card" v-if="tumorArea !== null">
+                            <div
+                                class="result-summary-card result-ring-card"
+                                data-reveal
+                                data-ring="segmentation"
+                                v-if="tumorArea !== null"
+                            >
                                 <div class="result-summary-card-label">分割判断</div>
-                                <div class="result-summary-card-value">
-                                    {{ tumorArea > 0 ? '检出非背景区域' : '未检出非背景区域' }}
+                                <div class="result-ring">
+                                    <svg viewBox="0 0 64 64" class="result-ring-svg">
+                                        <circle cx="32" cy="32" r="26" class="result-ring-track"></circle>
+                                        <circle
+                                            cx="32"
+                                            cy="32"
+                                            r="26"
+                                            class="result-ring-value seg"
+                                            :class="{ empty: tumorArea <= 0 }"
+                                            :stroke-dasharray="ringCircumference"
+                                            :stroke-dashoffset="segRingDisplayOffset"
+                                        ></circle>
+                                    </svg>
+                                    <div class="result-ring-center">
+                                        <div class="result-ring-percent">{{ segPercent }}%</div>
+                                        <div class="result-ring-text seg" :class="{ empty: tumorArea <= 0 }">
+                                            {{ tumorArea > 0 ? '检出非背景区域' : '未检出非背景区域' }}
+                                        </div>
+                                    </div>
                                 </div>
-                                <div class="result-summary-card-meta">区域占比 {{ (tumorArea * 100).toFixed(2) }}%</div>
+                                <div class="result-seg-legend" v-if="regionStats.length">
+                                    <span
+                                        class="result-seg-legend-item"
+                                        v-for="region in regionStats"
+                                        :key="`seg-legend-${region.label}`"
+                                    >
+                                        <span class="result-seg-dot" :class="`region-${region.label}`"></span>
+                                        <span>{{ region.label }} {{ region.name }}</span>
+                                        <span class="result-seg-vol">{{ formatVolume(region.volumeMm3) }}</span>
+                                    </span>
+                                </div>
+                                <div class="result-summary-card-meta" v-if="tumorArea > 0">
+                                    区域占比 {{ (tumorArea * 100).toFixed(2) }}% · 总体积 {{ formatVolume(segTotalVolume) }} mm³
+                                </div>
                             </div>
-                            <div class="result-summary-card result-chart-card" v-if="probabilitySeries.length >= 2">
+                            <div
+                                class="result-summary-card result-chart-card"
+                                data-reveal
+                                data-ring="probability"
+                                v-if="probabilitySeries.length >= 2"
+                            >
                                 <div class="result-summary-card-label">切片阳性概率曲线</div>
-                                <svg viewBox="0 0 280 96" class="result-chart-svg" preserveAspectRatio="none">
-                                    <line
-                                        x1="0"
-                                        :y1="probabilityThresholdY"
-                                        x2="280"
-                                        :y2="probabilityThresholdY"
-                                        class="result-chart-threshold"
-                                    ></line>
-                                    <polyline :points="probabilityPoints" class="result-chart-line"></polyline>
-                                </svg>
+                                <div class="result-chart-wrap">
+                                    <svg
+                                        viewBox="0 0 280 96"
+                                        class="result-chart-svg"
+                                        preserveAspectRatio="none"
+                                        @mouseleave="chartHoverVisible = false"
+                                    >
+                                        <defs>
+                                            <clipPath id="btirProbClip" clipPathUnits="userSpaceOnUse">
+                                                <rect
+                                                    ref="probClipRect"
+                                                    x="0"
+                                                    y="0"
+                                                    width="0"
+                                                    height="96"
+                                                ></rect>
+                                            </clipPath>
+                                        </defs>
+                                        <line
+                                            x1="0"
+                                            :y1="probabilityThresholdY"
+                                            x2="280"
+                                            :y2="probabilityThresholdY"
+                                            class="result-chart-threshold"
+                                        ></line>
+                                        <polyline
+                                            :points="probabilityPoints"
+                                            class="result-chart-line"
+                                            clip-path="url(#btirProbClip)"
+                                        ></polyline>
+                                    </svg>
+                                    <span
+                                        class="result-chart-node"
+                                        v-for="point in chartPoints"
+                                        :key="point.index"
+                                        :style="{
+                                            left: (point.x / 280 * 100) + '%',
+                                            top: (point.y / 96 * 100) + '%',
+                                        }"
+                                        @mouseenter="showChartPoint(point, $event)"
+                                    ></span>
+                                    <div
+                                        :class="[
+                                            'result-chart-tooltip',
+                                            { visible: chartHoverVisible, below: chartHover && chartHover.below },
+                                        ]"
+                                        :style="chartHover ? {
+                                            left: 'clamp(54px, ' + chartHover.xPx + 'px, calc(100% - 54px))',
+                                            top: chartHover.yPx + 'px',
+                                        } : {}"
+                                    >
+                                        <div class="result-chart-tip-slice">切片 {{ chartHover ? chartHover.sliceIndex : '' }}</div>
+                                        <div class="result-chart-tip-value">{{ chartHover ? chartHover.probabilityText : '' }}</div>
+                                    </div>
+                                </div>
                                 <div class="result-chart-meta">阈值 {{ thresholdText }} · 采样 {{ probabilitySeries.length }} 个切片</div>
                             </div>
                         </div>
-                        <div class="result-item" v-if="modelConsensus">
+                        <div class="result-item" data-reveal v-if="modelConsensus">
                             <div class="result-label">分类与分割一致性：</div>
                             <div class="result-value result-analysis">
                                 <div>{{ modelConsensus.summary }}</div>
@@ -2441,6 +2668,7 @@
                         </div>
                         <div
                             class="result-item"
+                            data-reveal
                             v-if="supplementaryAnalysis && supplementaryAnalysis.status !== 'disabled'"
                         >
                             <div class="result-label">AI 分析结论：</div>
@@ -2457,7 +2685,11 @@
                                 </template>
                             </div>
                         </div>
-                        <details class="result-details" v-if="taskId || regionStats.length || supplementaryAnalysis?.status === 'succeeded'">
+                        <details
+                            class="result-details"
+                            data-reveal
+                            v-if="taskId || regionStats.length || supplementaryAnalysis?.status === 'succeeded'"
+                        >
                             <summary>查看详细数据</summary>
                             <div class="result-details-content">
                                 <div class="result-details-group" v-if="taskId">
@@ -2520,7 +2752,7 @@
                     </div>
                 </div>
 
-                <div class="right-content" v-if="activeRightView === 'results'">
+                <div class="right-content" v-show="activeRightView === 'results'">
                     <div class="file-tabs" v-if="fileList.length">
                         <div
                             v-for="f in fileList"
@@ -2637,7 +2869,7 @@
                     </div>
                 </div>
 
-                <div class="task-manager" v-else>
+                <div class="task-manager" v-show="activeRightView === 'tasks'">
                     <div class="task-list-tabs">
                         <button
                             :class="['task-list-tab', { active: taskListMode === 'active' }]"
@@ -2690,7 +2922,12 @@
                             </div>
                         </div>
                         <div class="task-empty" v-else-if="!taskItems.length">暂无符合条件的任务</div>
-                        <div class="task-card" v-for="task in taskItems" :key="task.task_id">
+                        <div
+                            class="task-card"
+                            v-for="(task, index) in taskItems"
+                            :key="task.task_id"
+                            :style="{ animationDelay: Math.min(index * 40, 240) + 'ms' }"
+                        >
                             <div class="task-card-header">
                                 <div style="min-width: 0;">
                                     <div class="task-card-name" :title="task.name">
@@ -2906,6 +3143,13 @@
                     integratedSources: [],
                     probabilitySeries: [],
                     probabilityThreshold: 0.548381,
+                    chartHover: null,
+                    chartHoverVisible: false,
+                    ringRevealed: false,
+                    segRingRevealed: false,
+                    probLineRevealed: false,
+                    probLineLength: 0,
+                    probLineDrawn: false,
                     volumeViewer: null,
                     volumeViewerSources: null,
                     volumeViewerLoading: false,
@@ -3060,8 +3304,27 @@
                     const ratio = Math.max(0, Math.min(1, this.confidence || 0))
                     return this.ringCircumference * (1 - ratio)
                 },
+                ringDisplayOffset() {
+                    return this.ringRevealed ? this.ringDashOffset : this.ringCircumference
+                },
                 ringPercent() {
                     return Math.round((this.confidence || 0) * 1000) / 10
+                },
+                segRingDashOffset() {
+                    const ratio = Math.max(0, Math.min(1, this.tumorArea || 0))
+                    return this.ringCircumference * (1 - ratio)
+                },
+                segRingDisplayOffset() {
+                    return this.segRingRevealed ? this.segRingDashOffset : this.ringCircumference
+                },
+                segPercent() {
+                    return Math.round((this.tumorArea || 0) * 1000) / 10
+                },
+                segTotalVolume() {
+                    return this.regionStats.reduce(
+                        (sum, region) => sum + region.volumeMm3,
+                        0,
+                    )
                 },
                 thresholdText() {
                     return `${Math.round((this.probabilityThreshold || 0) * 1000) / 10}%`
@@ -3076,22 +3339,62 @@
                         return `${x.toFixed(2)},${y.toFixed(2)}`
                     }).join(' ')
                 },
+                chartPoints() {
+                    const series = this.probabilitySeries
+                    if (!Array.isArray(series) || series.length < 2) return []
+                    return series.map((item, index) => {
+                        const ratio = Math.max(0, Math.min(1, Number(item.yes_probability) || 0))
+                        return {
+                            index,
+                            sliceIndex: item.slice_index,
+                            probability: ratio,
+                            x: (index / (series.length - 1)) * 280,
+                            y: 94 - ratio * 90,
+                        }
+                    })
+                },
                 probabilityThresholdY() {
                     const ratio = Math.max(0, Math.min(1, this.probabilityThreshold || 0))
                     return 94 - ratio * 90
+                },
+            },
+            watch: {
+                probLineRevealed(value) {
+                    if (!value) return
+                    this.$nextTick(() => {
+                        const rect = this.$refs.probClipRect
+                        if (!rect) return
+                        this.probLineDrawn = true
+                        setTimeout(() => {
+                            const start = performance.now()
+                            const duration = 1200
+                            const step = (now) => {
+                                const progress = Math.min(1, (now - start) / duration)
+                                const eased = 1 - Math.pow(1 - progress, 3)
+                                rect.setAttribute('width', String(eased * 280))
+                                if (progress < 1) {
+                                    requestAnimationFrame(step)
+                                }
+                            }
+                            requestAnimationFrame(step)
+                        }, 150)
+                    })
                 },
             },
             methods: {
                 switchRightView(view) {
                     this.activeRightView = view
                     if (view === 'tasks') {
-                        this.destroyVolumeViewer()
-                        this.loadTaskHistory()
+                        if (!this.taskItems.length && !this.taskHistoryLoading) {
+                            this.loadTaskHistory()
+                        }
                     } else if (
                         this.selectedFileType === 'volume'
-                        && this.volumeViewerSources
+                        && this.volumeViewer
                     ) {
-                        this.$nextTick(() => this.loadSelectedVolume())
+                        this.$nextTick(() => {
+                            this.volumeViewer?.drawScene?.()
+                        })
                     }
                 },
                 switchTaskList(mode) {
@@ -3142,6 +3445,22 @@
                     if (!max) return '0%'
                     const ratio = Math.max(0, Math.min(1, region.volumeMm3 / max))
                     return `${Math.max(3, ratio * 100).toFixed(1)}%`
+                },
+                showChartPoint(point, event) {
+                    const node = event.currentTarget
+                    const wrap = node.parentElement
+                    const nodeRect = node.getBoundingClientRect()
+                    const wrapRect = wrap.getBoundingClientRect()
+                    const xPx = nodeRect.left + nodeRect.width / 2 - wrapRect.left
+                    const yPx = nodeRect.top + nodeRect.height / 2 - wrapRect.top
+                    this.chartHover = {
+                        sliceIndex: point.sliceIndex,
+                        probabilityText: `${Math.round(point.probability * 1000) / 10}%`,
+                        xPx,
+                        yPx,
+                        below: yPx < 28,
+                    }
+                    this.chartHoverVisible = true
                 },
                 formatInferenceTime(value) {
                     if (value === null || value === undefined || value === '') return '未记录'
@@ -3237,6 +3556,7 @@
                         this.taskMessageIsError = true
                     } finally {
                         this.taskHistoryLoading = false
+                        this.$nextTick(() => this.initRevealObserver())
                     }
                 },
                 searchTasks() {
@@ -3317,10 +3637,11 @@
                             throw new Error(await this.responseError(response, '归档任务'))
                         }
                         const payload = await response.json()
-                        this.taskListMode = 'archived'
-                        this.taskOffset = 0
                         this.taskMessage = `任务 ${payload.task_id} 已移入归档列表。`
                         this.taskMessageIsError = false
+                        if (this.taskItems.length === 1 && this.taskOffset > 0) {
+                            this.taskOffset = Math.max(0, this.taskOffset - this.taskLimit)
+                        }
                         await this.loadTaskHistory(false)
                     } catch (error) {
                         this.taskMessage = error.message
@@ -3437,6 +3758,8 @@
                     this.regionStats = []
                     this.probabilitySeries = []
                     this.probabilityThreshold = 0.548381
+                    this.chartHover = null
+                    this.chartHoverVisible = false
                     this.modelConsensus = null
                     this.supplementaryAnalysis = null
                 },
@@ -3547,6 +3870,7 @@
                     this.selectedFileLabel = file.label
                     this.volumeViewerSources = file.sources
                     this.volumeViewerError = ''
+                    this.volumeViewerLoading = true
 
                     const modalities = file.sources.modalities
                     if (!modalities[this.selectedVolumeModality]) {
@@ -3555,6 +3879,11 @@
                         )?.key || ''
                     }
                     await this.$nextTick()
+                    // 先让浏览器绘制“正在加载”界面，再启动 NiiVue 初始化与数据下载，
+                    // 避免初始化期间的同步阻塞让页面看起来像卡住
+                    await new Promise((resolve) => {
+                        requestAnimationFrame(() => requestAnimationFrame(resolve))
+                    })
                     await this.loadSelectedVolume()
                 },
                 async loadSelectedVolume() {
@@ -3679,7 +4008,7 @@
                     const resultData = taskData.frontend_result || {}
                     const status = taskData.status
                     if (status === 'succeeded') {
-                        this.statusText = '<span class="status-success">✓ 3D分析完成</span>'
+                        this.statusText = ''
                     } else if (status === 'failed') {
                         this.statusText = '<span class="status-error">✗ 任务失败</span>'
                     } else {
@@ -3692,6 +4021,13 @@
                     this.regionStats = []
                     this.probabilitySeries = []
                     this.probabilityThreshold = 0.548381
+                    this.chartHover = null
+                    this.chartHoverVisible = false
+                    this.ringRevealed = false
+                    this.segRingRevealed = false
+                    this.probLineRevealed = false
+                    this.probLineLength = 0
+                    this.probLineDrawn = false
                     this.modelConsensus = resultData.model_consensus || null
                     this.supplementaryAnalysis = resultData.supplementary_analysis || null
                     if (resultData.classification) {
@@ -3729,10 +4065,26 @@
                     this.volumeViewerSources = null
                     this.volumeViewerError = ''
                     this.activeRightView = 'results'
-                    const initialFile = this.fileList.find(file => file.type !== 'download')
-                    if (initialFile) {
-                        this.selectFile(initialFile)
+                    const volumeEntry = this.fileList.find(file => file.type === 'volume')
+                    if (volumeEntry) {
+                        const base = volumeEntry.sources.modalities[this.selectedVolumeModality]
+                            || Object.values(volumeEntry.sources.modalities)[0]
+                        if (base) {
+                            fetch(this.taskFileUrl(base.path), {
+                                headers: this.authHeaders,
+                            }).catch(() => {})
+                        }
+                        if (volumeEntry.sources.mask) {
+                            fetch(this.taskFileUrl(volumeEntry.sources.mask.path), {
+                                headers: this.authHeaders,
+                            }).catch(() => {})
+                        }
                     }
+                    const detailEntry = this.fileList.find(file => file.type === 'integrated')
+                    if (detailEntry) {
+                        this.selectFile(detailEntry)
+                    }
+                    this.$nextTick(() => this.initRevealObserver())
                 },
                 async runAndGetResult(taskId) {
                     this.analysisCancelled = false
@@ -4276,6 +4628,75 @@
                 applyTheme() {
                     document.documentElement.setAttribute('data-theme', this.theme)
                 },
+                revealElement(el) {
+                    el.classList.add('revealed')
+                    const ring = el.dataset.ring
+                    if (ring === 'classification') {
+                        this.ringRevealed = true
+                    } else if (ring === 'segmentation') {
+                        this.segRingRevealed = true
+                    } else if (ring === 'probability') {
+                        this.probLineRevealed = true
+                    }
+                },
+                revealIfInViewport(el) {
+                    const rect = el.getBoundingClientRect()
+                    const withinViewport = (
+                        rect.top < window.innerHeight
+                        && rect.bottom > 0
+                        && rect.left < window.innerWidth
+                        && rect.right > 0
+                    )
+                    if (withinViewport) {
+                        this.revealElement(el)
+                    }
+                },
+                initRevealObserver() {
+                    const targets = Array.from(document.querySelectorAll('[data-reveal]'))
+                    if (!targets.length) return
+                    this._revealObserver?.disconnect()
+                    if (!('IntersectionObserver' in window)) {
+                        targets.forEach(el => this.revealIfInViewport(el))
+                        return
+                    }
+                    const observer = new IntersectionObserver((entries) => {
+                        for (const entry of entries) {
+                            if (!entry.isIntersecting) continue
+                            this.revealElement(entry.target)
+                            observer.unobserve(entry.target)
+                        }
+                    }, { threshold: 0.08 })
+                    targets.forEach((el) => {
+                        if (!el.classList.contains('revealed')) {
+                            observer.observe(el)
+                        }
+                        this.revealIfInViewport(el)
+                    })
+                    this._revealObserver = observer
+                },
+                initScrollRevealFallback() {
+                    if (this._scrollFallbackBound) return
+                    this._scrollFallbackBound = true
+                    const handler = () => {
+                        document.querySelectorAll('[data-reveal]:not(.revealed)').forEach((el) => {
+                            this.revealIfInViewport(el)
+                        })
+                    }
+                    const containers = [
+                        '.left-panel',
+                        '.result-box',
+                        '.right-content',
+                        '.task-manager',
+                    ]
+                    containers.forEach((selector) => {
+                        document.querySelector(selector)?.addEventListener(
+                            'scroll',
+                            handler,
+                            { passive: true },
+                        )
+                    })
+                    window.addEventListener('scroll', handler, { passive: true })
+                },
                 toggleTheme() {
                     this.theme = this.theme === 'dark' ? 'light' : 'dark'
                     localStorage.setItem('btir_theme', this.theme)
@@ -4288,9 +4709,12 @@
                 },
             },
             async mounted() {
+                window.BtirVolumeViewer?.preload?.()
                 const savedTheme = localStorage.getItem('btir_theme')
                 this.theme = savedTheme || 'light'
                 this.applyTheme()
+                this.$nextTick(() => this.initRevealObserver())
+                this.initScrollRevealFallback()
 
                 const token = localStorage.getItem('btir_token')
                 if (!token) {
@@ -4315,6 +4739,7 @@
                 }
             },
             beforeUnmount() {
+                this._revealObserver?.disconnect()
                 this.destroyVolumeViewer()
             },
         }
