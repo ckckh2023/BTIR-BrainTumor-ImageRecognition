@@ -15,82 +15,9 @@
             document.documentElement.setAttribute('data-theme', theme)
         })()
     </script>
+    <link rel="stylesheet" href="./theme.css">
     <style>
-        :root {
-            --btir-primary: #1e3c72;
-            --btir-primary-hover: #2d5aa0;
-            --btir-primary-soft: #eef4fb;
-            --btir-accent: #407eb8;
-            --btir-bg: #eef2f7;
-            --btir-bg-soft: #e3e9f2;
-            --btir-surface: #ffffff;
-            --btir-surface-muted: #f8fafc;
-            --btir-border: #dbe4ef;
-            --btir-border-strong: #b9d2ec;
-            --btir-text: #1e293b;
-            --btir-text-secondary: #64748b;
-            --btir-text-muted: #94a3b8;
-            --btir-danger: #b42318;
-            --btir-danger-bg: #fee2e2;
-            --btir-success: #18794e;
-            --btir-success-bg: #dcfce7;
-            --btir-radius-sm: 6px;
-            --btir-radius-md: 10px;
-            --btir-radius-lg: 16px;
-            --btir-shadow-sm: 0 1px 3px rgba(30, 41, 59, 0.08);
-            --btir-shadow-md: 0 6px 18px rgba(30, 41, 59, 0.10);
-            --btir-shadow-lg: 0 18px 50px rgba(30, 41, 59, 0.22);
-            --btir-font: 'Microsoft YaHei', 'PingFang SC', 'Segoe UI', Arial, sans-serif;
-            --btir-transition: 0.2s ease;
-        }
-
-        [data-theme="dark"] {
-            color-scheme: dark;
-            --btir-primary: #4d7fc2;
-            --btir-primary-hover: #5d92d6;
-            --btir-primary-soft: #1d3456;
-            --btir-accent: #6ea8e8;
-            --btir-bg: #0b1220;
-            --btir-bg-soft: #131c2e;
-            --btir-surface: #16213a;
-            --btir-surface-muted: #1b2742;
-            --btir-border: #33445f;
-            --btir-border-strong: #46597c;
-            --btir-text: #f1f5fb;
-            --btir-text-secondary: #bccade;
-            --btir-text-muted: #8b9cb6;
-            --btir-shadow-lg: 0 18px 50px rgba(0, 0, 0, 0.6);
-        }
-
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-
-        ::-webkit-scrollbar {
-            width: 10px;
-            height: 10px;
-        }
-
-        ::-webkit-scrollbar-track {
-            background: transparent;
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: var(--btir-border-strong);
-            border: 2px solid transparent;
-            border-radius: 999px;
-            background-clip: padding-box;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: var(--btir-accent);
-            background-clip: padding-box;
-        }
-
-        * {
-            scrollbar-width: thin;
-            scrollbar-color: var(--btir-border-strong) transparent;
-        }
-
-        body {
+body {
             font-family: var(--btir-font);
             background: linear-gradient(160deg, var(--btir-bg) 0%, var(--btir-bg-soft) 100%);
             color: var(--btir-text);
@@ -320,6 +247,7 @@
             to { opacity: 1; transform: translateY(0); }
         }
     </style>
+
 </head>
 <body>
     <div id="app">
