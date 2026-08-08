@@ -8,6 +8,9 @@
                     analysisCancelled: false,
                     analysisPolling: false,
                     analysisProgress: null,
+                    displayProgress: 0,
+                    progressAnimFrame: null,
+                    progressMotionActive: false,
                     statusText: '等待识别...',
                     taskId: '',
                     analysisActive: false,
@@ -120,10 +123,29 @@
                         )
                     )
                 },
-                analysisProgressPercent() {
+                mappedProgressPercent() {
                     const progress = this.analysisProgress
                     if (!progress || typeof progress.percent !== 'number') return 0
-                    return Math.min(100, Math.max(0, Math.round(progress.percent)))
+                    const raw = Math.min(100, Math.max(0, progress.percent))
+                    let mapped
+                    if (raw < 36) {
+                        mapped = (raw / 36) * 30
+                    } else if (raw < 44) {
+                        mapped = 30 + ((raw - 36) / 8) * 25
+                    } else if (raw < 98) {
+                        mapped = 55 + ((raw - 44) / 54) * 35
+                    } else {
+                        mapped = 90 + ((raw - 98) / 2) * 10
+                    }
+                    return Math.min(100, Math.max(0, mapped))
+                },
+                progressPhaseCeiling() {
+                    const real = this.analysisProgress?.percent
+                    if (typeof real !== 'number') return 100
+                    if (real >= 100) return 100
+                    if (real >= 98) return 100
+                    if (real >= 44) return 90
+                    return 55
                 },
                 analysisProgressLabel() {
                     return this.analysisProgress?.stage || '推理中...'
@@ -295,6 +317,12 @@
                 },
             },
             watch: {
+                analysisProgress: {
+                    deep: true,
+                    handler() {
+                        this.startProgressMotion()
+                    },
+                },
                 probLineRevealed(value) {
                     if (!value) return
                     this.$nextTick(() => {
@@ -318,6 +346,44 @@
                 },
             },
             methods: {
+                startProgressMotion() {
+                    if (this.progressMotionActive) return
+                    this.progressMotionActive = true
+                    const step = () => {
+                        const real = this.analysisProgress?.percent
+                        if (typeof real !== 'number' && !this.analysisPolling) {
+                            this.progressMotionActive = false
+                            this.progressAnimFrame = null
+                            return
+                        }
+                        const mapped = this.mappedProgressPercent
+                        const ceiling = this.progressPhaseCeiling
+                        // 全程匀速平推：目标取真实进度映射与“当前位置+基础步进”的较大者，
+                        // 阶段边界不会减速；落后真实进度较多时再快速追赶
+                        const cruise = 0.03
+                        const target = Math.min(
+                            ceiling,
+                            Math.max(mapped, this.displayProgress + cruise),
+                        )
+                        const delta = target - this.displayProgress
+                        if (delta > 0) {
+                            const gapToMapped = Math.max(0, mapped - this.displayProgress)
+                            const velocity = real >= 100
+                                ? 0.35
+                                : (gapToMapped > 3
+                                    ? 0.3
+                                    : Math.max(0.03, Math.min(0.3, delta * 0.05)))
+                            this.displayProgress = Math.min(
+                                target,
+                                this.displayProgress + Math.min(velocity, delta),
+                            )
+                        } else if (target >= 100) {
+                            this.displayProgress = 100
+                        }
+                        this.progressAnimFrame = requestAnimationFrame(step)
+                    }
+                    this.progressAnimFrame = requestAnimationFrame(step)
+                },
                 switchRightView(view) {
                     this.activeRightView = view
                     if (view === 'tasks') {
@@ -672,6 +738,7 @@
                     this.destroyVolumeViewer()
                     this.loading = true
                     this.analysisActive = true
+                    this.displayProgress = 0
                     this.analysisCancelled = false
                     this.analysisPolling = false
                     this.analysisProgress = {
@@ -1042,6 +1109,7 @@
                     }
 
                     this.analysisPolling = true
+                    this.startProgressMotion()
                     try {
                         const pollingStartedAt = Date.now()
                         const deadline = pollingStartedAt + 30 * 60 * 1000
@@ -1060,7 +1128,7 @@
 
                             const resultData = await resultResponse.json()
                             if (resultData.status === 'succeeded') {
-                                this.presentTaskResult(resultData)
+                                await this.settleAndPresentResult(resultData)
                                 return
                             }
                             if (resultData.status === 'failed') {
@@ -1109,6 +1177,31 @@
                         this.analysisPolling = false
                         this.analysisProgress = null
                     }
+                },
+                async settleAndPresentResult(resultData) {
+                    this.analysisProgress = {
+                        percent: 100,
+                        stage: '3D 分割与综合分析完成',
+                    }
+                    this.statusText = '分析完成，正在呈现结果...'
+                    // 等待进度条真正推到 100%（至少停留片刻再渐隐），最多等 2.5 秒兜底
+                    const settleStartedAt = Date.now()
+                    const minHoldMs = 700
+                    const settleDeadline = settleStartedAt + 2500
+                    while (
+                        Date.now() < settleDeadline
+                        && (
+                            this.displayProgress < 99.5
+                            || Date.now() - settleStartedAt < minHoldMs
+                        )
+                    ) {
+                        await new Promise(resolve => setTimeout(resolve, 50))
+                    }
+                    this.statusText = ''
+                    this.analysisProgress = null
+                    this.analysisPolling = false
+                    await new Promise(resolve => setTimeout(resolve, 420))
+                    this.presentTaskResult(resultData)
                 },
                 async cancelCurrentAnalysis() {
                     if (!this.taskId || this.analysisCancelled) return
@@ -1691,6 +1784,10 @@
             },
             beforeUnmount() {
                 this._revealObserver?.disconnect()
+                if (this.progressAnimFrame) {
+                    cancelAnimationFrame(this.progressAnimFrame)
+                    this.progressAnimFrame = null
+                }
                 document.removeEventListener('click', this.handleGlobalClick)
                 this.destroyVolumeViewer()
             },

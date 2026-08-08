@@ -1240,23 +1240,75 @@ body {
         }
 
         .analysis-progress-track {
-            width: 50%;
-            height: 6px;
-            background: var(--btir-border);
+            position: relative;
+            width: 100%;
+            height: 8px;
+            background: var(--btir-surface-muted);
+            border: 1px solid var(--btir-border);
             border-radius: 999px;
             overflow: hidden;
         }
 
         .analysis-progress-bar {
+            position: relative;
             height: 100%;
-            background: linear-gradient(90deg, #3b82f6, #60a5fa);
+            background: linear-gradient(
+                90deg,
+                var(--btir-primary) 0%,
+                var(--btir-accent) 55%,
+                var(--btir-success) 100%
+            );
             border-radius: 999px;
-            transition: width 0.2s ease-out;
+            overflow: hidden;
+            box-shadow: 0 0 8px rgba(59, 130, 246, 0.35);
+        }
+
+        .analysis-progress-bar::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(
+                90deg,
+                transparent,
+                rgba(255, 255, 255, 0.38),
+                transparent
+            );
+            transform: translateX(-100%);
+            animation: analysis-progress-shimmer 1.9s ease-in-out infinite;
+        }
+
+        .analysis-progress-seg {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 1px;
+            background: var(--btir-border-strong);
+            opacity: 0.65;
+            pointer-events: none;
+        }
+
+        @keyframes analysis-progress-shimmer {
+            0% {
+                transform: translateX(-100%);
+            }
+            55%, 100% {
+                transform: translateX(100%);
+            }
         }
 
         .analysis-progress-label {
             color: var(--btir-text-secondary);
             font-size: 12px;
+        }
+
+        .status-fade-enter-active,
+        .status-fade-leave-active {
+            transition: opacity 0.4s ease;
+        }
+
+        .status-fade-enter-from,
+        .status-fade-leave-to {
+            opacity: 0;
         }
 
         .result-highlight {
