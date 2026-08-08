@@ -197,11 +197,3 @@ python Main.py clear --dry-run
 
 执行实际清理前必须先停止 API 与 Worker，并先使用 `--dry-run` 检查范围<br>
 账号维护、数据库迁移、归档、备份和审计日志轮转策略请遵循[运维与数据管理](docs/OPERATIONS.md)
-
-## 彩蛋
-
-在项目根目录的交互式终端中执行：
-
-```powershell
-python Main.py game
-```
