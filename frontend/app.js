@@ -10,6 +10,7 @@
                     analysisProgress: null,
                     statusText: '等待识别...',
                     taskId: '',
+                    analysisActive: false,
                     volumeModalities: [
                         { key: 'flair', label: 'FLAIR' },
                         { key: 't1ce', label: 'T1CE' },
@@ -126,6 +127,33 @@
                 },
                 analysisProgressLabel() {
                     return this.analysisProgress?.stage || '推理中...'
+                },
+                analysisPhases() {
+                    if (!this.analysisPolling || !this.taskId) return []
+                    const p = this.analysisProgress?.percent
+                    if (p === undefined || p === null) return []
+                    const reached = (value) => p >= value
+                    return [
+                        {
+                            key: 'classification',
+                            label: '3D 分类',
+                            state: reached(44) ? 'done' : 'active',
+                        },
+                        {
+                            key: 'segmentation',
+                            label: '3D 分割',
+                            state: reached(99)
+                                ? 'done'
+                                : (reached(44) ? 'active' : 'pending'),
+                        },
+                        {
+                            key: 'summary',
+                            label: '综合分析',
+                            state: reached(100)
+                                ? 'done'
+                                : (reached(99) ? 'active' : 'pending'),
+                        },
+                    ]
                 },
                 taskPage() {
                     return Math.floor(this.taskOffset / this.taskLimit) + 1
@@ -643,6 +671,7 @@
                 resetState() {
                     this.destroyVolumeViewer()
                     this.loading = true
+                    this.analysisActive = true
                     this.analysisCancelled = false
                     this.analysisPolling = false
                     this.analysisProgress = {
@@ -674,6 +703,7 @@
                 startNewUpload() {
                     this.resetState()
                     this.loading = false
+                    this.analysisActive = false
                     this.analysisProgress = null
                     this.statusText = '等待识别...'
                     this.volumeFiles = { flair: null, t1ce: null, t1: null, t2: null }

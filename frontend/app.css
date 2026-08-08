@@ -1178,6 +1178,67 @@ body {
             gap: 4px;
         }
 
+        .analysis-phases {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .analysis-phase {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 10px;
+            font-size: 12px;
+            line-height: 1.5;
+            color: var(--btir-text-muted);
+            background: var(--btir-surface-muted);
+            border: 1px solid var(--btir-border);
+            border-radius: 999px;
+            transition: all var(--btir-transition);
+        }
+
+        .analysis-phase .analysis-phase-icon {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--btir-border-strong);
+            transition: background-color var(--btir-transition);
+        }
+
+        .analysis-phase.active {
+            color: var(--btir-primary);
+            background: var(--btir-primary-soft);
+            border-color: var(--btir-primary);
+        }
+
+        .analysis-phase.active .analysis-phase-icon {
+            background: var(--btir-primary);
+            animation: analysis-phase-pulse 1.2s ease-in-out infinite;
+        }
+
+        .analysis-phase.done {
+            color: var(--btir-success);
+            background: var(--btir-success-bg);
+            border-color: var(--btir-success);
+        }
+
+        .analysis-phase.done .analysis-phase-icon {
+            background: var(--btir-success);
+        }
+
+        @keyframes analysis-phase-pulse {
+            0%, 100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+            50% {
+                opacity: 0.45;
+                transform: scale(0.78);
+            }
+        }
+
         .analysis-progress-track {
             width: 50%;
             height: 6px;
