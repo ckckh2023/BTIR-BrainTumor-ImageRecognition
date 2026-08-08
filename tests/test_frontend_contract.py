@@ -298,6 +298,15 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("global.BtirVolumeViewer.preload = preloadNiiVue", self.viewer_html)
         self.assertIn("function preloadNiiVue", self.viewer_html)
 
+    def test_vue_is_vendored_locally_without_cdn(self) -> None:
+        self.assertIn("./vendor/vue.global.js", self.html)
+        self.assertIn("./vendor/vue.global.js", self.login_html)
+        self.assertNotIn("unpkg.com/vue", self.html)
+        self.assertNotIn("unpkg.com/vue", self.login_html)
+        vendor_file = PROJECT_ROOT / "frontend" / "vendor" / "vue.global.js"
+        self.assertGreater(vendor_file.stat().st_size, 100_000)
+        self.assertIn("vue v3.5.41", vendor_file.read_text(encoding="utf-8"))
+
     def test_probability_chart_nodes_show_hover_values(self) -> None:
         self.assertIn("chartPoints", self.html)
         self.assertIn("result-chart-node", self.html)
