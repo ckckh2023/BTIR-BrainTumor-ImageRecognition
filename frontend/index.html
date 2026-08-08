@@ -255,6 +255,12 @@
             flex-direction: column;
             min-width: 0;
             min-height: 0;
+            overflow: hidden;
+        }
+
+        .left-panel-scroll {
+            flex: 0 1 auto;
+            min-height: 0;
             overflow-y: auto;
             padding-right: 8px;
         }
@@ -696,12 +702,13 @@
         }
 
         .result-section {
-            flex: 0 0 auto;
+            flex: 1 1 auto;
             display: flex;
             flex-direction: column;
             border-top: 1px solid var(--btir-border);
             margin-top: 20px;
             padding-top: 20px;
+            padding-right: 8px;
             min-height: 280px;
             animation: slide-up 0.3s ease;
         }
@@ -719,8 +726,7 @@
             border-radius: var(--btir-radius-md);
             padding: 16px;
             flex: 1 1 auto;
-            min-height: 210px;
-            max-height: 420px;
+            min-height: 0;
             overflow-y: auto;
         }
 
@@ -2281,6 +2287,10 @@
                 flex-direction: column;
             }
 
+            .left-panel {
+                max-height: calc(100vh - 120px);
+            }
+
             .right-panel {
                 min-height: 520px;
                 border-left: none;
@@ -2328,205 +2338,207 @@
             </div>
             <div class="app-content">
                 <div class="left-panel">
+                <div class="left-panel-scroll">
 
-                <div class="input-group" v-if="!loading && !taskId">
-                    <div
-                        :class="['volume-drop-zone', { dragging: volumeDropActive }]"
-                        data-testid="volume-drop-zone"
-                        @click="toggleVolumeSourceMenu"
-                        @dragenter.prevent="volumeDropActive = true"
-                        @dragover.prevent="volumeDropActive = true"
-                        @dragleave.prevent="volumeDropActive = false"
-                        @drop.prevent="onVolumeDrop"
-                    >
-                        <div>
-                            <div class="volume-drop-title">拖入 NIfTI 或 DICOM 病例文件夹，或 ZIP 压缩包</div>
-                            <div class="volume-drop-hint">DICOM 请选包含四组序列的病例根目录</div>
-                        </div>
-                        <div class="volume-source-menu" v-if="volumeSourceMenuVisible" @click.stop>
-                            <div class="volume-case-source-picker">
-                                <button type="button" @click="toggleVolumeCaseSourceMenu">选择病例数据</button>
-                                <div class="volume-case-source-options" v-if="volumeCaseSourceMenuVisible">
-                                    <button type="button" @click="triggerVolumeCaseFolderPicker">病例文件夹</button>
-                                    <button type="button" @click="triggerVolumeArchivePicker">ZIP 压缩包</button>
-                                </div>
-                            </div>
-                            <button type="button" @click="triggerVolumeManualPicker">手动上传四个 NIfTI 文件</button>
-                        </div>
-                    </div>
-                    <div class="sample-download">
-                        <svg class="icon" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M8 2.5v7"></path>
-                            <path d="M5 6.5 8 9.5l3-3"></path>
-                            <path d="M2.5 11v2A1.5 1.5 0 0 0 4 14.5h8a1.5 1.5 0 0 0 1.5-1.5v-2"></path>
-                        </svg>
-                        <span>首次体验？</span>
-                        <button type="button" class="sample-download-link" @click="openSampleGuide">
-                            去下载测试样例
-                        </button>
-                    </div>
-                    <input
-                        type="file"
-                        id="volume-folder-picker"
-                        webkitdirectory
-                        directory
-                        multiple
-                        style="display: none"
-                        @change="onVolumeFolderSelected"
-                    />
-                    <input
-                        type="file"
-                        id="volume-archive-picker"
-                        data-testid="volume-archive-picker"
-                        accept=".zip,application/zip"
-                        style="display: none"
-                        @change="onVolumeArchiveSelected"
-                    />
-                    <div class="volume-correction-panel" v-if="showVolumeCorrection">
-                        <div class="volume-correction-title">需要补充或确认输入文件</div>
-                        <div class="volume-correction-tip">请为标记项选择生效文件或上传替代文件。</div>
-                    <div class="volume-inputs">
+                    <div class="input-group" v-if="!loading && !taskId">
                         <div
-                            class="volume-input-row"
-                            v-for="modality in volumeModalities"
-                            :key="modality.key"
+                            :class="['volume-drop-zone', { dragging: volumeDropActive }]"
+                            data-testid="volume-drop-zone"
+                            @click="toggleVolumeSourceMenu"
+                            @dragenter.prevent="volumeDropActive = true"
+                            @dragover.prevent="volumeDropActive = true"
+                            @dragleave.prevent="volumeDropActive = false"
+                            @drop.prevent="onVolumeDrop"
                         >
-                            <span class="volume-modality">{{ modality.label }}</span>
-                            <div class="volume-file-detail">
-                                <select
-                                    class="volume-candidate-picker"
-                                    v-if="volumeSelectionCandidates[modality.key]?.length > 1 && !volumeFiles[modality.key] && !archiveSelections[modality.key]"
-                                    v-model="volumeCandidateSelections[modality.key]"
-                                    @change="applyVolumeCandidate(modality.key)"
-                                >
-                                    <option value="">请选择生效文件</option>
-                                    <option
-                                        v-for="(candidate, index) in volumeSelectionCandidates[modality.key]"
-                                        :key="candidate.filename || candidate.name || index"
-                                        :value="String(index)"
-                                    >{{ candidate.filename || candidate.name }}</option>
-                                </select>
-                                <div
-                                    v-else
-                                    :class="['volume-file-name', { empty: !volumeFiles[modality.key] && !archiveSelections[modality.key] }]"
-                                    :title="volumeFiles[modality.key]?.name || archiveSelections[modality.key] || ''"
-                                >
-                                    {{ volumeFiles[modality.key]?.name || archiveSelections[modality.key] || '未选择 .nii / .nii.gz' }}
-                                </div>
-                                <span class="volume-file-reason" v-if="volumeSelectionIssues[modality.key]">
-                                    {{ volumeSelectionIssues[modality.key].message }}
-                                </span>
-                                <span class="volume-file-confirmed" v-else-if="volumeFiles[modality.key] || archiveSelections[modality.key]">
-                                    已确认
-                                </span>
+                            <div>
+                                <div class="volume-drop-title">拖入 NIfTI 或 DICOM 病例文件夹，或 ZIP 压缩包</div>
+                                <div class="volume-drop-hint">DICOM 请选包含四组序列的病例根目录</div>
                             </div>
-                            <button
-                                type="button"
-                                class="browse-btn compact"
-                                :disabled="loading"
-                                @click="triggerVolumePicker(modality.key)"
-                            >浏览...</button>
-                            <input
-                                type="file"
-                                :id="`volume-file-${modality.key}`"
-                                accept=".nii,.nii.gz"
-                                style="display: none"
-                                @change="onVolumeFileSelected($event, modality.key)"
-                            />
+                            <div class="volume-source-menu" v-if="volumeSourceMenuVisible" @click.stop>
+                                <div class="volume-case-source-picker">
+                                    <button type="button" @click="toggleVolumeCaseSourceMenu">选择病例数据</button>
+                                    <div class="volume-case-source-options" v-if="volumeCaseSourceMenuVisible">
+                                        <button type="button" @click="triggerVolumeCaseFolderPicker">病例文件夹</button>
+                                        <button type="button" @click="triggerVolumeArchivePicker">ZIP 压缩包</button>
+                                    </div>
+                                </div>
+                                <button type="button" @click="triggerVolumeManualPicker">手动上传四个 NIfTI 文件</button>
+                            </div>
                         </div>
-                    </div>
-                    </div>
-                </div>
-                <div
-                    class="volume-source-summary"
-                    v-if="!loading && !taskId && (volumeArchiveFile || volumeDicomFiles.length) && !volumeModalFilesVisible"
-                >
-                    <div class="volume-source-summary-header">
-                        <span class="volume-source-summary-label" :title="volumeSourceSummary">{{ volumeSourceSummary }}</span>
-                        <button type="button" class="volume-source-clear" title="删除已选压缩包" aria-label="删除已选压缩包" @click.stop="clearVolumeUpload">×</button>
-                    </div>
-                </div>
-                <div
-                    class="dicom-series-selection-panel"
-                    v-if="!loading && !taskId && hasPendingDicomSeriesSelection"
-                >
-                    <div class="dicom-series-selection-title">请选择用于分析的 DICOM 序列</div>
-                    <div class="dicom-series-selection-tip">{{ volumeSourceSummary }}</div>
-                    <div class="dicom-series-selection-tip">检测到同一模态有多组序列</div>
-                    <div class="volume-inputs">
-                        <template v-for="modality in volumeModalities" :key="`dicom-${modality.key}`">
+                        <div class="sample-download">
+                            <svg class="icon" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M8 2.5v7"></path>
+                                <path d="M5 6.5 8 9.5l3-3"></path>
+                                <path d="M2.5 11v2A1.5 1.5 0 0 0 4 14.5h8a1.5 1.5 0 0 0 1.5-1.5v-2"></path>
+                            </svg>
+                            <span>首次体验？</span>
+                            <button type="button" class="sample-download-link" @click="openSampleGuide">
+                                去下载测试样例
+                            </button>
+                        </div>
+                        <input
+                            type="file"
+                            id="volume-folder-picker"
+                            webkitdirectory
+                            directory
+                            multiple
+                            style="display: none"
+                            @change="onVolumeFolderSelected"
+                        />
+                        <input
+                            type="file"
+                            id="volume-archive-picker"
+                            data-testid="volume-archive-picker"
+                            accept=".zip,application/zip"
+                            style="display: none"
+                            @change="onVolumeArchiveSelected"
+                        />
+                        <div class="volume-correction-panel" v-if="showVolumeCorrection">
+                            <div class="volume-correction-title">需要补充或确认输入文件</div>
+                            <div class="volume-correction-tip">请为标记项选择生效文件或上传替代文件。</div>
+                        <div class="volume-inputs">
                             <div
                                 class="volume-input-row"
-                                v-if="dicomSeriesCandidates[modality.key]?.length"
+                                v-for="modality in volumeModalities"
+                                :key="modality.key"
                             >
                                 <span class="volume-modality">{{ modality.label }}</span>
-                                <select
-                                    class="volume-candidate-picker"
-                                    v-model="dicomSeriesSelections[modality.key]"
-                                >
-                                    <option value="">请选择序列</option>
-                                    <option
-                                        v-for="candidate in dicomSeriesCandidates[modality.key]"
-                                        :key="candidate.series_uid"
-                                        :value="candidate.series_uid"
-                                    >{{ candidate.label }}{{ candidate.source_name ? ` · ${candidate.source_name}` : '' }}（{{ candidate.file_count }} 张）</option>
-                                </select>
-                            </div>
-                        </template>
-                    </div>
-                </div>
-                <div class="volume-modal-files-panel" v-if="!loading && !taskId && volumeModalFilesVisible">
-                    <div class="volume-modal-files-header">
-                        <span class="volume-modal-files-title" :title="volumeSourceSummary">{{ volumeSourceSummary }}</span>
-                        <button type="button" class="volume-source-clear" title="删除已选文件" aria-label="删除已选文件" @click.stop="clearVolumeUpload">×</button>
-                    </div>
-                    <div class="volume-modal-files-tip" v-if="volumeManualMode">请分别选择四个模态的 .nii / .nii.gz 文件。</div>
-                    <div class="volume-modal-files-tip" v-else>已自动匹配四个模态，可点击“浏览...”替换单个模态文件。</div>
-                    <div class="volume-inputs">
-                        <div
-                            class="volume-input-row"
-                            v-for="modality in volumeModalities"
-                            :key="modality.key"
-                        >
-                            <span class="volume-modality">{{ modality.label }}</span>
-                            <div class="volume-file-detail">
-                                <div
-                                    :class="['volume-file-name', { empty: !volumeFiles[modality.key] && !archiveSelections[modality.key] }]"
-                                    :title="volumeFiles[modality.key]?.name || archiveSelections[modality.key] || ''"
-                                >
-                                    {{ volumeFiles[modality.key]?.name || archiveSelections[modality.key] || '未选择 .nii / .nii.gz' }}
+                                <div class="volume-file-detail">
+                                    <select
+                                        class="volume-candidate-picker"
+                                        v-if="volumeSelectionCandidates[modality.key]?.length > 1 && !volumeFiles[modality.key] && !archiveSelections[modality.key]"
+                                        v-model="volumeCandidateSelections[modality.key]"
+                                        @change="applyVolumeCandidate(modality.key)"
+                                    >
+                                        <option value="">请选择生效文件</option>
+                                        <option
+                                            v-for="(candidate, index) in volumeSelectionCandidates[modality.key]"
+                                            :key="candidate.filename || candidate.name || index"
+                                            :value="String(index)"
+                                        >{{ candidate.filename || candidate.name }}</option>
+                                    </select>
+                                    <div
+                                        v-else
+                                        :class="['volume-file-name', { empty: !volumeFiles[modality.key] && !archiveSelections[modality.key] }]"
+                                        :title="volumeFiles[modality.key]?.name || archiveSelections[modality.key] || ''"
+                                    >
+                                        {{ volumeFiles[modality.key]?.name || archiveSelections[modality.key] || '未选择 .nii / .nii.gz' }}
+                                    </div>
+                                    <span class="volume-file-reason" v-if="volumeSelectionIssues[modality.key]">
+                                        {{ volumeSelectionIssues[modality.key].message }}
+                                    </span>
+                                    <span class="volume-file-confirmed" v-else-if="volumeFiles[modality.key] || archiveSelections[modality.key]">
+                                        已确认
+                                    </span>
                                 </div>
-                                <span class="volume-file-confirmed" v-if="volumeFiles[modality.key] || archiveSelections[modality.key]">
-                                    已确认
-                                </span>
+                                <button
+                                    type="button"
+                                    class="browse-btn compact"
+                                    :disabled="loading"
+                                    @click="triggerVolumePicker(modality.key)"
+                                >浏览...</button>
+                                <input
+                                    type="file"
+                                    :id="`volume-file-${modality.key}`"
+                                    accept=".nii,.nii.gz"
+                                    style="display: none"
+                                    @change="onVolumeFileSelected($event, modality.key)"
+                                />
                             </div>
-                            <button
-                                type="button"
-                                class="browse-btn compact"
-                                :disabled="loading"
-                                @click="triggerVolumePicker(modality.key)"
-                            >浏览...</button>
-                            <input
-                                type="file"
-                                :id="`volume-file-${modality.key}`"
-                                accept=".nii,.nii.gz"
-                                style="display: none"
-                                @change="onVolumeFileSelected($event, modality.key)"
-                            />
+                        </div>
                         </div>
                     </div>
-                </div>
-
-                <button class="recognize-btn" data-testid="start-analysis" v-if="!loading && !taskId" @click="recognizeFromUpload" :disabled="!canRecognize">
-                    <svg v-if="!loading" class="icon" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M2 5V3.5A1.5 1.5 0 0 1 3.5 2H5"></path>
-                        <path d="M11 2h1.5A1.5 1.5 0 0 1 14 3.5V5"></path>
-                        <path d="M14 11v1.5a1.5 1.5 0 0 1-1.5 1.5H11"></path>
-                        <path d="M5 14H3.5A1.5 1.5 0 0 1 2 12.5V11"></path>
-                        <path d="M4 8h1.8l1-2 2.4 4 1.2-2H12"></path>
-                    </svg>
+                    <div
+                        class="volume-source-summary"
+                        v-if="!loading && !taskId && (volumeArchiveFile || volumeDicomFiles.length) && !volumeModalFilesVisible"
+                    >
+                        <div class="volume-source-summary-header">
+                            <span class="volume-source-summary-label" :title="volumeSourceSummary">{{ volumeSourceSummary }}</span>
+                            <button type="button" class="volume-source-clear" title="删除已选压缩包" aria-label="删除已选压缩包" @click.stop="clearVolumeUpload">×</button>
+                        </div>
+                    </div>
+                    <div
+                        class="dicom-series-selection-panel"
+                        v-if="!loading && !taskId && hasPendingDicomSeriesSelection"
+                    >
+                        <div class="dicom-series-selection-title">请选择用于分析的 DICOM 序列</div>
+                        <div class="dicom-series-selection-tip">{{ volumeSourceSummary }}</div>
+                        <div class="dicom-series-selection-tip">检测到同一模态有多组序列</div>
+                        <div class="volume-inputs">
+                            <template v-for="modality in volumeModalities" :key="`dicom-${modality.key}`">
+                                <div
+                                    class="volume-input-row"
+                                    v-if="dicomSeriesCandidates[modality.key]?.length"
+                                >
+                                    <span class="volume-modality">{{ modality.label }}</span>
+                                    <select
+                                        class="volume-candidate-picker"
+                                        v-model="dicomSeriesSelections[modality.key]"
+                                    >
+                                        <option value="">请选择序列</option>
+                                        <option
+                                            v-for="candidate in dicomSeriesCandidates[modality.key]"
+                                            :key="candidate.series_uid"
+                                            :value="candidate.series_uid"
+                                        >{{ candidate.label }}{{ candidate.source_name ? ` · ${candidate.source_name}` : '' }}（{{ candidate.file_count }} 张）</option>
+                                    </select>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                    <div class="volume-modal-files-panel" v-if="!loading && !taskId && volumeModalFilesVisible">
+                        <div class="volume-modal-files-header">
+                            <span class="volume-modal-files-title" :title="volumeSourceSummary">{{ volumeSourceSummary }}</span>
+                            <button type="button" class="volume-source-clear" title="删除已选文件" aria-label="删除已选文件" @click.stop="clearVolumeUpload">×</button>
+                        </div>
+                        <div class="volume-modal-files-tip" v-if="volumeManualMode">请分别选择四个模态的 .nii / .nii.gz 文件。</div>
+                        <div class="volume-modal-files-tip" v-else>已自动匹配四个模态，可点击“浏览...”替换单个模态文件。</div>
+                        <div class="volume-inputs">
+                            <div
+                                class="volume-input-row"
+                                v-for="modality in volumeModalities"
+                                :key="modality.key"
+                            >
+                                <span class="volume-modality">{{ modality.label }}</span>
+                                <div class="volume-file-detail">
+                                    <div
+                                        :class="['volume-file-name', { empty: !volumeFiles[modality.key] && !archiveSelections[modality.key] }]"
+                                        :title="volumeFiles[modality.key]?.name || archiveSelections[modality.key] || ''"
+                                    >
+                                        {{ volumeFiles[modality.key]?.name || archiveSelections[modality.key] || '未选择 .nii / .nii.gz' }}
+                                    </div>
+                                    <span class="volume-file-confirmed" v-if="volumeFiles[modality.key] || archiveSelections[modality.key]">
+                                        已确认
+                                    </span>
+                                </div>
+                                <button
+                                    type="button"
+                                    class="browse-btn compact"
+                                    :disabled="loading"
+                                    @click="triggerVolumePicker(modality.key)"
+                                >浏览...</button>
+                                <input
+                                    type="file"
+                                    :id="`volume-file-${modality.key}`"
+                                    accept=".nii,.nii.gz"
+                                    style="display: none"
+                                    @change="onVolumeFileSelected($event, modality.key)"
+                                />
+                            </div>
+                        </div>
+                    </div>
+    
+                    <button class="recognize-btn" data-testid="start-analysis" v-if="!loading && !taskId" @click="recognizeFromUpload" :disabled="!canRecognize">
+                        <svg v-if="!loading" class="icon" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M2 5V3.5A1.5 1.5 0 0 1 3.5 2H5"></path>
+                            <path d="M11 2h1.5A1.5 1.5 0 0 1 14 3.5V5"></path>
+                            <path d="M14 11v1.5a1.5 1.5 0 0 1-1.5 1.5H11"></path>
+                            <path d="M5 14H3.5A1.5 1.5 0 0 1 2 12.5V11"></path>
+                            <path d="M4 8h1.8l1-2 2.4 4 1.2-2H12"></path>
+                        </svg>
                     {{ loading ? '数据分析中...' : '开始数据分析' }}
-                </button>
+                    </button>
+                </div>
 
                 <div class="result-section">
                     <div class="result-header">
@@ -4734,6 +4746,7 @@
                     }
                     const containers = [
                         '.left-panel',
+                        '.left-panel-scroll',
                         '.result-box',
                         '.right-content',
                         '.task-manager',

@@ -116,10 +116,11 @@ class FrontendContractTests(unittest.TestCase):
 
     def test_left_panel_keeps_expanded_upload_and_result_in_scroll_area(self) -> None:
         self.assertIn(".left-panel", self.html)
+        self.assertIn(".left-panel-scroll", self.html)
         self.assertIn("overflow-y: auto;", self.html)
         self.assertIn(".result-section", self.html)
+        self.assertIn("flex: 1 1 auto;", self.html)
         self.assertIn("min-height: 280px;", self.html)
-        self.assertIn("max-height: 420px;", self.html)
 
     def test_upload_flow_supports_dicom_folder_conversion(self) -> None:
         self.assertIn("DICOM 病例文件夹", self.html)
