@@ -54,6 +54,7 @@
         }
 
         [data-theme="dark"] {
+            color-scheme: dark;
             --btir-primary: #4d7fc2;
             --btir-primary-hover: #5d92d6;
             --btir-primary-soft: #1d3456;
@@ -63,11 +64,11 @@
             --btir-surface: #16213a;
             --btir-surface-muted: #1b2742;
             --btir-surface-hover: #22304f;
-            --btir-border: #2b3a57;
-            --btir-border-strong: #3c4f73;
-            --btir-text: #e5ebf4;
-            --btir-text-secondary: #9fb0c8;
-            --btir-text-muted: #6b7c96;
+            --btir-border: #33445f;
+            --btir-border-strong: #46597c;
+            --btir-text: #f1f5fb;
+            --btir-text-secondary: #bccade;
+            --btir-text-muted: #8b9cb6;
             --btir-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.45);
             --btir-shadow-md: 0 6px 18px rgba(0, 0, 0, 0.5);
             --btir-shadow-lg: 0 18px 50px rgba(0, 0, 0, 0.6);
@@ -143,6 +144,46 @@
             background: #3b1a1a;
         }
 
+        [data-theme="dark"] .volume-source-summary,
+        [data-theme="dark"] .volume-modal-files-panel {
+            color: #cfe1f7;
+            background: #1a2c4d;
+            border-color: #33507a;
+        }
+
+        [data-theme="dark"] .volume-source-menu button:hover {
+            background: #243355;
+            border-color: #46597c;
+        }
+
+        [data-theme="dark"] .task-small-btn:hover:not(:disabled) {
+            background: #243355;
+            border-color: #46597c;
+        }
+
+        [data-theme="dark"] .task-query-row input:hover,
+        [data-theme="dark"] .task-query-row select:hover,
+        [data-theme="dark"] .volume-candidate-picker:hover {
+            border-color: #46597c;
+        }
+
+        [data-theme="dark"] .task-status.succeeded {
+            color: #86efac;
+            background: #14351f;
+        }
+
+        [data-theme="dark"] .task-status.failed {
+            color: #fca5a5;
+            background: #3b1a1a;
+        }
+
+        [data-theme="dark"] .task-status.queued,
+        [data-theme="dark"] .task-status.running,
+        [data-theme="dark"] .task-status.cancel_requested {
+            color: #93c5fd;
+            background: #1d3456;
+        }
+
         [data-theme="dark"] .result-details[open] summary {
             color: #cfe1f7;
             background: #1d3456;
@@ -158,6 +199,32 @@
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+        }
+
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--btir-border-strong);
+            border: 2px solid transparent;
+            border-radius: 999px;
+            background-clip: padding-box;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--btir-accent);
+            background-clip: padding-box;
+        }
+
+        * {
+            scrollbar-width: thin;
+            scrollbar-color: var(--btir-border-strong) transparent;
         }
 
         body {
@@ -176,7 +243,7 @@
             flex-direction: column;
             gap: 18px;
             background: var(--btir-surface);
-            border: 1px solid rgba(255, 255, 255, 0.7);
+            border: 1px solid var(--btir-border);
             border-radius: var(--btir-radius-lg);
             box-shadow: var(--btir-shadow-lg);
             padding: 24px 36px 32px;
@@ -1396,7 +1463,7 @@
         }
 
         .file-tab.active {
-            background: #1e3c72;
+            background: var(--btir-primary);
             color: white;
             border-color: var(--btir-primary);
         }
@@ -1847,7 +1914,7 @@
 
         .task-small-btn.primary {
             color: white;
-            background: #1e3c72;
+            background: var(--btir-primary);
             border-color: var(--btir-primary);
         }
 
@@ -1948,7 +2015,7 @@
 
         .task-card:hover {
             background: var(--btir-surface);
-            border-color: #b9d2ec;
+            border-color: var(--btir-border-strong);
             box-shadow: 0 3px 12px rgba(30, 60, 114, 0.08);
             transform: translateY(-1px);
         }
