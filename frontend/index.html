@@ -272,6 +272,7 @@
                         >重新上传病例</button>
                     </div>
                     <div class="result-box">
+                        <transition name="status-fade">
                         <div
                             class="result-item"
                             v-if="statusText || analysisProgress || (analysisPolling && taskId && !analysisCancelled)"
@@ -300,14 +301,18 @@
                                 <div class="analysis-progress-track">
                                     <div
                                         class="analysis-progress-bar"
-                                        :style="{ width: analysisProgressPercent + '%' }"
+                                        :style="{ width: displayProgress + '%' }"
                                     ></div>
+                                    <span class="analysis-progress-seg" style="left: 30%"></span>
+                                    <span class="analysis-progress-seg" style="left: 55%"></span>
+                                    <span class="analysis-progress-seg" style="left: 90%"></span>
                                 </div>
                                 <span class="analysis-progress-label">
                                     {{ analysisProgressLabel }}
                                 </span>
                             </div>
                         </div>
+                        </transition>
                         <div class="result-overview" v-if="classificationLabel || tumorArea !== null">
                             <div
                                 class="result-summary-card result-ring-card"

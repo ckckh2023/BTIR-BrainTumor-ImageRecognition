@@ -97,8 +97,27 @@ class FrontendContractTests(unittest.TestCase):
     def test_running_analysis_exposes_inference_progress(self) -> None:
         self.assertIn("analysisProgress", self.html)
         self.assertIn("analysis-progress-track", self.html)
-        self.assertIn("analysisProgressPercent", self.html)
+        self.assertIn("displayProgress", self.html)
         self.assertIn("resultData.progress_stage", self.app_js)
+
+    def test_progress_bar_smooth_and_balanced_phases(self) -> None:
+        self.assertIn("mappedProgressPercent", self.app_js)
+        self.assertIn("startProgressMotion", self.app_js)
+        self.assertIn("progressPhaseCeiling", self.app_js)
+        self.assertIn("progressMotionActive: false", self.app_js)
+        self.assertIn("displayProgress: 0", self.app_js)
+        self.assertIn("mapped = 30 + ((raw - 36) / 8) * 25", self.app_js)
+        self.assertIn("mapped = 55 + ((raw - 44) / 54) * 35", self.app_js)
+        self.assertIn("mapped = 90 + ((raw - 98) / 2) * 10", self.app_js)
+        self.assertIn("analysis-progress-seg", self.html)
+        self.assertIn("analysis-progress-shimmer", self.app_css)
+
+    def test_result_settle_animates_to_100_then_fades(self) -> None:
+        self.assertIn("settleAndPresentResult", self.app_js)
+        self.assertIn("percent: 100", self.app_js)
+        self.assertIn("分析完成，正在呈现结果...", self.app_js)
+        self.assertIn('<transition name="status-fade">', self.html)
+        self.assertIn("status-fade-leave-active", self.app_css)
 
     def test_analysis_phases_show_classification_regardless_of_poll_timing(self) -> None:
         self.assertIn("analysisPhases", self.app_js)
