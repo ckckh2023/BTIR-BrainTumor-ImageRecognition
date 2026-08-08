@@ -339,10 +339,19 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("guide-download", self.guide_html)
         self.assertIn("guideTheme", self.guide_html)
         self.assertIn("renderMarkdown", self.guide_html)
+        self.assertIn("formatFileSize", self.guide_html)
+        self.assertIn("method: 'HEAD'", self.guide_html)
         self.assertIn("/assets/guide.md", self.guide_html)
-        self.assertIn("48.5 MB", self.guide_html)
+        self.assertIn("guide-download-meta", self.guide_html)
+        self.assertNotIn("48.5 MB", self.guide_html)
         self.assertIn("window.location.href = 'index.html'", self.guide_html)
         self.assertNotIn("guide-md-source", self.guide_html)
+
+    def test_upload_menu_closes_on_outside_click(self) -> None:
+        self.assertIn("ref=\"volumeDropZone\"", self.html)
+        self.assertIn("handleGlobalClick", self.html)
+        self.assertIn("document.addEventListener('click', this.handleGlobalClick)", self.html)
+        self.assertIn("document.removeEventListener('click', this.handleGlobalClick)", self.html)
 
 
 if __name__ == "__main__":

@@ -2341,9 +2341,10 @@
                 <div class="left-panel-scroll">
 
                     <div class="input-group" v-if="!loading && !taskId">
-                        <div
-                            :class="['volume-drop-zone', { dragging: volumeDropActive }]"
-                            data-testid="volume-drop-zone"
+                    <div
+                        :class="['volume-drop-zone', { dragging: volumeDropActive }]"
+                        ref="volumeDropZone"
+                        data-testid="volume-drop-zone"
                             @click="toggleVolumeSourceMenu"
                             @dragenter.prevent="volumeDropActive = true"
                             @dragover.prevent="volumeDropActive = true"
@@ -2540,7 +2541,7 @@
                     </button>
                 </div>
 
-                <div class="result-section">
+                <div class="result-section" v-if="taskId">
                     <div class="result-header">
                         <div class="result-title">识别结果</div>
                         <button
@@ -4263,6 +4264,13 @@
                         this.volumeCaseSourceMenuVisible = false
                     }
                 },
+                handleGlobalClick(event) {
+                    const zone = this.$refs.volumeDropZone
+                    if (zone && !zone.contains(event.target)) {
+                        this.volumeSourceMenuVisible = false
+                        this.volumeCaseSourceMenuVisible = false
+                    }
+                },
                 toggleVolumeCaseSourceMenu() {
                     this.volumeCaseSourceMenuVisible = !this.volumeCaseSourceMenuVisible
                 },
@@ -4778,6 +4786,7 @@
                 this.applyTheme()
                 this.$nextTick(() => this.initRevealObserver())
                 this.initScrollRevealFallback()
+                document.addEventListener('click', this.handleGlobalClick)
 
                 const token = localStorage.getItem('btir_token')
                 if (!token) {
@@ -4803,6 +4812,7 @@
             },
             beforeUnmount() {
                 this._revealObserver?.disconnect()
+                document.removeEventListener('click', this.handleGlobalClick)
                 this.destroyVolumeViewer()
             },
         }
