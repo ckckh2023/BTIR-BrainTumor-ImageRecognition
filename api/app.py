@@ -2,7 +2,7 @@
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -59,6 +59,16 @@ async def handle_task_service_unavailable(
     exc: TaskLockUnavailableError | TaskQueueUnavailableError,
 ) -> JSONResponse:
     return JSONResponse(status_code=503, content={"detail": str(exc)})
+
+
+@app.middleware("http")
+async def no_cache_frontend_assets(request: Request, call_next):
+    '''前端静态资源始终重新校验，避免浏览器缓存旧版页面导致显示异常'''
+    response = await call_next(request)
+    if request.url.path.startswith(("/web", "/login", "/assets")):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
 
 app.add_middleware(
     CORSMiddleware,

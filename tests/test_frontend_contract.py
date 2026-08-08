@@ -100,6 +100,15 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("analysisProgressPercent", self.html)
         self.assertIn("resultData.progress_stage", self.app_js)
 
+    def test_analysis_phases_show_classification_regardless_of_poll_timing(self) -> None:
+        self.assertIn("analysisPhases", self.app_js)
+        self.assertIn("reached(44)", self.app_js)
+        self.assertIn("3D 分类", self.app_js)
+        self.assertIn("3D 分割", self.app_js)
+        self.assertIn("综合分析", self.app_js)
+        self.assertIn('v-if="analysisPhases.length"', self.html)
+        self.assertIn("analysis-phase", self.app_css)
+
     def test_supplementary_analysis_is_rendered_as_escaped_text(self) -> None:
         self.assertIn("supplementaryAnalysis", self.html)
         self.assertIn("supplementary_analysis", self.app_js)
@@ -153,6 +162,12 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("xhr.upload.onprogress", self.app_js)
         self.assertIn("正在上传数据", self.app_js)
         self.assertIn("正在压缩/上传数据", self.app_js)
+
+    def test_result_status_visible_during_upload_before_task_id(self) -> None:
+        self.assertIn('class="result-section" v-if="taskId || analysisActive"', self.html)
+        self.assertIn("analysisActive: false", self.app_js)
+        self.assertIn("this.analysisActive = true", self.app_js)
+        self.assertIn("this.analysisActive = false", self.app_js)
 
     def test_volume_upload_starts_with_drop_zone_and_recovers_from_ambiguity(self) -> None:
         self.assertIn("拖入 NIfTI 或 DICOM 病例文件夹，或 ZIP 压缩包", self.html)
@@ -366,6 +381,16 @@ class FrontendContractTests(unittest.TestCase):
         self.assertNotIn("48.5 MB", self.guide_html)
         self.assertIn("window.location.href = 'index.html'", self.guide_html)
         self.assertNotIn("guide-md-source", self.guide_html)
+
+    def test_guide_markdown_supports_blockquote_and_images(self) -> None:
+        self.assertIn("'<blockquote>'", self.guide_html)
+        self.assertIn("resolveAsset", self.guide_html)
+        self.assertIn(
+            '<img src="${resolveAsset(src)}" alt="${alt}" loading="lazy">',
+            self.guide_html,
+        )
+        self.assertIn(".guide-md blockquote", self.guide_html)
+        self.assertIn(".guide-md img", self.guide_html)
 
     def test_upload_menu_closes_on_outside_click(self) -> None:
         self.assertIn("ref=\"volumeDropZone\"", self.html)

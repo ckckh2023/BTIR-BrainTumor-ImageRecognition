@@ -261,7 +261,7 @@
                     </button>
                 </div>
 
-                <div class="result-section" v-if="taskId">
+                <div class="result-section" v-if="taskId || analysisActive">
                     <div class="result-header">
                         <div class="result-title">识别结果</div>
                         <button
@@ -285,6 +285,16 @@
                                     v-if="analysisPolling && taskId && !analysisCancelled"
                                     @click="cancelCurrentAnalysis"
                                 >取消</button>
+                            </div>
+                            <div class="analysis-phases" v-if="analysisPhases.length">
+                                <span
+                                    v-for="phase in analysisPhases"
+                                    :key="phase.key"
+                                    :class="['analysis-phase', phase.state]"
+                                >
+                                    <span class="analysis-phase-icon"></span>
+                                    {{ phase.label }}
+                                </span>
                             </div>
                             <div class="analysis-progress" v-if="analysisProgress">
                                 <div class="analysis-progress-track">
