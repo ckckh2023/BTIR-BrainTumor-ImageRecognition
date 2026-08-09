@@ -519,7 +519,7 @@ AI 服务，因此外部综合分析未启用或不可用时仍会返回
 - `labels`：输出标签定义，采用 BraTS 标签 `0/1/2/4`；
 - `regions`：各标签的体素数、体积与占比
 
-`frontend_result.supplementary_analysis` 是可选的 AI 综合说明，不属于
+`frontend_result.supplementary_analysis` 是 AI 综合说明，不属于
 `completed_models`，也不会改变任务的 `status`<br>
 外部服务未启用时字段不存在；服务不可用时
 字段为 `{"status":"unavailable", "message":"..."}`，本地分类和分割仍可正常展示
