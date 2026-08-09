@@ -314,6 +314,11 @@ class FrontendContractTests(unittest.TestCase):
         self.assertNotIn("#38a169", self.app_css)
         self.assertNotIn("#3b82f6", self.app_css)
 
+    def test_vue_pages_hide_template_before_mount(self) -> None:
+        self.assertIn("[v-cloak]", self.theme_css)
+        self.assertIn('<div id="app" v-cloak>', self.html)
+        self.assertIn('<div id="app" v-cloak>', self.login_html)
+
     def test_json_raw_tabs_removed_and_detail_results_first(self) -> None:
         self.assertNotIn("addFile('frontend_result.json'", self.html)
         self.assertNotIn("addFile('classification.json'", self.html)
