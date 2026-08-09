@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/license-MIT-red.svg)](LICENSE)
 [![Qt](https://img.shields.io/badge/Python-3.11-yellow)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Linux-blue)]()
-[![Stars](https://img.shields.io/github/stars/ckckh2023/TrashGo_AIRecognition?style=social)]()
+[![Stars](https://img.shields.io/github/stars/BTIR-BrainTumor-ImageRecognition?style=social)]()
 
 BTIR 是一个面向四模态脑肿瘤 MRI 的完整分析系统<br>
 用户可在浏览器中登录、拖入病例文件夹或 ZIP 压缩包，查看分类、分割、模型综合结论和 AI 结果解读，并在网页内进行 3D 查看
