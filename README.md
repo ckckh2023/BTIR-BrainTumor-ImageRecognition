@@ -6,7 +6,8 @@
 [![Stars](https://img.shields.io/github/stars/ckckh2023/BTIR-BrainTumor-ImageRecognition?style=social)]()
 
 BTIR 是一个面向四模态脑肿瘤 MRI 的完整分析系统<br>
-用户可在浏览器中登录、拖入病例文件夹或 ZIP 压缩包，查看分类、分割、模型综合结论和 AI 结果解读，并在网页内进行 3D 查看
+用户可在浏览器中登录、拖入病例文件夹或 ZIP 压缩包，查看分类、分割、模型综合结论和 AI 结果解读，并在网页内进行 3D 查看<br>
+访问我们已经部署好的服务（不定期开放）: https://btir.online/
 
 ## 项目能力
 
@@ -76,18 +77,18 @@ models/segmentation3d/model/model_epoch_297.pth
 
 项目要求 Python 3.11：
 
-```powershell
-python -m pip install -r requirements.txt
-Copy-Item .env.example .env
-python -c "import secrets; print(secrets.token_urlsafe(48))"
+```bash
+python3.11 -m pip install -r requirements.txt
+cp .env.example .env
+python3.11 -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
 将最后一条命令生成的随机值写入 `.env` 的 `BTIR_JWT_SECRET_KEY`<br>
 
 首次部署可创建管理员：
 
-```powershell
-python Main.py user create <username> --admin
+```bash
+python3.11 Main.py user create <username> --admin
 ```
 
 `requirements.txt` 默认使用 CUDA 12.1 版 PyTorch<br>
@@ -95,17 +96,20 @@ CPU、CUDA、ROCm 与 Linux 部署方案见[安装与部署](docs/DEPLOYMENT.md)
 
 ### 3. 启动 Redis、API 与 Worker
 
-本地使用 Docker 启动 Redis：
-
-```powershell
-docker run --name btir-redis -p 6379:6379 -d redis:7-alpine
+```bash
+sudo systemctl start redis-server
 ```
 
 分别启动 API 与 Worker：
 
-```powershell
-python -m uvicorn api.app:app --reload
-python -m workers.run_worker
+```bash
+python3.11 -m uvicorn api.app:app --reload
+python3.11 -m workers.run_worker
+```
+
+或者可以同时托管 API 与 Worker
+```bash
+bash scripts/run-supervisor.sh /usr/bin/python3.11
 ```
 
 随后便可打开以下地址：
@@ -114,9 +118,6 @@ python -m workers.run_worker
 - API 文档：<http://127.0.0.1:8000/docs>
 - 运行设备：<http://127.0.0.1:8000/runtime>
 - 完整就绪状态：<http://127.0.0.1:8000/readyz>
-
-Linux 可使用 `bash scripts/run-supervisor.sh` 同时托管 API 与 Worker<br>
-该脚本不会启动 Redis
 
 ## 模型与结果
 
@@ -145,17 +146,17 @@ Linux 可使用 `bash scripts/run-supervisor.sh` 同时托管 API 与 Worker<br>
 
 常规后端、前端契约和任务流程测试：
 
-```powershell
-python -m pip install -r requirements-dev.txt
-python -m unittest discover -s tests -v
+```bash
+python3.11 -m pip install -r requirements-dev.txt
+python3.11 -m unittest discover -s tests -v
 ```
 
 浏览器端到端测试使用本地模拟 API，覆盖登录、ZIP 上传、异步任务提交、重试、取消与 3D 查看入口，不依赖模型权重、Redis 或 AI接口：
 
-```powershell
-python -m playwright install chromium
+```bash
+python3.11 -m playwright install chromium
 $env:BTIR_RUN_BROWSER_E2E=1
-python -m unittest tests.test_browser_e2e -v
+python3.11 -m unittest tests.test_browser_e2e -v
 ```
 
 未设置 `BTIR_RUN_BROWSER_E2E=1` 时，浏览器用例会自动跳过
@@ -191,14 +192,14 @@ Main.py          开发调试和维护命令
 
 常用命令：
 
-```powershell
-python Main.py help
-python Main.py reconcile-tasks
-python Main.py archive-tasks
-python Main.py purge-archive
-python Main.py claim-legacy-tasks <username> --apply
-python Main.py evaluate-3d <BraTS数据集目录>
-python Main.py clear --dry-run
+```bash
+python3.11 Main.py help
+python3.11 Main.py reconcile-tasks
+python3.11 Main.py archive-tasks
+python3.11 Main.py purge-archive
+python3.11 Main.py claim-legacy-tasks <username> --apply
+python3.11 Main.py evaluate-3d <BraTS数据集目录>
+python3.11 Main.py clear --dry-run
 ```
 
 执行实际清理前必须先停止 API 与 Worker，并先使用 `--dry-run` 检查范围<br>
