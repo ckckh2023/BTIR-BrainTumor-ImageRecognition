@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
 import logging
 from pathlib import Path
 from time import perf_counter
 from collections.abc import Callable
 from typing import Any
 
-from core.task_definitions import ModelName
+from core.task_definitions import ModelName, TaskArtifact
+from services.case_preview import render_case_preview
 from services.inference_service import (
     classify_volume,
     segment_volume,
@@ -143,6 +145,7 @@ def run_task_models(
         supplementary_analysis.get("duration_ms"),
         supplementary_analysis.get("usage"),
     )
+    _render_case_preview(task_dir, modality_paths, segmentation_result)
     if should_cancel is not None and should_cancel():
         raise TaskCancellationRequested("任务已在综合分析完成后取消")
     if progress_callback is not None:
@@ -153,6 +156,36 @@ def run_task_models(
         total_inference_ms=_elapsed_ms(started_at),
         supplementary_analysis=supplementary_analysis,
     )
+
+
+def _render_case_preview(
+    task_dir: Path,
+    modality_paths: dict[str, Path],
+    segmentation_result: dict[str, Any],
+) -> None:
+    '''生成四模态切片预览图并登记到前端结果，失败不影响任务结果'''
+    mask_relative = segmentation_result.get("mask_file")
+    if not mask_relative:
+        return
+    try:
+        preview_path = render_case_preview(
+            modality_paths=modality_paths,
+            mask_path=task_dir / Path(str(mask_relative)),
+            output_path=task_dir / TaskArtifact.PREVIEW,
+        )
+        if preview_path is None:
+            return
+        frontend_path = task_dir / TaskArtifact.FRONTEND_RESULT
+        if not frontend_path.is_file():
+            return
+        payload = json.loads(frontend_path.read_text(encoding="utf-8"))
+        payload.setdefault("result_files", {})["preview"] = TaskArtifact.PREVIEW
+        frontend_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception:
+        logger.exception("preview generation failed task_id=%s", task_dir.name)
 
 
 def _elapsed_ms(started_at: float) -> float:

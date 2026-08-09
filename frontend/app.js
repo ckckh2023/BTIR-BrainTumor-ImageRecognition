@@ -15,6 +15,12 @@
                     taskId: '',
                     analysisActive: false,
                     modelMetrics: null,
+                    tumorComposites: {},
+                    tumorMorphology: {},
+                    tumorSpatial: {},
+                    classProbabilities: {},
+                    casePreviewPath: '',
+                    casePreviewUrl: '',
                     volumeModalities: [
                         { key: 'flair', label: 'FLAIR' },
                         { key: 't1ce', label: 'T1CE' },
@@ -89,6 +95,19 @@
                     taskMessageIsError: false,
                     currentUser: null,
                     theme: 'light',
+                    workspaceRestoring: (() => {
+                        try {
+                            const url = new URL(window.location.href)
+                            return Boolean(
+                                url.searchParams.get('task')
+                                || url.searchParams.get('view')
+                                || sessionStorage.getItem('btir_workspace')
+                                || localStorage.getItem('btir_workspace'),
+                            )
+                        } catch {
+                            return false
+                        }
+                    })(),
                 }
             },
             computed: {
@@ -218,6 +237,20 @@
                 hasPendingDicomSeriesSelection() {
                     return Object.keys(this.dicomSeriesCandidates).length > 0
                 },
+                isResultWorkspace() {
+                    return Boolean(
+                        this.activeRightView === 'tasks'
+                        || (
+                            this.taskId
+                            && !this.loading
+                            && ['integrated', 'volume'].includes(this.selectedFileType)
+                        ),
+                    )
+                },
+                hasRightPanel() {
+                    return this.activeRightView === 'tasks'
+                        || Boolean(this.selectedFileType || this.fileList.length)
+                },
                 volumeSourceSummary() {
                     if (this.volumeArchiveFile) {
                         return `已选择压缩包：${this.volumeArchiveFile.name}`
@@ -316,6 +349,14 @@
                     const ratio = Math.max(0, Math.min(1, this.probabilityThreshold || 0))
                     return 94 - ratio * 90
                 },
+                slicePositiveRatio() {
+                    if (!this.probabilitySeries.length) return null
+                    const threshold = this.probabilityThreshold || 0
+                    const hits = this.probabilitySeries.filter(
+                        value => Number(value?.yes_probability) >= threshold,
+                    ).length
+                    return hits / this.probabilitySeries.length
+                },
             },
             watch: {
                 analysisProgress: {
@@ -387,6 +428,7 @@
                 },
                 switchRightView(view) {
                     this.activeRightView = view
+                    this.persistWorkspaceState()
                     if (view === 'tasks') {
                         // 每次进入任务管理都刷新，避免完成新任务后列表仍是旧数据
                         if (!this.taskHistoryLoading) {
@@ -399,6 +441,93 @@
                         this.$nextTick(() => {
                             this.volumeViewer?.drawScene?.()
                         })
+                    }
+                },
+                persistWorkspaceState() {
+                    const serialized = JSON.stringify({
+                        taskId: this.taskId || '',
+                        view: this.activeRightView,
+                    })
+                    sessionStorage.setItem('btir_workspace', serialized)
+                    localStorage.setItem('btir_workspace', serialized)
+                    const url = new URL(window.location.href)
+                    if (this.taskId) {
+                        url.searchParams.set('task', this.taskId)
+                    } else {
+                        url.searchParams.delete('task')
+                    }
+                    if (this.activeRightView === 'tasks') {
+                        url.searchParams.set('view', 'tasks')
+                    } else {
+                        url.searchParams.delete('view')
+                    }
+                    window.history.replaceState(null, '', url)
+                },
+                clearWorkspaceState() {
+                    sessionStorage.removeItem('btir_workspace')
+                    localStorage.removeItem('btir_workspace')
+                    const url = new URL(window.location.href)
+                    url.searchParams.delete('task')
+                    url.searchParams.delete('view')
+                    window.history.replaceState(null, '', url)
+                },
+                async restoreWorkspaceState() {
+                    let savedWorkspace = null
+                    try {
+                        const url = new URL(window.location.href)
+                        const taskIdFromUrl = url.searchParams.get('task')
+                        const viewFromUrl = url.searchParams.get('view')
+                        savedWorkspace = taskIdFromUrl || viewFromUrl
+                            ? { taskId: taskIdFromUrl || '', view: viewFromUrl }
+                            : JSON.parse(
+                                sessionStorage.getItem('btir_workspace')
+                                || localStorage.getItem('btir_workspace')
+                                || 'null',
+                            )
+                    } catch {
+                        this.clearWorkspaceState()
+                    }
+                    if (!savedWorkspace) {
+                        this.workspaceRestoring = false
+                        return
+                    }
+
+                    if (!savedWorkspace.taskId) {
+                        if (savedWorkspace.view === 'tasks') {
+                            this.activeRightView = 'tasks'
+                            await this.loadTaskHistory()
+                        }
+                        this.workspaceRestoring = false
+                        return
+                    }
+
+                    try {
+                        const response = await fetch(
+                            `${this.API_BASE}/tasks/${encodeURIComponent(savedWorkspace.taskId)}`,
+                            { headers: this.authHeaders },
+                        )
+                        if (!response.ok) {
+                            if (savedWorkspace.view === 'tasks') {
+                                this.activeRightView = 'tasks'
+                                await this.loadTaskHistory()
+                            } else {
+                                this.clearWorkspaceState()
+                            }
+                            return
+                        }
+                        this.presentTaskResult(await response.json())
+                        if (savedWorkspace.view === 'tasks') {
+                            this.switchRightView('tasks')
+                        }
+                    } catch {
+                        if (savedWorkspace?.view === 'tasks') {
+                            this.activeRightView = 'tasks'
+                            await this.loadTaskHistory()
+                        } else {
+                            this.clearWorkspaceState()
+                        }
+                    } finally {
+                        this.workspaceRestoring = false
                     }
                 },
                 switchTaskList(mode) {
@@ -448,6 +577,20 @@
                     const max = Math.max(...this.regionStats.map(item => item.volumeMm3), 0)
                     if (!max) return '0%'
                     const ratio = Math.max(0, Math.min(1, region.volumeMm3 / max))
+                    return `${Math.max(3, ratio * 100).toFixed(1)}%`
+                },
+                compositeBarWidth(key) {
+                    const max = Math.max(
+                        ...['WT', 'TC', 'ET'].map(
+                            k => this.tumorComposites[k]?.volume_mm3 || 0,
+                        ),
+                        0,
+                    )
+                    if (!max) return '0%'
+                    const ratio = Math.max(
+                        0,
+                        Math.min(1, (this.tumorComposites[key]?.volume_mm3 || 0) / max),
+                    )
                     return `${Math.max(3, ratio * 100).toFixed(1)}%`
                 },
                 showChartPoint(point, event) {
@@ -762,6 +905,11 @@
                     this.confidence = 0
                     this.tumorArea = null
                     this.regionStats = []
+                    this.tumorComposites = {}
+                    this.tumorMorphology = {}
+                    this.tumorSpatial = {}
+                    this.classProbabilities = {}
+                    this.clearCasePreview()
                     this.probabilitySeries = []
                     this.probabilityThreshold = 0.548381
                     this.chartHover = null
@@ -771,6 +919,8 @@
                 },
                 startNewUpload() {
                     this.resetState()
+                    this.activeRightView = 'results'
+                    this.clearWorkspaceState()
                     this.loading = false
                     this.analysisActive = false
                     this.analysisProgress = null
@@ -786,6 +936,9 @@
                     this.dicomSeriesCandidates = {}
                     this.dicomSeriesSelections = {}
                     this.clearVolumeSelectionState()
+                    this.$nextTick(() => {
+                        this.$refs.volumeDropZone?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                    })
                 },
                 openSampleGuide() {
                     window.location.href = 'guide.html'
@@ -819,7 +972,7 @@
                     if (jsonFiles.length) {
                         this.integratedSources = jsonFiles
                         files.push({
-                            label: '详细结果',
+                            label: '病例概览',
                             path: '@integrated',
                             type: 'integrated',
                             sources: { files: jsonFiles },
@@ -865,6 +1018,60 @@
                     const path = filePath.split('/').map(encodeURIComponent).join('/')
                     return `${this.API_BASE}/tasks/${taskId}/files/${path}`
                 },
+                clearCasePreview() {
+                    if (this.casePreviewUrl) {
+                        URL.revokeObjectURL(this.casePreviewUrl)
+                    }
+                    this.casePreviewPath = ''
+                    this.casePreviewUrl = ''
+                },
+                async loadCasePreview(filePath) {
+                    this.clearCasePreview()
+                    if (!filePath || !this.taskId) return
+
+                    const requestTaskId = this.taskId
+                    try {
+                        const response = await fetch(this.taskFileUrl(filePath), {
+                            headers: this.authHeaders,
+                        })
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}`)
+                        }
+                        const previewUrl = URL.createObjectURL(await response.blob())
+                        if (requestTaskId !== this.taskId) {
+                            URL.revokeObjectURL(previewUrl)
+                            return
+                        }
+                        this.casePreviewPath = filePath
+                        this.casePreviewUrl = previewUrl
+                    } catch {
+                        this.casePreviewPath = filePath
+                        this.casePreviewUrl = ''
+                    }
+                },
+                playResultAnimations() {
+                    this.ringRevealed = false
+                    this.segRingRevealed = false
+                    this.probLineRevealed = false
+                    this.probLineDrawn = false
+                    this.$nextTick(() => {
+                        requestAnimationFrame(() => {
+                            this.ringRevealed = Boolean(this.classificationLabel)
+                            this.segRingRevealed = this.tumorArea !== null
+                            this.probLineRevealed = this.probabilitySeries.length >= 2
+                        })
+                    })
+                },
+                async openCaseVolumeViewer() {
+                    const volumeEntry = this.fileList.find(file => file.type === 'volume')
+                    if (!volumeEntry?.sources?.modalities) return
+                    await this.openVolumeViewer(volumeEntry)
+                    this.$refs.rightContent?.scrollTo({ top: 0, behavior: 'smooth' })
+                },
+                returnToCaseOverview() {
+                    const detailEntry = this.fileList.find(file => file.type === 'integrated')
+                    if (detailEntry) this.selectFile(detailEntry)
+                },
                 async openVolumeViewer(file) {
                     if (!file.sources?.modalities) return
                     if (
@@ -901,7 +1108,10 @@
                     const sources = this.volumeViewerSources
                     const base = sources?.modalities?.[this.selectedVolumeModality]
                     const canvas = this.$refs.volumeCanvas
-                    if (!sources || !base || !canvas) return
+                    if (!sources || !base || !canvas) {
+                        this.volumeViewerError = '3D 查看器未完成初始化，请重新展开 3D 查看'
+                        return
+                    }
 
                     this.volumeViewerLoading = true
                     this.volumeViewerError = ''
@@ -982,6 +1192,7 @@
                         this.selectedFilePath = f.path
                         this.selectedFileType = 'integrated'
                         this.selectedFileLabel = f.label
+                        this.playResultAnimations()
                         return
                     }
                 },
@@ -1039,6 +1250,11 @@
                     this.probLineRevealed = false
                     this.probLineLength = 0
                     this.probLineDrawn = false
+                    this.tumorComposites = {}
+                    this.tumorMorphology = {}
+                    this.tumorSpatial = {}
+                    this.classProbabilities = {}
+                    this.clearCasePreview()
                     this.modelConsensus = resultData.model_consensus || null
                     this.supplementaryAnalysis = resultData.supplementary_analysis || null
                     if (resultData.classification) {
@@ -1047,6 +1263,7 @@
                             ? '肿瘤 detected'
                             : '正常'
                         this.confidence = classification.confidence
+                        this.classProbabilities = classification.probabilities || {}
                         this.probabilitySeries = Array.isArray(
                             classification.slice_probability_series
                         ) ? classification.slice_probability_series : []
@@ -1054,6 +1271,9 @@
                     }
                     if (resultData.segmentation) {
                         const regions = resultData.segmentation.regions || {}
+                        this.tumorComposites = resultData.segmentation.composites || {}
+                        this.tumorMorphology = resultData.segmentation.morphology || {}
+                        this.tumorSpatial = resultData.segmentation.spatial || {}
                         const names = { '1': 'NCR/NET', '2': 'ED', '4': 'ET' }
                         this.regionStats = ['1', '2', '4']
                             .filter(label => regions[label])
@@ -1069,6 +1289,8 @@
                             this.tumorArea = ratios.reduce((sum, ratio) => sum + ratio, 0)
                         }
                     }
+                    const resultFiles = resultData.result_files || {}
+                    void this.loadCasePreview(resultFiles.preview || '')
 
                     this.fileList = this.buildFileList(resultData, taskData)
                     this.selectedFilePath = ''
@@ -1095,6 +1317,7 @@
                     if (detailEntry) {
                         this.selectFile(detailEntry)
                     }
+                    this.persistWorkspaceState()
                     this.$nextTick(() => this.initRevealObserver())
                 },
                 async runAndGetResult(taskId) {
@@ -1293,6 +1516,8 @@
                     this.volumeCandidateSelections = remainingSelections
                 },
                 selectVolumeFiles(files, sourceLabel) {
+                    this.volumeSourceMenuVisible = false
+                    this.volumeCaseSourceMenuVisible = false
                     const selectedFiles = Array.from(files)
                     const candidates = { flair: [], t1ce: [], t1: [], t2: [] }
                     for (const file of selectedFiles) {
@@ -1337,6 +1562,8 @@
                 },
                 selectDicomFiles(files, sourceLabel) {
                     if (!files.length) return false
+                    this.volumeSourceMenuVisible = false
+                    this.volumeCaseSourceMenuVisible = false
                     this.volumeFiles = { flair: null, t1ce: null, t1: null, t2: null }
                     this.volumeArchiveFile = null
                     this.volumeDicomFiles = files
@@ -1407,6 +1634,8 @@
                     }
                 },
                 setVolumeArchive(file) {
+                    this.volumeSourceMenuVisible = false
+                    this.volumeCaseSourceMenuVisible = false
                     this.volumeArchiveFile = file
                     this.volumeFiles = { flair: null, t1ce: null, t1: null, t2: null }
                     this.volumeDicomFiles = []
@@ -1448,6 +1677,8 @@
                     this.confirmVolumeModality(modality)
                 },
                 onVolumeFileSelected(event, modality) {
+                    this.volumeSourceMenuVisible = false
+                    this.volumeCaseSourceMenuVisible = false
                     const file = event.target.files[0]
                     if (!file) return
                     if (!file.name.match(/\.nii(?:\.gz)?$/i)) {
@@ -1564,6 +1795,7 @@
                 async recognizeFromUpload() {
                     if (!this.canRecognize) return
                     this.resetState()
+                    this.clearWorkspaceState()
                     this.volumeCorrectionVisible = false
 
                     try {
@@ -1630,6 +1862,7 @@
 
                         const createData = await this.uploadTaskFiles(formData, endpoint)
                         this.taskId = createData.task_id
+                        this.persistWorkspaceState()
                         await this.runAndGetResult(this.taskId)
                     } catch (error) {
                         const selectionDetail = error.payload?.detail
@@ -1750,6 +1983,7 @@
                 logout() {
                     localStorage.removeItem('btir_token')
                     localStorage.removeItem('btir_user')
+                    this.clearWorkspaceState()
                     window.location.href = '/login/login.html'
                 },
             },
@@ -1800,6 +2034,7 @@
                     const userStr = localStorage.getItem('btir_user')
                     this.currentUser = userStr ? JSON.parse(userStr) : null
                 }
+                await this.restoreWorkspaceState()
             },
             beforeUnmount() {
                 this._revealObserver?.disconnect()
@@ -1809,6 +2044,7 @@
                 }
                 document.removeEventListener('click', this.handleGlobalClick)
                 this.destroyVolumeViewer()
+                this.clearCasePreview()
             },
         }
         const btirApp = createApp(btirRootOptions)

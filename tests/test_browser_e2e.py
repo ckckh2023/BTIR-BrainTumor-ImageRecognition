@@ -237,8 +237,8 @@ class BrowserE2ETests(unittest.TestCase):
         start_button = self.page.get_by_test_id("start-analysis")
         self.assertTrue(start_button.is_enabled())
         start_button.click()
-        self.page.wait_for_selector("[data-testid='volume-viewer-tab']")
-        self.page.get_by_test_id("volume-viewer-tab").click()
+        self.page.wait_for_selector("[data-testid='case-volume-viewer']")
+        self.page.get_by_test_id("case-volume-viewer").click()
         self.page.wait_for_selector("canvas[data-loaded='true']")
 
         self.assertGreaterEqual(_BrowserE2EHandler.request_counts.get("upload", 0), 1)
