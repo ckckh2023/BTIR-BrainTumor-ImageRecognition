@@ -138,7 +138,7 @@ class FrontendContractTests(unittest.TestCase):
     def test_supplementary_analysis_is_rendered_as_escaped_text(self) -> None:
         self.assertIn("supplementaryAnalysis", self.html)
         self.assertIn("supplementary_analysis", self.app_js)
-        self.assertIn("analysisConsistencyLabel", self.html)
+        self.assertIn("analysisConsistencyLabel", self.app_js)
         self.assertIn("分析模型：", self.html)
         self.assertIn("supplementaryRecommendation(supplementaryAnalysis)", self.html)
         self.assertIn("supplementaryRecommendation(analysis)", self.app_js)
@@ -166,10 +166,13 @@ class FrontendContractTests(unittest.TestCase):
 
     def test_result_panel_keeps_overview_separate_from_details(self) -> None:
         self.assertIn('class="result-overview"', self.html)
-        self.assertIn('class="result-details"', self.html)
-        self.assertIn("查看详细数据", self.html)
-        self.assertIn("模型观察", self.html)
+        self.assertIn("analysis-summary", self.html)
+        self.assertIn("AI 分析与结论", self.html)
         self.assertIn("提示肿瘤相关异常", self.html)
+        self.assertIn("病例概览", self.html)
+        self.assertIn("查看详细数据", self.html)
+        self.assertIn("casePreviewUrl", self.app_js)
+        self.assertIn("loadCasePreview", self.app_js)
 
     def test_left_panel_keeps_expanded_upload_and_result_in_scroll_area(self) -> None:
         self.assertIn(".left-panel", self.app_css)
@@ -178,6 +181,60 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn(".result-section", self.app_css)
         self.assertIn("flex: 1 1 auto;", self.app_css)
         self.assertIn("min-height: 280px;", self.app_css)
+
+    def test_completed_case_uses_the_full_result_workspace(self) -> None:
+        self.assertIn("result-workspace", self.html)
+        self.assertIn("isResultWorkspace", self.app_js)
+        self.assertIn("重新上传病例", self.html)
+        self.assertIn(".result-workspace .left-panel", self.app_css)
+        self.assertIn(".result-workspace .case-overview", self.app_css)
+        self.assertIn("app-main-nav", self.html)
+        self.assertIn("病例分析", self.html)
+        self.assertIn("任务管理", self.html)
+        self.assertIn("activeRightView === 'tasks'", self.app_js)
+        self.assertIn("topbar-reupload-btn", self.html)
+        self.assertNotIn("right-header", self.html)
+        self.assertIn('v-if="taskId && !loading"', self.html)
+
+    def test_brand_area_returns_to_the_upload_page(self) -> None:
+        self.assertIn("app-home-btn", self.html)
+        self.assertIn('@click.prevent="startNewUpload()"', self.html)
+        self.assertIn(".app-home-btn", self.app_css)
+
+    def test_refresh_restores_the_current_workspace(self) -> None:
+        self.assertIn("persistWorkspaceState", self.app_js)
+        self.assertIn("restoreWorkspaceState", self.app_js)
+        self.assertIn("localStorage.getItem('btir_workspace')", self.app_js)
+        self.assertIn("sessionStorage.getItem('btir_workspace')", self.app_js)
+        self.assertIn("url.searchParams.set('task', this.taskId)", self.app_js)
+        self.assertIn("workspaceRestoring", self.app_js)
+        self.assertIn('v-show="!workspaceRestoring"', self.html)
+        self.assertIn("await this.restoreWorkspaceState()", self.app_js)
+        self.assertIn("taskId: this.taskId || ''", self.app_js)
+        self.assertIn("savedWorkspace.view === 'tasks'", self.app_js)
+
+    def test_empty_right_panel_is_not_rendered_during_upload(self) -> None:
+        self.assertIn("hasRightPanel", self.app_js)
+        self.assertIn('class="right-panel" v-if="hasRightPanel"', self.html)
+        self.assertIn("single-pane-workspace", self.html)
+        self.assertIn(".single-pane-workspace .left-panel", self.app_css)
+
+    def test_upload_action_and_task_pagination_are_centered(self) -> None:
+        self.assertIn("upload-action", self.html)
+        self.assertIn("place-items: center;", self.app_css)
+        self.assertIn(".task-pagination", self.app_css)
+        self.assertIn("justify-content: center;", self.app_css)
+
+    def test_task_manager_marks_the_current_task(self) -> None:
+        self.assertIn("task.task_id === taskId", self.html)
+        self.assertIn("task-current-badge", self.html)
+        self.assertIn(".task-card.current", self.app_css)
+
+    def test_active_task_card_opens_its_result(self) -> None:
+        self.assertIn("viewTaskResult(task)", self.html)
+        self.assertIn("task-card-actions\" @click.stop", self.html)
+        self.assertIn(".task-card.clickable", self.app_css)
+        self.assertNotIn("查看结果", self.html)
 
     def test_upload_flow_supports_dicom_folder_conversion(self) -> None:
         self.assertIn("DICOM 病例文件夹", self.html)
@@ -246,9 +303,10 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("重新上传病例", self.html)
         self.assertIn("startNewUpload()", self.app_js)
         self.assertIn("this.volumeDicomFiles = []", self.app_js)
+        self.assertIn("this.activeRightView = 'results'", self.app_js)
 
-    def test_result_integrated_view_flattens_json_key_value_pairs(self) -> None:
-        self.assertIn("详细结果", self.app_js)
+    def test_result_integrated_view_keeps_a_case_overview_entry(self) -> None:
+        self.assertIn("病例概览", self.app_js)
         self.assertIn("type: 'integrated'", self.app_js)
         self.assertIn("md-table-viewer", self.detail_html)
         self.assertNotIn("md-table-title", self.html)
@@ -271,7 +329,7 @@ class FrontendContractTests(unittest.TestCase):
     def test_detail_table_and_toast_are_extracted_components(self) -> None:
         self.assertIn("components/btir-detail-table.js", self.html)
         self.assertIn("components/btir-toast.js", self.html)
-        self.assertIn("<btir-detail-table", self.html)
+        self.assertNotIn("<btir-detail-table", self.html)
         self.assertIn("<btir-toast></btir-toast>", self.html)
         self.assertIn("registry['btir-detail-table']", self.detail_html)
         self.assertIn("registry['btir-toast']", self.toast_html)
@@ -324,7 +382,7 @@ class FrontendContractTests(unittest.TestCase):
         self.assertNotIn("addFile('classification.json'", self.html)
         self.assertNotIn("addFile('segmentation.json'", self.html)
         self.assertLess(
-            self.app_js.index("label: '详细结果'"),
+            self.app_js.index("label: '病例概览'"),
             self.app_js.index("label: '3D查看'"),
         )
 
@@ -420,13 +478,70 @@ class FrontendContractTests(unittest.TestCase):
 
     def test_detail_table_uses_curated_sections(self) -> None:
         self.assertIn("buildCuratedRows", self.detail_html)
-        self.assertIn("addGroup('任务信息'", self.detail_html)
         self.assertIn("addGroup('分类判断'", self.detail_html)
         self.assertIn("addGroup('分割判断'", self.detail_html)
         self.assertIn("addGroup('模型共识'", self.detail_html)
         self.assertIn("addGroup('综合分析'", self.detail_html)
-        self.assertIn("addGroup('性能耗时'", self.detail_html)
-        self.assertIn("addGroup('全部字段'", self.detail_html)
+        self.assertNotIn("addGroup('任务信息'", self.detail_html)
+        self.assertNotIn("addGroup('性能耗时'", self.detail_html)
+        self.assertNotIn("addGroup('全部字段'", self.detail_html)
+        self.assertNotIn("addLeaf('model',", self.detail_html)
+        self.assertNotIn("addGroup('空间信息'", self.detail_html)
+        self.assertNotIn("addLeaf('voxels'", self.detail_html)
+
+    def test_detail_table_expands_doctor_relevant_sections_by_default(self) -> None:
+        self.assertIn("addGroup('分类判断', 0, false", self.detail_html)
+        self.assertIn("addGroup('综合分析', 0, false", self.detail_html)
+        self.assertIn("addGroup('分割判断', 0, true", self.detail_html)
+        self.assertIn("addGroup('模型共识', 0, true", self.detail_html)
+        self.assertIn("addGroup('观察项', 1, true", self.detail_html)
+
+    def test_case_overview_cards_and_preview_are_wired(self) -> None:
+        self.assertIn("tumorComposites", self.app_js)
+        self.assertIn("tumorMorphology", self.app_js)
+        self.assertIn("casePreviewPath", self.app_js)
+        self.assertIn("slicePositiveRatio", self.app_js)
+        self.assertIn("resultFiles.preview", self.app_js)
+        self.assertIn("case-overview", self.html)
+        self.assertIn("volume-stack", self.html)
+        self.assertIn("morph-bar", self.html)
+        self.assertIn("result-chart-wrap", self.html)
+        self.assertIn("切片概率分布", self.html)
+        self.assertIn("case-preview-img", self.html)
+        self.assertIn("case-overview-ring", self.html)
+        self.assertIn("case-prob-expanded", self.html)
+        self.assertIn("data-ring=\"classification\"", self.html)
+        self.assertIn("data-ring=\"segmentation\"", self.html)
+        self.assertIn("data-ring=\"probability\"", self.html)
+        self.assertIn("openCaseVolumeViewer", self.html)
+        self.assertIn("case-volume-viewer", self.html)
+        self.assertIn("returnToCaseOverview", self.app_js)
+        self.assertIn("rightContent?.scrollTo", self.app_js)
+        self.assertIn("3D 查看器未完成初始化", self.app_js)
+        self.assertIn(".case-overview", self.app_css)
+        preview_service = PROJECT_ROOT / "services" / "case_preview.py"
+        self.assertTrue(preview_service.is_file())
+        self.assertIn("PREVIEW = \"preview.png\"", (
+            PROJECT_ROOT / "core" / "task_definitions.py"
+        ).read_text(encoding="utf-8"))
+
+    def test_detailed_result_merged_with_graphical_sections(self) -> None:
+        self.assertIn("analysis-summary", self.html)
+        self.assertIn("AI 分析与结论", self.html)
+        self.assertIn("region-overview", self.html)
+        self.assertIn("分割区域", self.html)
+        self.assertIn("case-meta-section", self.html)
+        self.assertIn("查看详细数据", self.html)
+        self.assertIn("case-meta-summary", self.html)
+        self.assertIn("prob-bar", self.html)
+        self.assertIn("切片概率分布", self.html)
+        self.assertNotIn("clinical-details", self.html)
+        self.assertNotIn("md-table-viewer", self.html)
+        self.assertNotIn("病灶体积", self.html)
+        self.assertNotIn("形态与定位", self.html)
+        self.assertIn("classProbabilities", self.app_js)
+        self.assertIn("tumorSpatial", self.app_js)
+        self.assertIn("compositeBarWidth", self.app_js)
 
     def test_sample_download_entry_near_upload(self) -> None:
         self.assertIn("sample-download", self.html)
