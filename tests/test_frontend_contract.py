@@ -1,5 +1,6 @@
 '''前端任务操作与 3D 结果展示的轻量契约回归测试'''
 
+import json
 from pathlib import Path
 import unittest
 
@@ -147,8 +148,21 @@ class FrontendContractTests(unittest.TestCase):
     def test_frontend_renders_local_segmentation_first_consensus(self) -> None:
         self.assertIn("modelConsensus", self.html)
         self.assertIn("分类与分割一致性", self.html)
-        self.assertIn("V1 终盲测试集整体正确率 95.0%", self.html)
         self.assertIn("AI 分析结论", self.html)
+
+    def test_model_metrics_are_loaded_from_metrics_file(self) -> None:
+        metrics_file = PROJECT_ROOT / "assets" / "metrics.json"
+        self.assertTrue(metrics_file.is_file())
+        metrics = json.loads(metrics_file.read_text(encoding="utf-8"))
+        self.assertEqual(metrics["total"], metrics["correct"])
+        self.assertGreaterEqual(metrics["total"], 1)
+        self.assertIn("modelMetrics", self.html)
+        self.assertIn("modelMetrics: null", self.app_js)
+        self.assertIn("/assets/metrics.json", self.app_js)
+        self.assertIn("样例核对：{{ modelMetrics.correct }}/{{ modelMetrics.total }}", self.html)
+        self.assertIn("样例核对：3/3 例 BraTS19 测试病例分类结果与预期一致", self.html)
+        self.assertIn("result-metrics-row", self.app_css)
+        self.assertNotIn("95.0%", self.html)
 
     def test_result_panel_keeps_overview_separate_from_details(self) -> None:
         self.assertIn('class="result-overview"', self.html)
