@@ -178,7 +178,7 @@ BTIR_CORS_ORIGINS=https://你的前端域名
 输出目录与归档目录必须位于同一磁盘卷，任务软删除
 和定期归档才能通过完整目录移动保证一致性
 
-### 可选 AI 综合分析
+### AI 综合分析
 
 默认 `BTIR_AI_ANALYSIS_ENABLED=false`，因此不会产生任何外部请求<br>
 启用后在
