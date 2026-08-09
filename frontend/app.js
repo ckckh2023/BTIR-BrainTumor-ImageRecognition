@@ -1776,6 +1776,10 @@
                     if (response.ok) {
                         this.currentUser = await response.json()
                         localStorage.setItem('btir_user', JSON.stringify(this.currentUser))
+                        if (this.currentUser.must_change_password) {
+                            window.location.href = '/web/change-password.html'
+                            return
+                        }
                     }
                 } catch {
                     const userStr = localStorage.getItem('btir_user')

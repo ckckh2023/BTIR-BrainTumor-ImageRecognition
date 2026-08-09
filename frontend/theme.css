@@ -37,6 +37,7 @@
             --btir-transition: 0.2s ease;
             --btir-transition-slow: 0.3s ease;
             --btir-surface-hover: #f1f7ff;
+            --btir-progress-glow: rgba(59, 130, 246, 0.35);
         }
 
         [data-theme="dark"] {
@@ -58,6 +59,18 @@
             --btir-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.45);
             --btir-shadow-md: 0 6px 18px rgba(0, 0, 0, 0.5);
             --btir-shadow-lg: 0 18px 50px rgba(0, 0, 0, 0.6);
+            --btir-progress-glow: rgba(59, 130, 246, 0.28);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *,
+            *::before,
+            *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
+            }
         }
 
         ::-webkit-scrollbar {

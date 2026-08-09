@@ -17,82 +17,8 @@
         })()
     </script>
     <link rel="stylesheet" href="./theme.css">
+    <link rel="stylesheet" href="./auth.css">
     <style>
-body {
-            font-family: var(--btir-font);
-            background: linear-gradient(160deg, var(--btir-bg) 0%, var(--btir-bg-soft) 100%);
-            color: var(--btir-text);
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
-        }
-
-        .theme-toggle {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 34px;
-            height: 32px;
-            padding: 0;
-            color: var(--btir-text-secondary);
-            background: var(--btir-surface);
-            border: 1px solid var(--btir-border-strong);
-            border-radius: var(--btir-radius-sm);
-            cursor: pointer;
-            box-shadow: var(--btir-shadow-sm);
-            transition: all var(--btir-transition);
-        }
-
-        .theme-toggle:hover {
-            color: #ffffff;
-            background: var(--btir-primary);
-            border-color: var(--btir-primary);
-            transform: translateY(-1px);
-        }
-
-        .theme-toggle:active {
-            transform: scale(0.95);
-        }
-
-        .theme-toggle svg {
-            vertical-align: middle;
-        }
-
-        .auth-card {
-            position: relative;
-            background: var(--btir-surface);
-            border: 1px solid var(--btir-border);
-            border-radius: var(--btir-radius-lg);
-            box-shadow: var(--btir-shadow-lg);
-            padding: 44px 48px;
-            width: 470px;
-            max-width: 100%;
-            animation: slide-up 0.3s ease;
-        }
-
-        .auth-card .theme-toggle {
-            position: absolute;
-            top: 14px;
-            right: 14px;
-            box-shadow: none;
-            background: transparent;
-            border-color: transparent;
-        }
-
-        .auth-card .theme-toggle:hover {
-            background: var(--btir-primary-soft);
-            border-color: transparent;
-        }
-
-        h1 {
-            color: var(--btir-primary);
-            margin-bottom: 22px;
-            font-size: 24px;
-            text-align: center;
-        }
-
         .tabs {
             display: flex;
             gap: 4px;
@@ -127,125 +53,6 @@ body {
         .tab.active {
             color: white;
             background: var(--btir-primary);
-        }
-
-        .form-group {
-            margin-bottom: 16px;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 6px;
-            color: var(--btir-accent);
-            font-weight: 500;
-            font-size: 13px;
-        }
-
-        input {
-            width: 100%;
-            padding: 10px 14px;
-            color: var(--btir-text);
-            background: var(--btir-surface-muted);
-            border: 1px solid var(--btir-border-strong);
-            border-radius: var(--btir-radius-sm);
-            font-size: 14px;
-            transition: border-color var(--btir-transition), box-shadow var(--btir-transition);
-        }
-
-        input:hover {
-            border-color: var(--btir-accent);
-        }
-
-        input:focus {
-            outline: none;
-            border-color: var(--btir-accent);
-            box-shadow: 0 0 0 3px rgba(64, 126, 184, 0.14);
-        }
-
-        .submit-btn {
-            width: 100%;
-            padding: 12px;
-            background: linear-gradient(160deg, var(--btir-primary-hover) 0%, var(--btir-primary) 100%);
-            color: white;
-            border: none;
-            border-radius: var(--btir-radius-md);
-            font-size: 15px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all var(--btir-transition);
-            margin-top: 8px;
-        }
-
-        .submit-btn:hover:not(:disabled) {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(30, 60, 114, 0.32);
-        }
-
-        .submit-btn:active:not(:disabled) {
-            transform: translateY(0);
-        }
-
-        .submit-btn:disabled {
-            background: #a0aec0;
-            cursor: not-allowed;
-            transform: none;
-            box-shadow: none;
-        }
-
-        .message {
-            padding: 10px 12px;
-            margin-bottom: 16px;
-            border-radius: var(--btir-radius-sm);
-            font-size: 13px;
-            line-height: 1.5;
-            animation: fade-in 0.2s ease;
-        }
-
-        .message.error {
-            color: var(--btir-danger);
-            background: var(--btir-danger-bg);
-        }
-
-        .message.success {
-            color: var(--btir-success);
-            background: var(--btir-success-bg);
-        }
-
-        [data-theme="dark"] .message.error {
-            color: #fca5a5;
-            background: #3b1a1a;
-        }
-
-        [data-theme="dark"] .message.success {
-            color: #86efac;
-            background: #14351f;
-        }
-
-        .loading-spinner {
-            display: inline-block;
-            width: 14px;
-            height: 14px;
-            border: 2px solid rgba(255, 255, 255, 0.45);
-            border-top-color: #ffffff;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-right: 6px;
-            vertical-align: middle;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        @keyframes fade-in {
-            from { opacity: 0; transform: translateY(4px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        @keyframes slide-up {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
         }
     </style>
 
@@ -425,6 +232,10 @@ body {
                         user_id: data.user_id,
                         username: data.username,
                     }))
+                    if (data.must_change_password) {
+                        window.location.href = '/web/change-password.html'
+                        return
+                    }
                     window.location.href = '/web/'
                 },
             },
