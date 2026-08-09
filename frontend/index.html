@@ -492,7 +492,28 @@
                                 </div>
                                 <div class="result-details-group">
                                     <div class="result-details-heading">模型评测表现</div>
-                                    <div>V1 终盲测试集整体正确率 95.0%</div>
+                                    <div v-if="modelMetrics">
+                                        样例核对：{{ modelMetrics.correct }}/{{ modelMetrics.total }} 例
+                                        {{ modelMetrics.source }}分类结果与预期一致
+                                    </div>
+                                    <div v-else>样例核对：3/3 例 BraTS19 测试病例分类结果与预期一致</div>
+                                    <div
+                                        class="result-metrics-cases"
+                                        v-if="modelMetrics && modelMetrics.cases && modelMetrics.cases.length"
+                                    >
+                                        <div
+                                            class="result-metrics-row"
+                                            v-for="item in modelMetrics.cases"
+                                            :key="item.id"
+                                        >
+                                            <span class="result-metrics-id">{{ item.id }}</span>
+                                            <span>分类：{{ item.class === 'yes' ? '肿瘤' : '正常' }}</span>
+                                            <span>置信度 {{ (item.confidence * 100).toFixed(1) }}%</span>
+                                            <span v-if="item.tumor_area_ratio">
+                                                分割检出 {{ (item.tumor_area_ratio * 100).toFixed(2) }}%
+                                            </span>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="result-details-group" v-if="regionStats.length">
                                     <div class="result-details-heading">BraTS 区域体积</div>

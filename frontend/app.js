@@ -14,6 +14,7 @@
                     statusText: '等待识别...',
                     taskId: '',
                     analysisActive: false,
+                    modelMetrics: null,
                     volumeModalities: [
                         { key: 'flair', label: 'FLAIR' },
                         { key: 't1ce', label: 'T1CE' },
@@ -1759,6 +1760,19 @@
                 this.$nextTick(() => this.initRevealObserver())
                 this.initScrollRevealFallback()
                 document.addEventListener('click', this.handleGlobalClick)
+
+                fetch(`${this.API_BASE}/assets/metrics.json`, { headers: this.authHeaders })
+                    .then((response) => (response.ok ? response.json() : null))
+                    .then((data) => {
+                        if (
+                            data
+                            && typeof data.correct === 'number'
+                            && typeof data.total === 'number'
+                        ) {
+                            this.modelMetrics = data
+                        }
+                    })
+                    .catch(() => {})
 
                 const token = localStorage.getItem('btir_token')
                 if (!token) {
