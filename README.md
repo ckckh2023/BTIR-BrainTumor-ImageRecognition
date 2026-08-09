@@ -1,8 +1,8 @@
 # 脑肿瘤 MRI 图像分析
 
 [![License](https://img.shields.io/badge/license-MIT-red.svg)](LICENSE)
-[![Qt](https://img.shields.io/badge/Python-3.11-yellow)](https://www.python.org/)
-[![Platform](https://img.shields.io/badge/platform-Linux-blue)]()
+[![Python](https://img.shields.io/badge/Python-3.11-yellow)](https://www.python.org/)
+[![Platform](https://img.shields.io/badge/platform-Linux%20|%20Web-blue)]()
 [![Stars](https://img.shields.io/github/stars/ckckh2023/BTIR-BrainTumor-ImageRecognition?style=social)]()
 
 BTIR 是一个面向四模态脑肿瘤 MRI 的完整分析系统<br>
