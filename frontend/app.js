@@ -388,7 +388,8 @@
                 switchRightView(view) {
                     this.activeRightView = view
                     if (view === 'tasks') {
-                        if (!this.taskItems.length && !this.taskHistoryLoading) {
+                        // 每次进入任务管理都刷新，避免完成新任务后列表仍是旧数据
+                        if (!this.taskHistoryLoading) {
                             this.loadTaskHistory()
                         }
                     } else if (
@@ -1185,9 +1186,9 @@
                         stage: '3D 分割与综合分析完成',
                     }
                     this.statusText = '分析完成，正在呈现结果...'
-                    // 等待进度条真正推到 100%（至少停留片刻再渐隐），最多等 2.5 秒兜底
+                    // 等待进度条真正推到 100%（短暂停留后渐隐），最多等 2.5 秒兜底
                     const settleStartedAt = Date.now()
-                    const minHoldMs = 700
+                    const minHoldMs = 400
                     const settleDeadline = settleStartedAt + 2500
                     while (
                         Date.now() < settleDeadline
@@ -1201,7 +1202,7 @@
                     this.statusText = ''
                     this.analysisProgress = null
                     this.analysisPolling = false
-                    await new Promise(resolve => setTimeout(resolve, 420))
+                    await new Promise(resolve => setTimeout(resolve, 350))
                     this.presentTaskResult(resultData)
                 },
                 async cancelCurrentAnalysis() {
