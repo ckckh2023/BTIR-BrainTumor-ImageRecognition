@@ -111,7 +111,7 @@ python3.11 -m uvicorn api.app:app --reload
 python3.11 -m workers.run_worker
 ```
 
-Start the API and Worker separately:
+Alternatively, you can host both the API and Worker simultaneously using the supervisor script:
 ```bash
 bash scripts/run-supervisor.sh /usr/bin/python3.11
 ```
