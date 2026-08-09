@@ -4,6 +4,10 @@
             box-sizing: border-box;
         }
 
+        [v-cloak] {
+            display: none;
+        }
+
         :root {
             --btir-primary: #1e3c72;
             --btir-primary-hover: #2d5aa0;
