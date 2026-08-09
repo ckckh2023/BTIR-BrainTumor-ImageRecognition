@@ -1,9 +1,9 @@
 # 脑肿瘤 MRI 图像分析
 
-[![License](https://img.shields.io/badge/license-MIT-red.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/Python-3.11-yellow)](https://www.python.org/)
-[![Platform](https://img.shields.io/badge/platform-Linux-blue)]()
-[![Stars](https://img.shields.io/github/stars/ckckh2023/BTIR-BrainTumor-ImageRecognition?style=social)]()
+[![License](https://img.shields.io/badge/license-MIT-red?logo=opensourceinitiative&logoColor=white)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![Platform](https://img.shields.io/badge/platform-Linux-lightgrey?logo=linux&logoColor=white)]()
+[![Stars](https://img.shields.io/github/stars/ckckh2023/BTIR-BrainTumor-ImageRecognition?style=social&logo=github)]()<br>
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.139-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5.1-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![CUDA](https://img.shields.io/badge/CUDA-12.1-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com/cuda-toolkit)
