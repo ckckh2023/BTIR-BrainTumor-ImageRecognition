@@ -30,6 +30,12 @@ class FrontendContractTests(unittest.TestCase):
         cls.login_html = (
             PROJECT_ROOT / "frontend" / "login.html"
         ).read_text(encoding="utf-8")
+        cls.auth_css = (
+            PROJECT_ROOT / "frontend" / "auth.css"
+        ).read_text(encoding="utf-8")
+        cls.change_password_html = (
+            PROJECT_ROOT / "frontend" / "change-password.html"
+        ).read_text(encoding="utf-8")
         cls.viewer_html = (
             PROJECT_ROOT / "frontend" / "volume_viewer.js"
         ).read_text(encoding="utf-8")
@@ -264,11 +270,35 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("theme-toggle", self.login_html)
         self.assertIn("toggleTheme", self.login_html)
         self.assertIn(".tab:hover:not(.active)", self.login_html)
-        self.assertIn("input:hover", self.login_html)
-        self.assertIn("submit-btn:hover:not(:disabled)", self.login_html)
+        self.assertIn("input:hover", self.auth_css)
+        self.assertIn("submit-btn:hover:not(:disabled)", self.auth_css)
         self.assertNotIn("linear-gradient(180deg, #1a3a6b", self.login_html)
         self.assertNotIn("多用户认证系统", self.login_html)
-        self.assertIn(".auth-card .theme-toggle", self.login_html)
+        self.assertIn(".auth-card .theme-toggle", self.auth_css)
+        self.assertIn("./auth.css", self.login_html)
+
+    def test_forced_password_change_page_is_wired(self) -> None:
+        self.assertIn("当前密码", self.change_password_html)
+        self.assertIn("新密码", self.change_password_html)
+        self.assertIn("确认新密码", self.change_password_html)
+        self.assertIn("/auth/change-password", self.change_password_html)
+        self.assertIn("theme-toggle", self.change_password_html)
+        self.assertIn("返回登录", self.change_password_html)
+        self.assertIn("window.location.href = '/web/'", self.change_password_html)
+        self.assertIn("./auth.css", self.change_password_html)
+        self.assertIn("data.must_change_password", self.login_html)
+        self.assertIn("window.location.href = '/web/change-password.html'", self.login_html)
+        self.assertIn("must_change_password", self.app_js)
+        self.assertIn("window.location.href = '/web/change-password.html'", self.app_js)
+
+    def test_reduced_motion_and_progress_color_tokens(self) -> None:
+        self.assertIn("prefers-reduced-motion", self.theme_css)
+        self.assertIn("--btir-progress-glow", self.theme_css)
+        self.assertIn("var(--btir-progress-glow)", self.app_css)
+        self.assertIn("var(--btir-primary), var(--btir-accent)", self.app_css)
+        self.assertIn("var(--btir-success)", self.app_css)
+        self.assertNotIn("#38a169", self.app_css)
+        self.assertNotIn("#3b82f6", self.app_css)
 
     def test_json_raw_tabs_removed_and_detail_results_first(self) -> None:
         self.assertNotIn("addFile('frontend_result.json'", self.html)

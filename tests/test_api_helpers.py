@@ -58,6 +58,12 @@ TEST_USER = UserRecord(
 class TaskRouteHelperTests(unittest.TestCase):
     '''验证任务响应组装和预期异常的 HTTP 转换规则'''
 
+    def test_gzip_middleware_compresses_frontend_assets(self) -> None:
+        from starlette.middleware.gzip import GZipMiddleware
+
+        middleware_classes = [entry.cls for entry in app.user_middleware]
+        self.assertIn(GZipMiddleware, middleware_classes)
+
     def test_service_exceptions_are_registered_globally(self) -> None:
         cases = [
             (TaskLockBusyError("busy"), status.HTTP_409_CONFLICT),
