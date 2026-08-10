@@ -505,7 +505,10 @@
                     >
                         <div class="case-summary-topline">
                             <span>综合结果</span>
-                            <span class="case-summary-consistency">{{ consensusCard.consistencyText }}</span>
+                            <span class="case-summary-consistency">
+                                {{ consensusCard.consistencyText }}
+                                <em class="case-summary-review" v-if="modelConsensus.requires_review">建议复核</em>
+                            </span>
                         </div>
                         <div class="case-summary-result">{{ consensusCard.label }}</div>
                         <p class="case-summary-description">{{ consensusCard.summary }}</p>
@@ -900,46 +903,39 @@
                     </div>
                     <div
                         class="analysis-summary"
-                        v-if="modelConsensus || (supplementaryAnalysis && supplementaryAnalysis.status !== 'disabled')"
+                        v-if="hasSupplementaryAnalysis"
                     >
-                        <div class="analysis-summary-title">AI 分析与结论</div>
+                        <div class="analysis-summary-title">AI 辅助分析</div>
                         <div class="analysis-summary-body">
-                            <div class="analysis-summary-item" v-if="modelConsensus">
-                                <span class="analysis-summary-label">模型共识</span>
-                                <span>{{ modelConsensus.summary }}</span>
-                                <span class="analysis-review-tag" v-if="modelConsensus.requires_review">建议复核</span>
+                            <div class="analysis-summary-item" v-if="supplementaryAnalysis.content.summary">
+                                <span class="analysis-summary-label">AI 结论</span>
+                                <span>{{ supplementaryAnalysis.content.summary }}</span>
                             </div>
-                            <template v-if="supplementaryAnalysis && supplementaryAnalysis.status === 'succeeded'">
-                                <div class="analysis-summary-item" v-if="supplementaryAnalysis.content.summary">
-                                    <span class="analysis-summary-label">AI 结论</span>
-                                    <span>{{ supplementaryAnalysis.content.summary }}</span>
+                            <div class="analysis-summary-item" v-if="supplementaryAnalysis.content.follow_up">
+                                <span class="analysis-summary-label">建议</span>
+                                <span>{{ supplementaryAnalysis.content.follow_up }}</span>
+                            </div>
+                            <div class="analysis-summary-item" v-if="supplementaryAnalysis.content.uncertainties?.length">
+                                <span class="analysis-summary-label">不确定项</span>
+                                <span>{{ supplementaryAnalysis.content.uncertainties.join('；') }}</span>
+                            </div>
+                            <details
+                                class="analysis-observations"
+                                v-if="supplementaryAnalysis.content.observations?.length"
+                            >
+                                <summary>观察项（{{ supplementaryAnalysis.content.observations.length }}）</summary>
+                                <div class="analysis-detail-list">
+                                    <div
+                                        v-for="(item, index) in supplementaryAnalysis.content.observations"
+                                        :key="`analysis-observation-${index}`"
+                                    >· {{ item }}</div>
                                 </div>
-                                <div class="analysis-summary-item" v-if="supplementaryAnalysis.content.follow_up">
-                                    <span class="analysis-summary-label">建议</span>
-                                    <span>{{ supplementaryAnalysis.content.follow_up }}</span>
-                                </div>
-                                <div class="analysis-summary-item" v-if="supplementaryAnalysis.content.uncertainties?.length">
-                                    <span class="analysis-summary-label">不确定项</span>
-                                    <span>{{ supplementaryAnalysis.content.uncertainties.join('；') }}</span>
-                                </div>
-                                <details
-                                    class="analysis-observations"
-                                    v-if="supplementaryAnalysis.content.observations?.length"
-                                >
-                                    <summary>观察项（{{ supplementaryAnalysis.content.observations.length }}）</summary>
-                                    <div class="analysis-detail-list">
-                                        <div
-                                            v-for="(item, index) in supplementaryAnalysis.content.observations"
-                                            :key="`analysis-observation-${index}`"
-                                        >· {{ item }}</div>
-                                    </div>
-                                </details>
-                            </template>
+                            </details>
                         </div>
                     </div>
 
-                    <div class="region-overview" v-if="regionStats.length">
-                        <div class="region-overview-title">分割区域</div>
+                    <details class="result-details region-overview" v-if="regionStats.length">
+                        <summary>查看分割区域明细（{{ regionStats.length }} 项）</summary>
                         <div class="result-regions">
                             <div class="result-region-row" v-for="region in regionStats" :key="region.label">
                                 <span class="result-region-name">{{ region.label }} · {{ region.name }}</span>
@@ -953,7 +949,7 @@
                                 <span class="result-region-volume">{{ formatVolume(region.volumeMm3) }} mm³</span>
                             </div>
                         </div>
-                    </div>
+                    </details>
 
                     <details class="case-meta-section" v-if="taskId">
                         <summary class="case-meta-summary">查看详细数据</summary>

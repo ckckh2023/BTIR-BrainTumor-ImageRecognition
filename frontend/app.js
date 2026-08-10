@@ -648,6 +648,17 @@
                         tone,
                     }
                 },
+                hasSupplementaryAnalysis() {
+                    const analysis = this.supplementaryAnalysis
+                    const content = analysis?.content
+                    if (analysis?.status !== 'succeeded' || !content) return false
+                    return Boolean(
+                        content.summary
+                        || content.follow_up
+                        || content.uncertainties?.length
+                        || content.observations?.length
+                    )
+                },
                 thresholdText() {
                     return `${Math.round((this.probabilityThreshold || 0) * 1000) / 10}%`
                 },

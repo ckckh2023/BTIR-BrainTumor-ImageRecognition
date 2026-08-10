@@ -2389,7 +2389,6 @@ body {
         }
 
         .analysis-summary,
-        .region-overview,
         .case-meta-section {
             margin-bottom: 12px;
             padding: 12px 14px;
@@ -2400,7 +2399,6 @@ body {
         }
 
         .analysis-summary-title,
-        .region-overview-title,
         .case-meta-title {
             margin-bottom: 8px;
             color: var(--btir-text-secondary);
@@ -2431,14 +2429,17 @@ body {
             vertical-align: 1px;
         }
 
-        .analysis-review-tag {
+        .case-summary-review {
             display: inline-block;
-            margin-left: 8px;
-            padding: 1px 8px;
+            margin-left: 6px;
+            padding: 1px 6px;
             color: var(--btir-warning, #b45309);
             background: var(--btir-warning-bg, #fef3c7);
+            border: 1px solid color-mix(in srgb, var(--btir-warning, #b45309) 26%, transparent);
             border-radius: 999px;
-            font-size: 11px;
+            font-size: 10px;
+            font-style: normal;
+            line-height: 1.45;
         }
 
         .analysis-observations summary {
@@ -2521,6 +2522,23 @@ body {
 
         .case-meta-section[open] .case-meta-summary {
             margin-bottom: 10px;
+        }
+
+        .result-details.region-overview {
+            margin-top: 0;
+            margin-bottom: 12px;
+            padding-top: 0;
+            border-top: 0;
+        }
+
+        .result-details.region-overview summary {
+            color: var(--btir-text-secondary);
+            font-weight: 600;
+        }
+
+        .result-details.region-overview[open] summary {
+            margin-bottom: 10px;
+            color: var(--btir-primary);
         }
 
         .case-preview-figure {
