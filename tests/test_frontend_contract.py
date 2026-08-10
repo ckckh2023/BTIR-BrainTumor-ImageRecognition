@@ -621,13 +621,22 @@ class FrontendContractTests(unittest.TestCase):
     def test_sample_download_entry_near_upload(self) -> None:
         self.assertIn("sample-download", self.html)
         self.assertIn("sample-download-link", self.html)
-        self.assertIn("去下载测试样例", self.html)
+        self.assertIn("下载测试样例", self.html)
         self.assertNotIn("48.5 MB", self.html)
         self.assertIn("下载一个测试病例", self.guide_html)
+        self.assertIn('data-testid="guide-demo-slot"', self.guide_html)
+        self.assertIn("上传操作演示", self.guide_html)
+        self.assertIn("guide-top-layout", self.guide_html)
+        self.assertIn("guide-primary-content", self.guide_html)
+        self.assertIn("margin-top: 0", self.guide_html)
         self.assertIn("/assets/samples/BraTS19_2013_2_1.zip", self.guide_html)
         self.assertIn("/assets/samples/BraTS19_2013_4_1.zip", self.guide_html)
         self.assertIn("/assets/samples/BraTS19_2013_7_1.zip", self.guide_html)
         self.assertNotIn("评委测试包_解压后请依照说明文件操作.zip", self.guide_html)
+        self.assertIn("样例核对", self.guide_html)
+        self.assertIn("61.27%", self.guide_html)
+        self.assertIn("164.8 cm³", self.guide_html)
+        self.assertIn("28.7 cm³", self.guide_html)
 
     def test_sample_download_opens_guide_subpage(self) -> None:
         self.assertIn("openSampleGuide", self.html)

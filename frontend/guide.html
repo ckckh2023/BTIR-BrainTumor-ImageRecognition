@@ -111,7 +111,7 @@ body {
         }
 
         .guide-main {
-            max-width: 820px;
+            max-width: 1160px;
             margin: 28px auto;
             padding: 0 20px;
         }
@@ -144,6 +144,49 @@ body {
             margin: 0 0 16px;
             color: var(--btir-text-secondary);
             font-size: 13px;
+        }
+
+        .guide-demo-slot {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            aspect-ratio: 16 / 9;
+            margin: 0 0 18px;
+            padding: 20px;
+            color: var(--btir-text-secondary);
+            background:
+                linear-gradient(135deg, color-mix(in srgb, var(--btir-primary) 10%, transparent), transparent 56%),
+                var(--btir-surface);
+            border: 1px dashed color-mix(in srgb, var(--btir-primary) 48%, var(--btir-border));
+            border-radius: var(--btir-radius-sm);
+            text-align: center;
+        }
+
+        .guide-demo-slot-content {
+            display: grid;
+            gap: 5px;
+            justify-items: center;
+        }
+
+        .guide-demo-slot-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 34px;
+            height: 34px;
+            color: var(--btir-primary);
+            background: var(--btir-primary-soft);
+            border-radius: 50%;
+        }
+
+        .guide-demo-slot strong {
+            color: var(--btir-text);
+            font-size: 14px;
+        }
+
+        .guide-demo-slot span {
+            color: var(--btir-text-muted);
+            font-size: 12px;
         }
 
         .guide-sample-grid {
@@ -203,6 +246,108 @@ body {
             transform: scale(0.98);
         }
 
+        .guide-baseline {
+            margin-top: 0;
+            padding: 20px;
+            background: var(--btir-bg-soft);
+            border: 1px solid var(--btir-border);
+            border-radius: var(--btir-radius-md);
+        }
+
+        .guide-top-layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+            align-items: start;
+            gap: 24px;
+        }
+
+        .guide-primary-content {
+            min-width: 0;
+        }
+
+        .guide-baseline-heading {
+            margin: 0;
+            color: var(--btir-text);
+            font-size: 17px;
+            font-weight: 700;
+        }
+
+        .guide-baseline-description {
+            margin: 4px 0 14px;
+            color: var(--btir-text-secondary);
+            font-size: 13px;
+        }
+
+        .guide-baseline-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 12px;
+        }
+
+        .guide-baseline-card {
+            min-width: 0;
+            padding: 16px;
+            background: var(--btir-primary-soft);
+            border: 1px solid color-mix(in srgb, var(--btir-primary) 24%, var(--btir-border));
+            border-radius: var(--btir-radius-sm);
+        }
+
+        .guide-baseline-name {
+            overflow: hidden;
+            color: var(--btir-text-secondary);
+            font-family: var(--btir-mono);
+            font-size: 12px;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .guide-baseline-probability {
+            margin: 10px 0 12px;
+            color: var(--btir-primary);
+            font-size: 21px;
+            font-weight: 750;
+            letter-spacing: -0.5px;
+        }
+
+        .guide-baseline-probability span {
+            margin-left: 4px;
+            color: var(--btir-text-secondary);
+            font-size: 12px;
+            font-weight: 500;
+            letter-spacing: 0;
+        }
+
+        .guide-baseline-metrics {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 6px;
+        }
+
+        .guide-baseline-metric {
+            min-width: 0;
+        }
+
+        .guide-baseline-metric span {
+            display: block;
+            color: var(--btir-text-muted);
+            font-size: 11px;
+        }
+
+        .guide-baseline-metric strong {
+            display: block;
+            margin-top: 2px;
+            color: var(--btir-text);
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .guide-baseline-note {
+            margin: 12px 0 0;
+            color: var(--btir-text-muted);
+            font-size: 12px;
+            line-height: 1.6;
+        }
+
         @media (max-width: 680px) {
             .guide-main {
                 margin-top: 16px;
@@ -214,6 +359,30 @@ body {
             }
 
             .guide-sample-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 940px) {
+            .guide-top-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .guide-baseline {
+                margin-top: 0;
+            }
+
+            .guide-baseline-grid {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+
+            .guide-baseline-probability {
+                font-size: 20px;
+            }
+        }
+
+        @media (max-width: 680px) {
+            .guide-baseline-grid {
                 grid-template-columns: 1fr;
             }
         }
@@ -337,9 +506,22 @@ body {
 
     <main class="guide-main">
         <div class="guide-card">
+            <div class="guide-top-layout">
+            <div class="guide-primary-content">
             <section class="guide-samples" aria-labelledby="sampleDownloadTitle">
                 <h1 class="guide-samples-heading" id="sampleDownloadTitle">下载一个测试病例</h1>
                 <p class="guide-samples-description">每个压缩包包含同一病例的四模态 NIfTI 文件，可直接拖入上传区</p>
+                <div class="guide-demo-slot" data-testid="guide-demo-slot">
+                    <div class="guide-demo-slot-content">
+                        <span class="guide-demo-slot-icon" aria-hidden="true">
+                            <svg viewBox="0 0 16 16" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="2" y="3.5" width="12" height="9" rx="1.5"></rect>
+                                <path d="m6.5 6 3.2 2-3.2 2Z" fill="currentColor" stroke="none"></path>
+                            </svg>
+                        </span>
+                        <strong>上传操作演示</strong>
+                    </div>
+                </div>
                 <div class="guide-sample-grid">
                     <article class="guide-sample">
                         <div class="guide-sample-name">BraTS19_2013_2_1.zip</div>
@@ -360,6 +542,42 @@ body {
             </section>
             <div class="guide-md" id="guideContent">
                 <div class="guide-error">正在加载说明...</div>
+            </div>
+            </div>
+            <section class="guide-baseline" aria-labelledby="sampleBaselineTitle">
+                <h2 class="guide-baseline-heading" id="sampleBaselineTitle">样例核对</h2>
+                <p class="guide-baseline-description">当前项目模型基准结果</p>
+                <div class="guide-baseline-grid">
+                    <article class="guide-baseline-card">
+                        <div class="guide-baseline-name">BraTS19_2013_2_1.zip</div>
+                        <div class="guide-baseline-probability">61.27%<span>分类肿瘤概率</span></div>
+                        <div class="guide-baseline-metrics">
+                            <div class="guide-baseline-metric"><span>WT</span><strong>75.1 cm³</strong></div>
+                            <div class="guide-baseline-metric"><span>TC</span><strong>41.3 cm³</strong></div>
+                            <div class="guide-baseline-metric"><span>ET</span><strong>2.8 cm³</strong></div>
+                        </div>
+                    </article>
+                    <article class="guide-baseline-card">
+                        <div class="guide-baseline-name">BraTS19_2013_4_1.zip</div>
+                        <div class="guide-baseline-probability">71.65%<span>分类肿瘤概率</span></div>
+                        <div class="guide-baseline-metrics">
+                            <div class="guide-baseline-metric"><span>WT</span><strong>164.8 cm³</strong></div>
+                            <div class="guide-baseline-metric"><span>TC</span><strong>65.5 cm³</strong></div>
+                            <div class="guide-baseline-metric"><span>ET</span><strong>38.0 cm³</strong></div>
+                        </div>
+                    </article>
+                    <article class="guide-baseline-card">
+                        <div class="guide-baseline-name">BraTS19_2013_7_1.zip</div>
+                        <div class="guide-baseline-probability">73.74%<span>分类肿瘤概率</span></div>
+                        <div class="guide-baseline-metrics">
+                            <div class="guide-baseline-metric"><span>WT</span><strong>134.1 cm³</strong></div>
+                            <div class="guide-baseline-metric"><span>TC</span><strong>44.3 cm³</strong></div>
+                            <div class="guide-baseline-metric"><span>ET</span><strong>28.7 cm³</strong></div>
+                        </div>
+                    </article>
+                </div>
+                <p class="guide-baseline-note">分类概率与分割体积存在少量浮动时，可视为正常推理差异</p>
+            </section>
             </div>
         </div>
     </main>
