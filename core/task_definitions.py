@@ -101,6 +101,7 @@ class TaskArtifact(StrEnum):
     RUN_RESULT = "result.json"
     SEGMENTATION_MASK = "prediction.nii.gz"
     PREVIEW = "preview.png"
+    PREVIEW_DIRECTORY = "previews"
     ERROR = "error.json"
     LEGACY_METADATA = "task.json"
 

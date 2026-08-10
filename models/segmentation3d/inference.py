@@ -579,6 +579,9 @@ def _morphology_statistics(
         "bounding_box_size_voxels": [0, 0, 0],
         "bounding_box_size_mm": [0.0, 0.0, 0.0],
         "bounding_box_fill_ratio": 0.0,
+        "max_axial_area_voxels": 0,
+        "max_axial_area_mm2": 0.0,
+        "max_axial_slice_index": 0,
         "centroid_normalized": [0.0, 0.0, 0.0],
     }
     if foreground_voxels == 0:
@@ -596,6 +599,12 @@ def _morphology_statistics(
     bbox_size = [int(axis_slice.stop - axis_slice.start) for axis_slice in bounding_box]
     spacing = reference.header.get_zooms()[:3]
     voxel_volume_mm3 = abs(float(np.linalg.det(reference.affine[:3, :3])))
+    axial_areas_voxels = np.count_nonzero(foreground, axis=(0, 1))
+    max_axial_slice_index = int(np.argmax(axial_areas_voxels))
+    max_axial_area_voxels = int(axial_areas_voxels[max_axial_slice_index])
+    max_axial_area_mm2 = max_axial_area_voxels * float(spacing[0]) * float(
+        spacing[1]
+    )
     centroid = ndimage.center_of_mass(foreground, components, largest_component)
     normalized_centroid = [
         round(float(value) / max(1, segmentation.shape[index] - 1), 6)
@@ -612,6 +621,9 @@ def _morphology_statistics(
             for size, axis_spacing in zip(bbox_size, spacing, strict=True)
         ],
         "bounding_box_fill_ratio": round(largest_voxels / int(np.prod(bbox_size)), 6),
+        "max_axial_area_voxels": max_axial_area_voxels,
+        "max_axial_area_mm2": round(max_axial_area_mm2, 3),
+        "max_axial_slice_index": max_axial_slice_index,
         "centroid_normalized": normalized_centroid,
     }
 

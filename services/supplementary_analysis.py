@@ -364,6 +364,9 @@ def _morphology_evidence(value: dict[str, Any]) -> dict[str, int | float | list[
                 "largest_component_volume_mm3",
                 "largest_component_ratio",
                 "bounding_box_fill_ratio",
+                "max_axial_area_voxels",
+                "max_axial_area_mm2",
+                "max_axial_slice_index",
             ),
         )
     )

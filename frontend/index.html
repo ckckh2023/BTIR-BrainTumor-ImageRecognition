@@ -496,6 +496,33 @@
                             </div>
                         </div>
                     </section>
+                    <section class="case-imaging-features" v-if="imagingKeyMetrics.length">
+                        <div class="case-imaging-features-heading">
+                            <span>影像学关键特征</span>
+                            <span>基于当前分割结果</span>
+                        </div>
+                        <div class="case-imaging-features-grid">
+                            <article
+                                class="case-imaging-feature-card"
+                                :class="`case-imaging-feature-${metric.tone}`"
+                                v-for="metric in imagingKeyMetrics"
+                                :key="metric.key"
+                            >
+                                <div class="case-imaging-feature-topline">
+                                    <span>{{ metric.label }}</span>
+                                    <span>{{ metric.tag }}</span>
+                                </div>
+                                <div class="case-imaging-feature-value">{{ metric.value }}</div>
+                                <div class="case-imaging-feature-detail">{{ metric.detail }}</div>
+                                <template v-if="metric.meter !== null">
+                                    <div class="case-imaging-feature-meter" :aria-label="metric.meterLabel">
+                                        <span :style="{ width: metric.meter.toFixed(1) + '%' }"></span>
+                                    </div>
+                                    <div class="case-imaging-feature-meter-label">{{ metric.meterLabel }}</div>
+                                </template>
+                            </article>
+                        </div>
+                    </section>
                     <div class="case-overview" v-if="classificationLabel || tumorArea !== null">
                         <div class="case-overview-title">影像与模型依据</div>
                         <div class="case-overview-grid">
@@ -589,20 +616,64 @@
                                 </div>
                             </div>
                         </div>
-                        <figure class="case-preview-figure" v-if="casePreviewUrl">
-                            <a
-                                :href="casePreviewUrl"
-                                target="_blank"
-                                rel="noopener"
-                                title="打开原始尺寸预览"
-                            >
-                                <img
-                                    class="case-preview-img"
-                                    :src="casePreviewUrl"
-                                    alt="四模态 MRI 切片预览"
-                                />
-                            </a>
-                            <figcaption>四模态最大病灶层面　红：NCR/NET　绿：ED　黄：ET</figcaption>
+                        <figure class="case-preview-figure" v-if="casePreviewFrames.length">
+                            <div class="case-preview-toolbar">
+                                <div class="case-preview-mode-switch" aria-label="预览类型">
+                                    <button
+                                        type="button"
+                                        :class="{ active: casePreviewMode === 'overlay' }"
+                                        @click="setCasePreviewMode('overlay')"
+                                    >分割叠加</button>
+                                    <button
+                                        type="button"
+                                        :class="{ active: casePreviewMode === 'raw' }"
+                                        :disabled="!casePreviewHasRaw"
+                                        @click="setCasePreviewMode('raw')"
+                                    >原始四模态</button>
+                                </div>
+                                <span class="case-preview-position">{{ casePreviewCaption }}</span>
+                            </div>
+                            <div class="case-preview-stage">
+                                <button
+                                    type="button"
+                                    class="case-preview-nav"
+                                    aria-label="查看前一层"
+                                    :disabled="casePreviewActiveIndex === 0"
+                                    @click="selectCasePreviewFrame(casePreviewActiveIndex - 1)"
+                                >‹</button>
+                                <a
+                                    v-if="casePreviewUrl"
+                                    :href="casePreviewUrl"
+                                    target="_blank"
+                                    rel="noopener"
+                                    title="打开原始尺寸预览"
+                                >
+                                    <img
+                                        class="case-preview-img"
+                                        :src="casePreviewUrl"
+                                        :alt="casePreviewCaption"
+                                    />
+                                </a>
+                                <div class="case-preview-loading" v-else>正在载入切片...</div>
+                                <button
+                                    type="button"
+                                    class="case-preview-nav"
+                                    aria-label="查看后一层"
+                                    :disabled="casePreviewActiveIndex >= casePreviewFrames.length - 1"
+                                    @click="selectCasePreviewFrame(casePreviewActiveIndex + 1)"
+                                >›</button>
+                            </div>
+                            <div class="case-preview-dots" v-if="casePreviewFrames.length > 1">
+                                <button
+                                    type="button"
+                                    v-for="(frame, index) in casePreviewFrames"
+                                    :key="`case-preview-frame-${index}`"
+                                    :class="{ active: index === casePreviewActiveIndex }"
+                                    :aria-label="frame.offset === 0 ? '最大病灶层' : `切换至相邻层 ${index + 1}`"
+                                    @click="selectCasePreviewFrame(index)"
+                                ></button>
+                            </div>
+                            <figcaption v-if="casePreviewMode === 'overlay'">红：NCR/NET　绿：ED　黄：ET</figcaption>
                         </figure>
                         <section class="case-evidence-section">
                             <div class="case-evidence-title">定量证据</div>
@@ -796,8 +867,22 @@
                                     <div v-if="tumorSpatial.shape">
                                         影像尺寸：{{ tumorSpatial.shape.join(' × ') }}
                                     </div>
+                                    <div v-if="tumorSpatial.orientation">
+                                        空间方向：{{ tumorSpatial.orientation.join(' / ') }}
+                                    </div>
+                                    <template v-if="caseInputQuality">
+                                        <div>
+                                            输入模态：{{ caseInputQuality.present.join(' / ') }}
+                                        </div>
+                                        <div>
+                                            模态完整性：{{ caseInputQuality.complete ? '4 / 4 完整' : `缺少 ${caseInputQuality.missing.join(' / ')}` }}
+                                        </div>
+                                    </template>
                                     <div v-if="tumorMorphology.bounding_box_size_mm">
                                         病灶大小：{{ tumorMorphology.bounding_box_size_mm.map(v => Math.round(v)).join(' × ') }} mm
+                                    </div>
+                                    <div v-if="tumorMorphology.max_axial_area_mm2">
+                                        最大横截面积：{{ formatVolume(tumorMorphology.max_axial_area_mm2) }} mm²
                                     </div>
                                     <div v-if="tumorMorphology.connected_components">
                                         连通域：{{ tumorMorphology.connected_components }} 个

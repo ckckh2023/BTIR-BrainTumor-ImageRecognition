@@ -1,11 +1,13 @@
 import tempfile
 import unittest
 from pathlib import Path
+import json
 
 import nibabel as nib
 import numpy as np
 
-from services.case_preview import render_case_preview
+from services.case_preview import render_case_preview, render_case_preview_series
+from services.task_runner import _render_case_preview
 
 
 class CasePreviewTests(unittest.TestCase):
@@ -58,6 +60,36 @@ class CasePreviewTests(unittest.TestCase):
         result = render_case_preview(self.modalities, self.mask_path, output)
         self.assertEqual(result, output)
         self.assertTrue(output.is_file())
+
+    def test_preview_series_contains_raw_and_overlay_neighbors(self) -> None:
+        series = render_case_preview_series(
+            self.modalities,
+            self.mask_path,
+            self.tmp / "previews",
+        )
+        self.assertIsNotNone(series)
+        assert series is not None
+        self.assertEqual(series["focus_slice"], 5)
+        self.assertEqual([frame["offset"] for frame in series["frames"]], [-1, 0, 1])
+        for frame in series["frames"]:
+            self.assertTrue((self.tmp / frame["raw"]).is_file())
+            self.assertTrue((self.tmp / frame["overlay"]).is_file())
+
+    def test_task_runner_uses_runtime_mask_path_for_preview_artifacts(self) -> None:
+        frontend_path = self.tmp / "frontend_result.json"
+        frontend_path.write_text(
+            json.dumps({"result_files": {"frontend": "frontend_result.json"}}),
+            encoding="utf-8",
+        )
+        _render_case_preview(
+            self.tmp,
+            self.modalities,
+            {"mask_path": str(self.mask_path)},
+        )
+        result = json.loads(frontend_path.read_text(encoding="utf-8"))
+        self.assertEqual(result["result_files"]["preview"], "preview.png")
+        self.assertEqual(len(result["result_files"]["preview_series"]["frames"]), 3)
+        self.assertTrue((self.tmp / "preview.png").is_file())
 
 
 if __name__ == "__main__":
