@@ -453,8 +453,8 @@ body {
 
         .result-column-resizer span::before {
             position: absolute;
-            top: 11px;
-            left: 4px;
+            top: 7px;
+            left: 5px;
             width: 2px;
             height: 18px;
             border-radius: 999px;
