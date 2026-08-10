@@ -6,7 +6,7 @@ import json
 import shutil
 import zipfile
 from contextlib import ExitStack
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -21,11 +21,14 @@ from contracts.task import (
     TaskCancellationResponse,
     TaskEnqueuedResponse,
     TaskErrorData,
+    TaskFollowUpHistoryItem,
+    TaskFollowUpResponse,
     TaskInputFileData,
     TaskInputData,
     TaskListResponse,
     TaskRunListResponse,
     TaskRunSummaryResponse,
+    TaskPurgedResponse,
     TaskRestoredResponse,
     TaskStatusResponse,
     TaskSummaryResponse,
@@ -45,7 +48,7 @@ from repositories.task_repository_contracts import (
     TaskNotFoundError,
     TaskQuotaExceededError,
 )
-from services.archive_service import archive_task, restore_task
+from services.archive_service import archive_task, purge_archived_task, restore_task
 from services.dicom_conversion import (
     DICOMSeriesSelectionRequired,
     initialize_uploaded_dicom_task,
@@ -200,6 +203,9 @@ def task_common_data(task_data) -> dict[str, Any]:
         "status": task_data.status,
         "created_at": task_data.created_at,
         "updated_at": task_data.updated_at,
+        "case_id": task_data.case_id,
+        "case_name": task_data.case_name,
+        "study_date": task_data.study_date,
         "analysis_mode": task_data.analysis_mode,
         "completed_models": [model.value for model in task_data.completed_models],
         "input": task_input_data(task_data),
@@ -235,6 +241,9 @@ def create_3d_task_from_upload(
     t1: UploadFile = File(...),
     t2: UploadFile = File(...),
     name: str | None = Form(default=None),
+    case_id: str | None = Form(default=None, max_length=128),
+    case_name: str | None = Form(default=None, max_length=100),
+    study_date: date | None = Form(default=None),
     current_user: UserRecord = Depends(require_password_changed),
 ) -> VolumeTaskCreatedResponse:
     '''上传四模态 NIfTI 并创建 3D 分割任务'''
@@ -260,6 +269,9 @@ def create_3d_task_from_upload(
                 for modality, upload in uploads.items()
             },
             name=name,
+            case_id=case_id,
+            case_name=case_name,
+            study_date=study_date,
             user_id=current_user.user_id,
             max_tasks_per_user=SETTINGS.max_tasks_per_user,
         )
@@ -278,6 +290,7 @@ def create_3d_task_from_upload(
 
     return VolumeTaskCreatedResponse(
         task_id=task_dir.name,
+        case_id=case_id or task_dir.name,
         input_files={
             modality: path.name
             for modality, path in stored_files.items()
@@ -293,6 +306,9 @@ def create_3d_task_from_upload(
 def create_3d_task_from_dicom(
     files: list[UploadFile] = File(...),
     name: str | None = Form(default=None),
+    case_id: str | None = Form(default=None, max_length=128),
+    case_name: str | None = Form(default=None, max_length=100),
+    study_date: date | None = Form(default=None),
     flair_series_uid: str | None = Form(default=None),
     t1ce_series_uid: str | None = Form(default=None),
     t1_series_uid: str | None = Form(default=None),
@@ -313,6 +329,9 @@ def create_3d_task_from_dicom(
                 if upload.filename
             ],
             name=name,
+            case_id=case_id,
+            case_name=case_name,
+            study_date=study_date,
             user_id=current_user.user_id,
             max_tasks_per_user=SETTINGS.max_tasks_per_user,
             selected_series_uids={
@@ -347,6 +366,7 @@ def create_3d_task_from_dicom(
 
     return VolumeTaskCreatedResponse(
         task_id=task_dir.name,
+        case_id=case_id or task_dir.name,
         input_files={
             modality: path.name
             for modality, path in stored_files.items()
@@ -372,6 +392,9 @@ def _iter_archive_dicom_uploads(archive: zipfile.ZipFile):
 def create_3d_task_from_archive(
     archive: UploadFile = File(...),
     name: str | None = Form(default=None),
+    case_id: str | None = Form(default=None, max_length=128),
+    case_name: str | None = Form(default=None, max_length=100),
+    study_date: date | None = Form(default=None),
     flair: UploadFile | None = File(default=None),
     t1ce: UploadFile | None = File(default=None),
     t1: UploadFile | None = File(default=None),
@@ -450,6 +473,9 @@ def create_3d_task_from_archive(
                         for modality in VOLUME_MODALITIES
                     },
                     name=name,
+                    case_id=case_id,
+                    case_name=case_name,
+                    study_date=study_date,
                     user_id=current_user.user_id,
                     max_tasks_per_user=SETTINGS.max_tasks_per_user,
                 )
@@ -460,6 +486,9 @@ def create_3d_task_from_archive(
                     task_dir=task_dir,
                     uploads=_iter_archive_dicom_uploads(uploaded_archive),
                     name=name,
+                    case_id=case_id,
+                    case_name=case_name,
+                    study_date=study_date,
                     user_id=current_user.user_id,
                     max_tasks_per_user=SETTINGS.max_tasks_per_user,
                     selected_series_uids={
@@ -516,6 +545,7 @@ def create_3d_task_from_archive(
 
     return VolumeTaskCreatedResponse(
         task_id=task_dir.name,
+        case_id=case_id or task_dir.name,
         input_files={
             modality: path.name
             for modality, path in stored_files.items()
@@ -626,6 +656,67 @@ def get_task(
     )
 
 
+@router.get("/{task_id}/follow-up", response_model=TaskFollowUpResponse)
+def get_task_follow_up(
+    task_id: str,
+    current_user: UserRecord = Depends(require_password_changed),
+) -> TaskFollowUpResponse:
+    '''返回同一病例中日期最近的已完成检查结果'''
+    try:
+        current = task_repository.load_for_user(task_id, current_user.user_id)
+    except TaskNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="任务不存在",
+        ) from exc
+
+    response = TaskFollowUpResponse(
+        task_id=current.task_id,
+        case_id=current.case_id,
+        case_name=current.case_name,
+        study_date=current.study_date,
+    )
+    if not current.case_id:
+        return response
+
+    records, _ = task_repository.list_tasks(
+        limit=SETTINGS.max_tasks_per_user,
+        offset=0,
+        user_id=current_user.user_id,
+    )
+    candidates = [
+        record
+        for record in records
+        if (
+            record.task_id != current.task_id
+            and record.case_id == current.case_id
+            and record.created_at < current.created_at
+            and record.status in {TaskStatus.SUCCEEDED, TaskStatus.PARTIAL}
+        )
+    ]
+    for baseline in sorted(
+        candidates,
+        key=lambda record: (record.study_date or record.created_at.date(), record.created_at),
+        reverse=True,
+    ):
+        frontend_path = require_task_dir(baseline.task_id) / TaskArtifact.FRONTEND_RESULT
+        if not frontend_path.is_file():
+            continue
+        frontend_result = sanitize_public_payload(
+            json.loads(frontend_path.read_text(encoding="utf-8"))
+        )
+        history_item = TaskFollowUpHistoryItem(
+            task=task_summary_data(baseline),
+            frontend_result=frontend_result,
+        )
+        response.history.append(history_item)
+
+    if response.history:
+        response.baseline = response.history[0].task
+        response.baseline_frontend_result = response.history[0].frontend_result
+    return response
+
+
 @router.delete("/{task_id}", response_model=TaskArchivedResponse)
 def delete_task(
     task_id: str,
@@ -680,6 +771,33 @@ def restore_archived_task(
         task_status=task_data.status,
         restored_at=task_data.updated_at,
     )
+
+
+@router.delete("/{task_id}/purge", response_model=TaskPurgedResponse)
+def purge_archived_task_endpoint(
+    task_id: str,
+    current_user: UserRecord = Depends(require_password_changed),
+) -> TaskPurgedResponse:
+    '''彻底删除一项已归档任务'''
+    verify_task_owner(task_id, current_user)
+    try:
+        purge_archived_task(
+            task_id,
+            actor_user_id=current_user.user_id,
+            target_user_id=current_user.user_id,
+        )
+    except TaskNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="归档任务不存在",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+    return TaskPurgedResponse(task_id=task_id, purged_at=datetime.now().astimezone())
 
 
 @router.get("/{task_id}/runs", response_model=TaskRunListResponse)

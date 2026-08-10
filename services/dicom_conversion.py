@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextlib import ExitStack
 import re
 import shutil
+from datetime import date
 from pathlib import Path, PurePosixPath
 from typing import BinaryIO, Iterable, Mapping
 
@@ -27,6 +28,9 @@ def initialize_uploaded_dicom_task(
     uploads: Iterable[tuple[str, BinaryIO]],
     *,
     name: str | None = None,
+    case_id: str | None = None,
+    case_name: str | None = None,
+    study_date: date | None = None,
     user_id: str | None = None,
     max_tasks_per_user: int | None = None,
     selected_series_uids: Mapping[str, str | None] | None = None,
@@ -60,6 +64,9 @@ def initialize_uploaded_dicom_task(
                     for modality in VOLUME_MODALITIES
                 },
                 name=name,
+                case_id=case_id,
+                case_name=case_name,
+                study_date=study_date,
                 user_id=user_id,
                 max_tasks_per_user=max_tasks_per_user,
             )

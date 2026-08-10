@@ -20,6 +20,8 @@
                     tumorSpatial: {},
                     classProbabilities: {},
                     caseInputFiles: {},
+                    followUp: null,
+                    selectedFollowUpTaskId: '',
                     casePreviewPath: '',
                     casePreviewUrl: '',
                     casePreviewFrames: [],
@@ -42,6 +44,9 @@
                     volumeArchiveFile: null,
                     volumeDicomFiles: [],
                     volumeFolderLabel: '',
+                    caseId: '',
+                    caseName: '',
+                    studyDate: new Date().toISOString().slice(0, 10),
                     volumeDropActive: false,
                     volumeSourceMenuVisible: false,
                     volumeCaseSourceMenuVisible: false,
@@ -84,7 +89,21 @@
                     volumeViewMode: 'multiplanar',
                     volumeViewerExpanded: false,
                     deferredVolumeLoadTimer: null,
-                    activeRightView: 'results',
+                    activeRightView: (() => {
+                        try {
+                            const url = new URL(window.location.href)
+                            const urlView = url.searchParams.get('view')
+                            if (urlView === 'tasks') return 'tasks'
+                            const savedWorkspace = JSON.parse(
+                                sessionStorage.getItem('btir_workspace')
+                                || localStorage.getItem('btir_workspace')
+                                || 'null',
+                            )
+                            return savedWorkspace?.view === 'tasks' ? 'tasks' : 'results'
+                        } catch {
+                            return 'results'
+                        }
+                    })(),
                     viewerPane: '3d',
                     taskItems: [],
                     taskTotal: 0,
@@ -92,6 +111,8 @@
                     taskOffset: 0,
                     taskQuery: '',
                     taskStatusFilter: '',
+                    taskSearchTimer: null,
+                    taskHistoryRequestId: 0,
                     taskListMode: 'active',
                     taskHistoryLoading: false,
                     taskActionId: '',
@@ -209,6 +230,24 @@
                 },
                 taskPageCount() {
                     return Math.max(1, Math.ceil(this.taskTotal / this.taskLimit))
+                },
+                isAnalysisInProgress() {
+                    return Boolean(this.loading || this.analysisActive || this.analysisPolling)
+                },
+                taskCaseGroups() {
+                    const groups = new Map()
+                    for (const task of this.taskItems) {
+                        const caseId = task.case_id || task.task_id
+                        if (!groups.has(caseId)) {
+                            groups.set(caseId, {
+                                caseId,
+                                name: task.case_name || task.name || '未命名病例',
+                                tasks: [],
+                            })
+                        }
+                        groups.get(caseId).tasks.push(task)
+                    }
+                    return [...groups.values()]
                 },
                 authHeaders() {
                     const token = localStorage.getItem('btir_token')
@@ -423,6 +462,98 @@
                         })
                     }
                     return metrics
+                },
+                followUpComparison() {
+                    const selected = this.selectedFollowUpItem
+                    const baseline = selected?.task
+                    const baselineResult = selected?.frontend_result
+                    if (!baseline || !baselineResult || !this.taskId || baseline.task_id === this.taskId) {
+                        return null
+                    }
+                    const currentResult = {
+                        classification: {
+                            probabilities: this.classProbabilities,
+                        },
+                        segmentation: {
+                            composites: this.tumorComposites,
+                            morphology: this.tumorMorphology,
+                        },
+                    }
+                    const compositeValue = (result, key) => {
+                        const value = Number(result?.segmentation?.composites?.[key]?.volume_mm3)
+                        return Number.isFinite(value) && value >= 0 ? value : null
+                    }
+                    const morphologyValue = (result, key) => {
+                        const value = Number(result?.segmentation?.morphology?.[key])
+                        return Number.isFinite(value) && value >= 0 ? value : null
+                    }
+                    const probabilityValue = result => {
+                        const value = Number(result?.classification?.probabilities?.yes)
+                        return Number.isFinite(value) && value >= 0 ? value : null
+                    }
+                    const makeMetric = (key, label, unit, baselineValue, currentValue, formatter) => {
+                        if (baselineValue === null || currentValue === null) return null
+                        const change = currentValue - baselineValue
+                        const percent = baselineValue > 0 ? change / baselineValue * 100 : null
+                        return {
+                            key,
+                            label,
+                            unit,
+                            baselineValue,
+                            currentValue,
+                            baseline: formatter(baselineValue),
+                            current: formatter(currentValue),
+                            change,
+                            changeText: this.formatFollowUpChange(change, percent, unit),
+                            tone: this.followUpChangeTone(change),
+                        }
+                    }
+                    const volumeFormatter = value => `${this.formatVolume(value)} mm³`
+                    const areaFormatter = value => `${this.formatVolume(value)} mm²`
+                    const probabilityFormatter = value => `${(value * 100).toFixed(1)}%`
+                    const metrics = [
+                        makeMetric('wt', '全肿瘤体积', 'volume', compositeValue(baselineResult, 'WT'), compositeValue(currentResult, 'WT'), volumeFormatter),
+                        makeMetric('tc', '肿瘤核心体积', 'volume', compositeValue(baselineResult, 'TC'), compositeValue(currentResult, 'TC'), volumeFormatter),
+                        makeMetric('et', '强化肿瘤体积', 'volume', compositeValue(baselineResult, 'ET'), compositeValue(currentResult, 'ET'), volumeFormatter),
+                        makeMetric('area', '最大横截面积', 'area', morphologyValue(baselineResult, 'max_axial_area_mm2'), morphologyValue(currentResult, 'max_axial_area_mm2'), areaFormatter),
+                        makeMetric('probability', '肿瘤相关概率', 'probability', probabilityValue(baselineResult), probabilityValue(currentResult), probabilityFormatter),
+                    ].filter(Boolean)
+                    if (!metrics.length) return null
+                    const wt = metrics.find(metric => metric.key === 'wt')
+                    const chartMax = wt ? Math.max(wt.baselineValue, wt.currentValue, 1) : 1
+                    return {
+                        baseline,
+                        metrics,
+                        trend: wt
+                            ? [
+                                { label: '基线', value: wt.baselineValue, display: wt.baseline, height: wt.baselineValue / chartMax * 100 },
+                                { label: '本次', value: wt.currentValue, display: wt.current, height: wt.currentValue / chartMax * 100 },
+                            ]
+                            : [],
+                    }
+                },
+                followUpHistoryItems() {
+                    const history = this.followUp?.history
+                    if (Array.isArray(history) && history.length) return history
+                    if (this.followUp?.baseline && this.followUp?.baseline_frontend_result) {
+                        return [{
+                            task: this.followUp.baseline,
+                            frontend_result: this.followUp.baseline_frontend_result,
+                        }]
+                    }
+                    return []
+                },
+                selectedFollowUpItem() {
+                    const history = this.followUpHistoryItems
+                    return history.find(item => item.task?.task_id === this.selectedFollowUpTaskId)
+                        || history[0]
+                        || null
+                },
+                followUpUsesRecommendedBaseline() {
+                    return Boolean(
+                        this.followUp?.baseline?.task_id
+                        && this.selectedFollowUpItem?.task?.task_id === this.followUp.baseline.task_id,
+                    )
                 },
                 caseInputQuality() {
                     const present = this.volumeModalities.filter(
@@ -745,6 +876,10 @@
                 },
                 switchTaskList(mode) {
                     if (this.taskListMode === mode) return
+                    if (this.taskSearchTimer) {
+                        clearTimeout(this.taskSearchTimer)
+                        this.taskSearchTimer = null
+                    }
                     this.taskListMode = mode
                     this.taskOffset = 0
                     this.loadTaskHistory()
@@ -867,6 +1002,7 @@
                         : `${action}失败：HTTP ${response.status}`
                 },
                 async loadTaskHistory(clearMessage = true) {
+                    const requestId = ++this.taskHistoryRequestId
                     this.closeTaskRunHistory()
                     this.taskHistoryLoading = true
                     if (clearMessage) {
@@ -891,19 +1027,41 @@
                             throw new Error(await this.responseError(response, '查询任务'))
                         }
                         const payload = await response.json()
+                        if (requestId !== this.taskHistoryRequestId) return
                         this.taskItems = Array.isArray(payload.items) ? payload.items : []
                         this.taskTotal = Number(payload.total) || 0
                     } catch (error) {
+                        if (requestId !== this.taskHistoryRequestId) return
                         this.taskItems = []
                         this.taskTotal = 0
                         this.taskMessage = error.message
                         this.taskMessageIsError = true
                     } finally {
+                        if (requestId !== this.taskHistoryRequestId) return
                         this.taskHistoryLoading = false
                         this.$nextTick(() => this.initRevealObserver())
                     }
                 },
+                scheduleTaskSearch(immediate = false) {
+                    if (this.taskSearchTimer) {
+                        clearTimeout(this.taskSearchTimer)
+                        this.taskSearchTimer = null
+                    }
+                    this.taskOffset = 0
+                    if (immediate) {
+                        this.loadTaskHistory()
+                        return
+                    }
+                    this.taskSearchTimer = setTimeout(() => {
+                        this.taskSearchTimer = null
+                        this.loadTaskHistory()
+                    }, 250)
+                },
                 searchTasks() {
+                    if (this.taskSearchTimer) {
+                        clearTimeout(this.taskSearchTimer)
+                        this.taskSearchTimer = null
+                    }
                     this.taskOffset = 0
                     this.loadTaskHistory()
                 },
@@ -1008,6 +1166,33 @@
                         }
                         const payload = await response.json()
                         this.taskMessage = `任务已恢复，当前状态：${this.taskStatusLabel(payload.task_status)}。`
+                        this.taskMessageIsError = false
+                        if (this.taskItems.length === 1 && this.taskOffset > 0) {
+                            this.taskOffset = Math.max(0, this.taskOffset - this.taskLimit)
+                        }
+                        await this.loadTaskHistory(false)
+                    } catch (error) {
+                        this.taskMessage = error.message
+                        this.taskMessageIsError = true
+                    } finally {
+                        this.taskActionId = ''
+                    }
+                },
+                async purgeArchivedTask(task) {
+                    const taskId = task.task_id
+                    if (!window.confirm(`确认彻底删除任务 ${taskId}？此操作无法恢复。`)) return
+
+                    this.taskActionId = taskId
+                    this.taskMessage = ''
+                    try {
+                        const response = await fetch(
+                            `${this.API_BASE}/tasks/${encodeURIComponent(taskId)}/purge`,
+                            { method: 'DELETE', headers: this.authHeaders }
+                        )
+                        if (!response.ok) {
+                            throw new Error(await this.responseError(response, '彻底删除任务'))
+                        }
+                        this.taskMessage = `任务 ${taskId} 已彻底删除。`
                         this.taskMessageIsError = false
                         if (this.taskItems.length === 1 && this.taskOffset > 0) {
                             this.taskOffset = Math.max(0, this.taskOffset - this.taskLimit)
@@ -1127,6 +1312,9 @@
                     this.volumeArchiveFile = null
                     this.volumeDicomFiles = []
                     this.volumeFolderLabel = ''
+                    this.caseId = ''
+                    this.caseName = ''
+                    this.studyDate = new Date().toISOString().slice(0, 10)
                     this.volumeManualMode = false
                     this.volumeDropActive = false
                     this.volumeSourceMenuVisible = false
@@ -1140,6 +1328,14 @@
                 },
                 openSampleGuide() {
                     window.location.href = 'guide.html'
+                },
+                startFollowUpUpload(task = null) {
+                    const caseId = task?.case_id || this.caseId || task?.task_id || this.taskId
+                    const caseName = task?.case_name || this.caseName || task?.name || '当前病例'
+                    if (!caseId) return
+                    this.startNewUpload()
+                    this.caseId = caseId
+                    this.caseName = caseName
                 },
                 buildFileList(resultData = {}, taskData = null) {
                     const files = []
@@ -1215,6 +1411,46 @@
                     const taskId = encodeURIComponent(this.taskId)
                     const path = filePath.split('/').map(encodeURIComponent).join('/')
                     return `${this.API_BASE}/tasks/${taskId}/files/${path}`
+                },
+                formatFollowUpChange(change, percent, unit) {
+                    const sign = change > 0 ? '+' : ''
+                    const precision = unit === 'probability' ? 1 : 0
+                    const amount = unit === 'probability'
+                        ? `${sign}${(change * 100).toFixed(precision)} 个百分点`
+                        : `${sign}${this.formatVolume(change)} ${unit === 'area' ? 'mm²' : 'mm³'}`
+                    if (percent === null || !Number.isFinite(percent)) return amount
+                    return `${amount} · ${sign}${percent.toFixed(1)}%`
+                },
+                followUpChangeTone(change) {
+                    if (Math.abs(change) < 0.000001) return 'stable'
+                    return change > 0 ? 'increase' : 'decrease'
+                },
+                selectFollowUpComparison(taskId) {
+                    this.selectedFollowUpTaskId = taskId
+                },
+                async loadFollowUpComparison() {
+                    const taskId = this.taskId
+                    if (!taskId) return
+                    try {
+                        const followUpResponse = await fetch(
+                            `${this.API_BASE}/tasks/${encodeURIComponent(taskId)}/follow-up`,
+                            { headers: this.authHeaders },
+                        )
+                        if (!followUpResponse.ok) {
+                            throw new Error(await this.responseError(followUpResponse, '读取随访数据'))
+                        }
+                        const payload = await followUpResponse.json()
+                        if (taskId === this.taskId) {
+                            const history = Array.isArray(payload.history) ? payload.history : []
+                            this.followUp = payload.baseline || history.length ? payload : null
+                            this.selectedFollowUpTaskId = payload.baseline?.task_id || history[0]?.task?.task_id || ''
+                        }
+                    } catch {
+                        if (taskId === this.taskId) {
+                            this.followUp = null
+                            this.selectedFollowUpTaskId = ''
+                        }
+                    }
                 },
                 clearCasePreview() {
                     this.casePreviewRequestId += 1
@@ -1507,6 +1743,9 @@
                 presentTaskResult(taskData) {
                     this.destroyVolumeViewer()
                     this.taskId = taskData.task_id
+                    this.caseId = taskData.case_id || taskData.task_id
+                    this.caseName = taskData.case_name || taskData.name || '当前病例'
+                    this.studyDate = taskData.study_date || this.studyDate
                     const resultData = taskData.frontend_result || {}
                     const status = taskData.status
                     if (status === 'succeeded') {
@@ -1535,6 +1774,8 @@
                     this.tumorSpatial = {}
                     this.classProbabilities = {}
                     this.caseInputFiles = resultData.input_files || taskData?.input?.files || {}
+                    this.followUp = null
+                    this.selectedFollowUpTaskId = ''
                     this.clearCasePreview()
                     this.modelConsensus = resultData.model_consensus || null
                     this.supplementaryAnalysis = resultData.supplementary_analysis || null
@@ -1589,6 +1830,7 @@
                     }
                     this.persistWorkspaceState()
                     this.$nextTick(() => this.initRevealObserver())
+                    void this.loadFollowUpComparison()
                     this.deferCaseVolumeViewer()
                 },
                 async runAndGetResult(taskId) {
@@ -2123,10 +2365,18 @@
                                 formData.append(modality.key, uploadFile)
                             }
                         }
-                        formData.append('name', 'web-3d-analysis')
                         const uploadLabel = this.volumeArchiveFile?.name
                             || this.volumeFolderLabel
                             || '病例数据'
+                        formData.append(
+                            'name',
+                            this.caseId ? `${this.caseName} · ${this.studyDate}` : uploadLabel,
+                        )
+                        if (this.caseId) {
+                            formData.append('case_id', this.caseId)
+                            formData.append('case_name', this.caseName)
+                        }
+                        formData.append('study_date', this.studyDate)
                         this.statusText =
                             '<span class="loading-spinner"></span>正在上传 '
                             + `${this.escapeHtml(uploadLabel)}...`
@@ -2313,6 +2563,9 @@
                     this.progressAnimFrame = null
                 }
                 document.removeEventListener('click', this.handleGlobalClick)
+                if (this.taskSearchTimer) {
+                    clearTimeout(this.taskSearchTimer)
+                }
                 this.destroyVolumeViewer()
                 this.clearCasePreview()
             },

@@ -21,6 +21,7 @@ from services.audit_service import append_audit_event, list_audit_events
 from services.archive_service import (
     archive_expired_tasks,
     archive_task,
+    purge_archived_task,
     purge_expired_archives,
     restore_task,
 )
@@ -441,6 +442,37 @@ class TaskArchiveTests(unittest.TestCase):
             )
 
         self.assertEqual(report.processed_task_ids, [task_id])
+        self.assertFalse(archived_dir.exists())
+        with self.assertRaises(TaskNotFoundError):
+            self.repository.load(archived_dir)
+
+    def test_manual_purge_removes_archived_task_without_waiting_for_grace_period(self) -> None:
+        task_id = "task-manual-purge"
+        archived_dir = self.archive_dir / "tasks" / task_id
+        archived_dir.mkdir(parents=True)
+        (archived_dir / "result.json").write_text("{}", encoding="utf-8")
+        self.repository.save(
+            archived_dir,
+            TaskRecord(
+                task_id=task_id,
+                name=task_id,
+                status=TaskStatus.SUCCEEDED,
+                created_at=self.now - timedelta(minutes=2),
+                updated_at=self.now - timedelta(minutes=1),
+                archived_at=self.now - timedelta(seconds=5),
+                input=StoredTaskInput(size_bytes=1, sha256="a" * 64),
+            ),
+        )
+
+        with patch("services.archive_service.task_write_lock", self._no_lock):
+            purged = purge_archived_task(
+                task_id,
+                now=self.now,
+                repository=self.repository,
+                archive_dir=self.archive_dir,
+            )
+
+        self.assertEqual(purged.task_id, task_id)
         self.assertFalse(archived_dir.exists())
         with self.assertRaises(TaskNotFoundError):
             self.repository.load(archived_dir)
