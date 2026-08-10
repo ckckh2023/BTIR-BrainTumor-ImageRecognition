@@ -545,7 +545,7 @@ body {
         }
 
         .input-group {
-            margin-bottom: 16px;
+            margin-bottom: 18px;
             flex-shrink: 0;
         }
 
@@ -1140,7 +1140,7 @@ body {
             flex: 0 0 auto;
             width: min(100%, 620px);
             min-height: 0;
-            margin: clamp(30px, 10vh, 96px) auto 0;
+            margin: 16px auto 0;
             padding: 0;
             border-top: none;
         }
@@ -3682,6 +3682,10 @@ body {
             cursor: pointer;
         }
 
+        .task-query-row .task-small-btn svg {
+            margin-right: 8px;
+        }
+
         .task-query-row input:focus,
         .task-query-row select:focus {
             outline: none;
@@ -3699,6 +3703,10 @@ body {
             font-size: 12px;
             cursor: pointer;
             transition: all 0.15s;
+        }
+
+        .task-case-group-heading .task-small-btn {
+            padding-left: 12px;
         }
 
         .task-small-btn:hover:not(:disabled) {
