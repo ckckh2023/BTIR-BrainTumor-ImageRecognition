@@ -78,7 +78,9 @@
                     volumeMaskVisible: true,
                     volumeMaskOpacity: 0.55,
                     volumeViewMode: 'multiplanar',
+                    volumeViewerExpanded: false,
                     activeRightView: 'results',
+                    viewerPane: '3d',
                     taskItems: [],
                     taskTotal: 0,
                     taskLimit: 10,
@@ -430,6 +432,7 @@
                     this.activeRightView = view
                     this.persistWorkspaceState()
                     if (view === 'tasks') {
+                        this.volumeViewerExpanded = false
                         // 每次进入任务管理都刷新，避免完成新任务后列表仍是旧数据
                         if (!this.taskHistoryLoading) {
                             this.loadTaskHistory()
@@ -442,6 +445,20 @@
                             this.volumeViewer?.drawScene?.()
                         })
                     }
+                },
+                switchViewerPane(pane) {
+                    if (!['3d', 'json'].includes(pane) || pane === this.viewerPane) {
+                        return
+                    }
+                    this.viewerPane = pane
+                    if (pane === 'json') {
+                        this.volumeViewerExpanded = false
+                    }
+                    this.$nextTick(() => {
+                        if (pane === '3d') {
+                            this.volumeViewer?.drawScene?.()
+                        }
+                    })
                 },
                 persistWorkspaceState() {
                     const serialized = JSON.stringify({
@@ -898,6 +915,7 @@
                     this.selectedFileType = ''
                     this.selectedFileLabel = ''
                     this.integratedSources = []
+                    this.viewerPane = '3d'
                     this.volumeViewerSources = null
                     this.volumeViewerError = ''
                     this.volumeViewerLoading = false
@@ -981,7 +999,7 @@
 
                     if (Object.keys(modalities).length) {
                         files.push({
-                            label: '3D查看',
+                            label: '3D视图',
                             path: '@volume-viewer',
                             type: 'volume',
                             sources: {
@@ -1068,9 +1086,19 @@
                     await this.openVolumeViewer(volumeEntry)
                     this.$refs.rightContent?.scrollTo({ top: 0, behavior: 'smooth' })
                 },
+                toggleVolumeViewerExpanded() {
+                    this.volumeViewerExpanded = !this.volumeViewerExpanded
+                    this.$nextTick(() => {
+                        this.volumeViewer?.drawScene?.()
+                    })
+                },
                 returnToCaseOverview() {
-                    const detailEntry = this.fileList.find(file => file.type === 'integrated')
-                    if (detailEntry) this.selectFile(detailEntry)
+                    // 数据与 3D 查看器已同屏展示，这里只把概览数据滚回视野顶部
+                    this.$refs.rightContent?.scrollTo({ top: 0, behavior: 'smooth' })
+                    const dataColumn = this.$refs.caseDataColumn
+                    if (dataColumn) {
+                        dataColumn.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                    }
                 },
                 async openVolumeViewer(file) {
                     if (!file.sources?.modalities) return
@@ -1177,6 +1205,7 @@
                     this.volumeViewer = null
                     this.volumeViewerLoading = false
                     this.volumeDownload = null
+                    this.volumeViewerExpanded = false
                 },
                 selectFile(f) {
                     if (f.type === 'download') {
@@ -1298,6 +1327,7 @@
                     this.volumeViewerSources = null
                     this.volumeViewerError = ''
                     this.activeRightView = 'results'
+                    this.viewerPane = '3d'
                     const volumeEntry = this.fileList.find(file => file.type === 'volume')
                     if (volumeEntry) {
                         const base = volumeEntry.sources.modalities[this.selectedVolumeModality]
@@ -1317,6 +1347,8 @@
                     if (detailEntry) {
                         this.selectFile(detailEntry)
                     }
+                    // 右侧默认展示 3D 查看器，左侧数据栏同步可见
+                    void this.openCaseVolumeViewer()
                     this.persistWorkspaceState()
                     this.$nextTick(() => this.initRevealObserver())
                 },

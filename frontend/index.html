@@ -527,6 +527,22 @@
 
             <div class="right-panel" v-if="hasRightPanel">
                 <div class="right-content" ref="rightContent" v-show="activeRightView === 'results'">
+                    <div class="case-viewer-column">
+                    <div class="case-viewer-tabs" v-if="fileList.length">
+                        <button
+                            type="button"
+                            class="case-viewer-tab"
+                            :class="{ active: viewerPane === '3d' }"
+                            @click="switchViewerPane('3d')"
+                        >3D视图</button>
+                        <button
+                            type="button"
+                            v-if="integratedSources.length"
+                            class="case-viewer-tab"
+                            :class="{ active: viewerPane === 'json' }"
+                            @click="switchViewerPane('json')"
+                        >数据分析</button>
+                    </div>
                     <div class="file-tabs" v-if="fileList.filter(file => file.type !== 'volume').length > 1">
                         <div
                             v-for="f in fileList"
@@ -536,53 +552,58 @@
                             @click="selectFile(f)"
                         >{{ f.label }}</div>
                     </div>
-                    <div class="volume-viewer" v-if="selectedFileType === 'volume'">
+                    <div class="volume-viewer" :class="{ 'volume-viewer-expanded': volumeViewerExpanded }" v-if="selectedFileType === 'volume'" v-show="viewerPane === '3d'">
                         <div class="volume-viewer-toolbar">
-                            <div class="volume-viewer-toolbar-group" aria-label="查看模态">
-                                <button
-                                    v-for="modality in availableVolumeModalities"
-                                    :key="modality.key"
-                                    type="button"
-                                    :class="['volume-viewer-button', { active: selectedVolumeModality === modality.key }]"
-                                    :disabled="volumeViewerLoading"
-                                    @click="changeVolumeModality(modality.key)"
-                                >{{ modality.label }}</button>
-                            </div>
-                            <div class="volume-viewer-toolbar-group" aria-label="查看方式">
-                                <button
-                                    type="button"
-                                    :class="['volume-viewer-button', { active: volumeViewMode === 'multiplanar' }]"
-                                    @click="changeVolumeViewMode('multiplanar')"
-                                >三视图</button>
-                                <button
-                                    type="button"
-                                    :class="['volume-viewer-button', { active: volumeViewMode === 'render' }]"
-                                    @click="changeVolumeViewMode('render')"
-                                >体渲染</button>
+                            <div class="volume-viewer-toolbar-row">
                                 <button
                                     type="button"
                                     class="volume-viewer-button"
-                                    @click="returnToCaseOverview()"
-                                >返回病例概览</button>
+                                    :class="{ active: volumeViewerExpanded }"
+                                    @click="toggleVolumeViewerExpanded()"
+                                >{{ volumeViewerExpanded ? '缩小查看' : '放大查看' }}</button>
+                                <div class="volume-viewer-toolbar-group" aria-label="查看模态">
+                                    <button
+                                        v-for="modality in availableVolumeModalities"
+                                        :key="modality.key"
+                                        type="button"
+                                        :class="['volume-viewer-button', { active: selectedVolumeModality === modality.key }]"
+                                        :disabled="volumeViewerLoading"
+                                        @click="changeVolumeModality(modality.key)"
+                                    >{{ modality.label }}</button>
+                                </div>
+                                <div class="volume-viewer-toolbar-group" aria-label="查看方式">
+                                    <button
+                                        type="button"
+                                        :class="['volume-viewer-button', { active: volumeViewMode === 'multiplanar' }]"
+                                        @click="changeVolumeViewMode('multiplanar')"
+                                    >三视图</button>
+                                    <button
+                                        type="button"
+                                        :class="['volume-viewer-button', { active: volumeViewMode === 'render' }]"
+                                        @click="changeVolumeViewMode('render')"
+                                    >体渲染</button>
+                                </div>
                             </div>
-                            <label class="volume-viewer-mask-control" v-if="volumeViewerSources?.mask">
-                                <input
-                                    type="checkbox"
-                                    v-model="volumeMaskVisible"
-                                    @change="updateVolumeMaskOpacity"
-                                />
-                                掩码
-                                <input
-                                    type="range"
-                                    min="0"
-                                    max="1"
-                                    step="0.05"
-                                    v-model.number="volumeMaskOpacity"
-                                    :disabled="!volumeMaskVisible"
-                                    @input="updateVolumeMaskOpacity"
-                                />
-                                {{ Math.round(volumeMaskOpacity * 100) }}%
-                            </label>
+                            <div class="volume-viewer-toolbar-row" v-if="volumeViewerSources?.mask">
+                                <label class="volume-viewer-mask-control">
+                                    <input
+                                        type="checkbox"
+                                        v-model="volumeMaskVisible"
+                                        @change="updateVolumeMaskOpacity"
+                                    />
+                                    掩码
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="1"
+                                        step="0.05"
+                                        v-model.number="volumeMaskOpacity"
+                                        :disabled="!volumeMaskVisible"
+                                        @input="updateVolumeMaskOpacity"
+                                    />
+                                    {{ Math.round(volumeMaskOpacity * 100) }}%
+                                </label>
+                            </div>
                         </div>
                         <div class="volume-viewer-stage">
                             <canvas ref="volumeCanvas" tabindex="0"></canvas>
@@ -625,7 +646,17 @@
                             <span>滚轮切片 · 拖动调节窗宽窗位</span>
                         </div>
                     </div>
-                    <div class="case-overview" v-if="selectedFileType === 'integrated'">
+                    <btir-detail-table
+                        v-if="integratedSources.length"
+                        v-show="viewerPane === 'json'"
+                        :sources="integratedSources"
+                        :file-url="(path) => taskFileUrl(path)"
+                        :headers="authHeaders"
+                        @copied="showToastMessage()"
+                    ></btir-detail-table>
+                    </div>
+                    <div class="case-data-column" ref="caseDataColumn">
+                    <div class="case-overview" v-if="classificationLabel || tumorArea !== null">
                         <div class="case-overview-title">病例概览</div>
                         <div class="case-overview-grid">
                             <div
@@ -733,13 +764,6 @@
                             </a>
                             <figcaption>病灶最大层面　红：NCR/NET　绿：ED　黄：ET</figcaption>
                         </figure>
-                        <button
-                            type="button"
-                            class="case-preview-3d-btn"
-                            data-testid="case-volume-viewer"
-                            v-if="fileList.some(file => file.type === 'volume')"
-                            @click="openCaseVolumeViewer()"
-                        >打开 3D 查看</button>
                         <section class="case-evidence-section">
                             <div class="case-evidence-title">定量证据</div>
                             <div class="case-evidence-grid">
@@ -865,7 +889,7 @@
                     </div>
                     <div
                         class="analysis-summary"
-                        v-if="selectedFileType === 'integrated' && (modelConsensus || (supplementaryAnalysis && supplementaryAnalysis.status !== 'disabled'))"
+                        v-if="modelConsensus || (supplementaryAnalysis && supplementaryAnalysis.status !== 'disabled')"
                     >
                         <div class="analysis-summary-title">AI 分析与结论</div>
                         <div class="analysis-summary-body">
@@ -903,7 +927,7 @@
                         </div>
                     </div>
 
-                    <div class="region-overview" v-if="selectedFileType === 'integrated' && regionStats.length">
+                    <div class="region-overview" v-if="regionStats.length">
                         <div class="region-overview-title">分割区域</div>
                         <div class="result-regions">
                             <div class="result-region-row" v-for="region in regionStats" :key="region.label">
@@ -920,7 +944,7 @@
                         </div>
                     </div>
 
-                    <details class="case-meta-section" v-if="selectedFileType === 'integrated'">
+                    <details class="case-meta-section" v-if="taskId">
                         <summary class="case-meta-summary">查看详细数据</summary>
                         <div class="case-meta-grid">
                             <div class="case-meta-block" v-if="Object.keys(tumorSpatial).length">
@@ -988,6 +1012,7 @@
                             :title="f.path"
                             @click.prevent="downloadTaskFile(f)"
                         >{{ f.label }}</a>
+                    </div>
                     </div>
                 </div>
 
@@ -1087,6 +1112,18 @@
                                 {{ task.error.message }}
                             </div>
                             <div class="task-card-actions" @click.stop>
+                                <button
+                                    class="task-small-btn primary"
+                                    v-if="taskListMode === 'active'"
+                                    @click="viewTaskResult(task)"
+                                    :disabled="taskActionId === task.task_id"
+                                >
+                                    <svg class="icon" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M1.5 8s2.5-4 6.5-4 6.5 4 6.5 4-2.5 4-6.5 4-6.5-4-6.5-4Z"></path>
+                                        <circle cx="8" cy="8" r="1.8"></circle>
+                                    </svg>
+                                    {{ taskActionId === task.task_id ? '读取中...' : '查看结果' }}
+                                </button>
                                 <button
                                     class="task-small-btn"
                                     v-if="taskListMode === 'active'"
