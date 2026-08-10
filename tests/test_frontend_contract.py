@@ -138,7 +138,7 @@ class FrontendContractTests(unittest.TestCase):
     def test_supplementary_analysis_is_rendered_as_escaped_text(self) -> None:
         self.assertIn("supplementaryAnalysis", self.html)
         self.assertIn("supplementary_analysis", self.app_js)
-        self.assertIn("AI 分析与结论", self.html)
+        self.assertIn("AI 辅助分析", self.html)
         self.assertIn("提供方", self.detail_html)
         self.assertNotIn("v-html=\"supplementaryAnalysis", self.html)
 
@@ -151,7 +151,7 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("分割结果", self.html)
         self.assertIn("case-summary-card", self.app_css)
         self.assertIn("两模型结果相互支持", self.app_js)
-        self.assertIn("AI 分析与结论", self.html)
+        self.assertIn("AI 辅助分析", self.html)
 
     def test_model_metrics_are_loaded_from_metrics_file(self) -> None:
         metrics_file = PROJECT_ROOT / "assets" / "metrics.json"
@@ -169,7 +169,7 @@ class FrontendContractTests(unittest.TestCase):
 
     def test_result_panel_keeps_overview_separate_from_details(self) -> None:
         self.assertIn("analysis-summary", self.html)
-        self.assertIn("AI 分析与结论", self.html)
+        self.assertIn("AI 辅助分析", self.html)
         self.assertIn("提示肿瘤相关异常", self.html)
         self.assertIn("影像与模型依据", self.html)
         self.assertIn("最大病灶层", self.html)
@@ -590,7 +590,7 @@ class FrontendContractTests(unittest.TestCase):
 
     def test_detailed_result_merged_with_graphical_sections(self) -> None:
         self.assertIn("analysis-summary", self.html)
-        self.assertIn("AI 分析与结论", self.html)
+        self.assertIn("AI 辅助分析", self.html)
         self.assertIn("region-overview", self.html)
         self.assertIn("分割区域", self.html)
         self.assertIn("case-meta-section", self.html)
