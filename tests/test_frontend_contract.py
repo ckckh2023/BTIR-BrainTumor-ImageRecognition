@@ -138,17 +138,20 @@ class FrontendContractTests(unittest.TestCase):
     def test_supplementary_analysis_is_rendered_as_escaped_text(self) -> None:
         self.assertIn("supplementaryAnalysis", self.html)
         self.assertIn("supplementary_analysis", self.app_js)
-        self.assertIn("analysisConsistencyLabel", self.app_js)
-        self.assertIn("分析模型：", self.html)
-        self.assertIn("supplementaryRecommendation(supplementaryAnalysis)", self.html)
-        self.assertIn("supplementaryRecommendation(analysis)", self.app_js)
-        self.assertIn("result-analysis-provider", self.html)
+        self.assertIn("AI 分析与结论", self.html)
+        self.assertIn("提供方", self.detail_html)
         self.assertNotIn("v-html=\"supplementaryAnalysis", self.html)
 
-    def test_frontend_renders_local_segmentation_first_consensus(self) -> None:
+    def test_frontend_renders_dual_model_summary_before_details(self) -> None:
         self.assertIn("modelConsensus", self.html)
-        self.assertIn("分类与分割一致性", self.html)
-        self.assertIn("AI 分析结论", self.html)
+        self.assertIn("consensusCard", self.app_js)
+        self.assertIn('data-testid="dual-model-summary"', self.html)
+        self.assertIn("综合结果", self.html)
+        self.assertIn("分类提示", self.html)
+        self.assertIn("分割结果", self.html)
+        self.assertIn("case-summary-card", self.app_css)
+        self.assertIn("两模型结果相互支持", self.app_js)
+        self.assertIn("AI 分析与结论", self.html)
 
     def test_model_metrics_are_loaded_from_metrics_file(self) -> None:
         metrics_file = PROJECT_ROOT / "assets" / "metrics.json"
@@ -165,11 +168,11 @@ class FrontendContractTests(unittest.TestCase):
         self.assertNotIn("95.0%", self.html)
 
     def test_result_panel_keeps_overview_separate_from_details(self) -> None:
-        self.assertIn('class="result-overview"', self.html)
         self.assertIn("analysis-summary", self.html)
         self.assertIn("AI 分析与结论", self.html)
         self.assertIn("提示肿瘤相关异常", self.html)
-        self.assertIn("病例概览", self.html)
+        self.assertIn("影像与模型依据", self.html)
+        self.assertIn("四模态最大病灶层面", self.html)
         self.assertIn("查看详细数据", self.html)
         self.assertIn("casePreviewUrl", self.app_js)
         self.assertIn("loadCasePreview", self.app_js)
@@ -442,14 +445,12 @@ class FrontendContractTests(unittest.TestCase):
             self.html,
         )
 
-    def test_niivue_preload_warms_3d_viewer(self) -> None:
-        self.assertIn(
-            '<link rel="preload" href="./vendor/niivue.umd.js" as="script">',
-            self.html,
-        )
-        self.assertIn("window.BtirVolumeViewer?.preload?.()", self.app_js)
-        self.assertIn("global.BtirVolumeViewer.preload = preloadNiiVue", self.viewer_html)
-        self.assertIn("function preloadNiiVue", self.viewer_html)
+    def test_niivue_is_loaded_only_when_3d_viewer_opens(self) -> None:
+        self.assertNotIn('href="./vendor/niivue.umd.js"', self.html)
+        self.assertNotIn("BtirVolumeViewer?.preload", self.app_js)
+        self.assertNotIn("preloadNiiVue", self.viewer_html)
+        self.assertIn("function ensureNiiVue", self.viewer_html)
+        self.assertIn("await ensureNiiVue()", self.viewer_html)
 
     def test_vue_is_vendored_locally_without_cdn(self) -> None:
         self.assertIn("./vendor/vue.global.js", self.html)
@@ -525,11 +526,13 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("data-ring=\"classification\"", self.html)
         self.assertIn("data-ring=\"segmentation\"", self.html)
         self.assertIn("data-ring=\"probability\"", self.html)
-        self.assertIn("volume-viewer-tab", self.html)
         self.assertIn("void this.openCaseVolumeViewer()", self.app_js)
+        self.assertIn("deferCaseVolumeViewer", self.app_js)
+        self.assertIn("deferredVolumeLoadTimer", self.app_js)
+        self.assertIn("}, 1500)", self.app_js)
         self.assertNotIn("case-preview-3d-btn", self.html)
         self.assertIn("returnToCaseOverview", self.app_js)
-        self.assertIn("rightContent?.scrollTo", self.app_js)
+        self.assertIn("caseDataColumn?.scrollTo", self.app_js)
         self.assertIn("3D 查看器未完成初始化", self.app_js)
         self.assertIn(".case-overview", self.app_css)
         preview_service = PROJECT_ROOT / "services" / "case_preview.py"

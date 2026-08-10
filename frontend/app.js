@@ -57,8 +57,6 @@
                     downloadFiles: [],
                     selectedFilePath: '',
                     selectedFileType: '',
-                    selectedFileLabel: '',
-                    fileLoading: false,
                     integratedSources: [],
                     probabilitySeries: [],
                     probabilityThreshold: 0.548381,
@@ -79,6 +77,7 @@
                     volumeMaskOpacity: 0.55,
                     volumeViewMode: 'multiplanar',
                     volumeViewerExpanded: false,
+                    deferredVolumeLoadTimer: null,
                     activeRightView: 'results',
                     viewerPane: '3d',
                     taskItems: [],
@@ -319,6 +318,57 @@
                         (sum, region) => sum + region.volumeMm3,
                         0,
                     )
+                },
+                consensusCard() {
+                    const consensus = this.modelConsensus
+                    if (!consensus) return null
+                    const classificationPositive = this.classificationLabel === '肿瘤 detected'
+                    const segmentationDetected = Boolean(consensus.segmentation_detected)
+                    const fallbackLevel = segmentationDetected && classificationPositive
+                        ? 'high_probability_present'
+                        : (segmentationDetected || classificationPositive
+                            ? 'possible_present'
+                            : 'likely_absent')
+                    const level = consensus.level || fallbackLevel
+                    const positiveProbability = Number(
+                        consensus.classification_positive_probability
+                    )
+                    const fallbackPositiveProbability = Number(this.classProbabilities.yes)
+                    const positive = Number.isFinite(positiveProbability)
+                        ? positiveProbability
+                        : fallbackPositiveProbability
+                    const classificationText = Number.isFinite(positive)
+                        ? `${positive >= 0.5 ? '提示异常' : '倾向正常'} ${(Math.abs(positive >= 0.5 ? positive : 1 - positive) * 100).toFixed(1)}%`
+                        : (this.classificationLabel === '肿瘤 detected' ? '提示异常' : '倾向正常')
+                    const volume = Number(consensus.segmentation_volume_mm3)
+                    const ratio = Number(consensus.segmentation_ratio)
+                    const segmentationText = consensus.segmentation_detected
+                        ? `检出区域${Number.isFinite(ratio) && ratio > 0 ? ` · 占比 ${(ratio * 100).toFixed(2)}%` : ''}${Number.isFinite(volume) && volume > 0 ? ` · ${this.formatVolume(volume)} mm³` : ''}`
+                        : '未检出区域'
+                    const tone = {
+                        high_probability_present: 'present',
+                        possible_present: 'possible',
+                        likely_absent: 'absent',
+                        high_probability_absent: 'absent',
+                        inconclusive: 'review',
+                    }[level] || (consensus.requires_review ? 'review' : 'present')
+                    const fallbackLabel = {
+                        high_probability_present: '高概率存在肿瘤相关区域',
+                        possible_present: '存在肿瘤相关区域的可能',
+                        likely_absent: '倾向不存在肿瘤相关区域',
+                        high_probability_absent: '高概率不存在肿瘤相关区域',
+                        inconclusive: '综合结果待确认',
+                    }[level]
+                    return {
+                        label: consensus.label || fallbackLabel,
+                        summary: consensus.summary || '正在汇总分类与分割结果',
+                        classificationText,
+                        segmentationText,
+                        consistencyText: consensus.consistency === 'consistent'
+                            ? '两模型结果相互支持'
+                            : '两模型结果存在差异',
+                        tone,
+                    }
                 },
                 thresholdText() {
                     return `${Math.round((this.probabilityThreshold || 0) * 1000) / 10}%`
@@ -590,6 +640,13 @@
                         ? number.toLocaleString('zh-CN', { maximumFractionDigits: 3 })
                         : '0'
                 },
+                compositeDisplayName(key) {
+                    return {
+                        WT: '全病灶',
+                        TC: '肿瘤核心',
+                        ET: '强化区域',
+                    }[key] || key
+                },
                 regionBarWidth(region) {
                     const max = Math.max(...this.regionStats.map(item => item.volumeMm3), 0)
                     if (!max) return '0%'
@@ -638,29 +695,6 @@
                     return `${(milliseconds / 1000).toLocaleString('zh-CN', {
                         maximumFractionDigits: 2,
                     })} s`
-                },
-                analysisConsistencyLabel(value) {
-                    const labels = {
-                        consistent: '分类与分割证据大致一致',
-                        inconclusive: '证据不足，无法得出稳定综合说明',
-                        conflicting: '分类与分割证据存在不一致',
-                    }
-                    return labels[value] || '未说明'
-                },
-                supplementaryRecommendation(analysis) {
-                    const followUp = analysis?.content?.follow_up
-                    if (typeof followUp === 'string' && followUp.trim()) {
-                        return followUp.trim()
-                    }
-                    const hasSegmentedRegion = this.tumorArea !== null && this.tumorArea > 0
-                    const classificationPositive = this.classificationLabel === '肿瘤 detected'
-                    if (classificationPositive && hasSegmentedRegion) {
-                        return '结合原始多模态 MRI 和分割掩码进行针对性影像复核；如有既往检查，可进行同部位对比。'
-                    }
-                    if (!classificationPositive && !hasSegmentedRegion) {
-                        return '结合当前症状和既往检查进行常规随访；症状持续或加重时，可进一步进行专业影像评估。'
-                    }
-                    return '优先核查分割掩码、高概率切片和输入质量；必要时补充人工影像评估。'
                 },
                 taskInputSummary(task) {
                     if (task.input?.files) {
@@ -913,7 +947,6 @@
                     this.downloadFiles = []
                     this.selectedFilePath = ''
                     this.selectedFileType = ''
-                    this.selectedFileLabel = ''
                     this.integratedSources = []
                     this.viewerPane = '3d'
                     this.volumeViewerSources = null
@@ -1080,11 +1113,25 @@
                         })
                     })
                 },
+                cancelDeferredVolumeLoad() {
+                    if (this.deferredVolumeLoadTimer !== null) {
+                        clearTimeout(this.deferredVolumeLoadTimer)
+                        this.deferredVolumeLoadTimer = null
+                    }
+                },
+                deferCaseVolumeViewer() {
+                    this.cancelDeferredVolumeLoad()
+                    this.deferredVolumeLoadTimer = setTimeout(() => {
+                        this.deferredVolumeLoadTimer = null
+                        void this.openCaseVolumeViewer()
+                    }, 1500)
+                },
                 async openCaseVolumeViewer() {
+                    this.cancelDeferredVolumeLoad()
                     const volumeEntry = this.fileList.find(file => file.type === 'volume')
                     if (!volumeEntry?.sources?.modalities) return
                     await this.openVolumeViewer(volumeEntry)
-                    this.$refs.rightContent?.scrollTo({ top: 0, behavior: 'smooth' })
+                    this.$refs.caseDataColumn?.scrollTo({ top: 0, behavior: 'smooth' })
                 },
                 toggleVolumeViewerExpanded() {
                     this.volumeViewerExpanded = !this.volumeViewerExpanded
@@ -1093,12 +1140,7 @@
                     })
                 },
                 returnToCaseOverview() {
-                    // 数据与 3D 查看器已同屏展示，这里只把概览数据滚回视野顶部
-                    this.$refs.rightContent?.scrollTo({ top: 0, behavior: 'smooth' })
-                    const dataColumn = this.$refs.caseDataColumn
-                    if (dataColumn) {
-                        dataColumn.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                    }
+                    this.$refs.caseDataColumn?.scrollTo({ top: 0, behavior: 'smooth' })
                 },
                 async openVolumeViewer(file) {
                     if (!file.sources?.modalities) return
@@ -1113,7 +1155,6 @@
                     this.destroyVolumeViewer()
                     this.selectedFilePath = file.path
                     this.selectedFileType = 'volume'
-                    this.selectedFileLabel = file.label
                     this.volumeViewerSources = file.sources
                     this.volumeViewerError = ''
                     this.volumeViewerLoading = true
@@ -1201,6 +1242,7 @@
                     this.volumeViewer?.setMaskOpacity(opacity)
                 },
                 destroyVolumeViewer() {
+                    this.cancelDeferredVolumeLoad()
                     this.volumeViewer?.cleanup()
                     this.volumeViewer = null
                     this.volumeViewerLoading = false
@@ -1208,10 +1250,6 @@
                     this.volumeViewerExpanded = false
                 },
                 selectFile(f) {
-                    if (f.type === 'download') {
-                        this.downloadTaskFile(f)
-                        return
-                    }
                     if (f.type === 'volume') {
                         this.openVolumeViewer(f)
                         return
@@ -1220,14 +1258,12 @@
                         this.destroyVolumeViewer()
                         this.selectedFilePath = f.path
                         this.selectedFileType = 'integrated'
-                        this.selectedFileLabel = f.label
                         this.playResultAnimations()
                         return
                     }
                 },
                 async downloadTaskFile(file) {
                     const previousPath = this.selectedFilePath
-                    this.fileLoading = true
                     this.selectedFilePath = file.path
                     try {
                         const response = await fetch(this.taskFileUrl(file.path), {
@@ -1249,7 +1285,6 @@
                         const message = this.escapeHtml(`下载失败：${error.message}`)
                         this.statusText = `<span class="status-error">✗ ${message}</span>`
                     } finally {
-                        this.fileLoading = false
                         this.selectedFilePath = previousPath
                     }
                 },
@@ -1328,29 +1363,13 @@
                     this.volumeViewerError = ''
                     this.activeRightView = 'results'
                     this.viewerPane = '3d'
-                    const volumeEntry = this.fileList.find(file => file.type === 'volume')
-                    if (volumeEntry) {
-                        const base = volumeEntry.sources.modalities[this.selectedVolumeModality]
-                            || Object.values(volumeEntry.sources.modalities)[0]
-                        if (base) {
-                            fetch(this.taskFileUrl(base.path), {
-                                headers: this.authHeaders,
-                            }).catch(() => {})
-                        }
-                        if (volumeEntry.sources.mask) {
-                            fetch(this.taskFileUrl(volumeEntry.sources.mask.path), {
-                                headers: this.authHeaders,
-                            }).catch(() => {})
-                        }
-                    }
                     const detailEntry = this.fileList.find(file => file.type === 'integrated')
                     if (detailEntry) {
                         this.selectFile(detailEntry)
                     }
-                    // 右侧默认展示 3D 查看器，左侧数据栏同步可见
-                    void this.openCaseVolumeViewer()
                     this.persistWorkspaceState()
                     this.$nextTick(() => this.initRevealObserver())
+                    this.deferCaseVolumeViewer()
                 },
                 async runAndGetResult(taskId) {
                     this.analysisCancelled = false
@@ -2020,7 +2039,6 @@
                 },
             },
             async mounted() {
-                window.BtirVolumeViewer?.preload?.()
                 const savedTheme = localStorage.getItem('btir_theme')
                 this.theme = savedTheme || 'light'
                 this.applyTheme()

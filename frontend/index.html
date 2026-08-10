@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>脑肿瘤MRI图像识别</title>
     <link rel="icon" type="image/png" href="/assets/icon_exp.png">
-    <link rel="preload" href="./vendor/niivue.umd.js" as="script">
     <!-- Vue 3.5.41 本地化（源：unpkg 官方包，避免内网依赖外网） -->
     <script src="./vendor/vue.global.js"></script>
     <script>
@@ -348,179 +347,6 @@
                             </div>
                         </div>
                         </transition>
-                        <div class="result-completion" v-if="selectedFileType === 'integrated'">
-                            <div>
-                                <strong>识别完成</strong>
-                                <span>病例概览已在右侧呈现</span>
-                            </div>
-                            <button type="button" @click="switchRightView('results')">查看病例概览</button>
-                        </div>
-                        <div class="result-overview" v-else-if="classificationLabel || tumorArea !== null">
-                            <div
-                                class="result-summary-card result-ring-card"
-                                data-reveal
-                                data-ring="classification"
-                                v-if="classificationLabel"
-                            >
-                                <div class="result-summary-card-label">分类判断</div>
-                                <div class="result-ring">
-                                    <svg viewBox="0 0 64 64" class="result-ring-svg">
-                                        <circle cx="32" cy="32" r="26" class="result-ring-track"></circle>
-                                        <circle
-                                            cx="32"
-                                            cy="32"
-                                            r="26"
-                                            class="result-ring-value"
-                                            :class="classificationLabel === '肿瘤 detected' ? 'detected' : 'normal'"
-                                            :stroke-dasharray="ringCircumference"
-                                            :stroke-dashoffset="ringDisplayOffset"
-                                        ></circle>
-                                    </svg>
-                                    <div class="result-ring-center">
-                                        <div class="result-ring-percent">{{ ringPercent }}%</div>
-                                        <div
-                                            class="result-ring-text"
-                                            :class="classificationLabel === '肿瘤 detected' ? 'detected' : 'normal'"
-                                        >
-                                            {{ classificationLabel === '肿瘤 detected' ? '提示肿瘤相关异常' : '未发现明显异常' }}
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="result-summary-card-meta" v-if="confidence">模型概率 {{ (confidence * 100).toFixed(1) }}% · 阈值 {{ thresholdText }}</div>
-                            </div>
-                            <div
-                                class="result-summary-card result-ring-card"
-                                data-reveal
-                                data-ring="segmentation"
-                                v-if="tumorArea !== null"
-                            >
-                                <div class="result-summary-card-label">分割判断</div>
-                                <div class="result-ring">
-                                    <svg viewBox="0 0 64 64" class="result-ring-svg">
-                                        <circle cx="32" cy="32" r="26" class="result-ring-track"></circle>
-                                        <circle
-                                            cx="32"
-                                            cy="32"
-                                            r="26"
-                                            class="result-ring-value seg"
-                                            :class="{ empty: tumorArea <= 0 }"
-                                            :stroke-dasharray="ringCircumference"
-                                            :stroke-dashoffset="segRingDisplayOffset"
-                                        ></circle>
-                                    </svg>
-                                    <div class="result-ring-center">
-                                        <div class="result-ring-percent">{{ segPercent }}%</div>
-                                        <div class="result-ring-text seg" :class="{ empty: tumorArea <= 0 }">
-                                            {{ tumorArea > 0 ? '检出非背景区域' : '未检出非背景区域' }}
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="result-seg-legend" v-if="regionStats.length">
-                                    <span
-                                        class="result-seg-legend-item"
-                                        v-for="region in regionStats"
-                                        :key="`seg-legend-${region.label}`"
-                                    >
-                                        <span class="result-seg-dot" :class="`region-${region.label}`"></span>
-                                        <span>{{ region.label }} {{ region.name }}</span>
-                                        <span class="result-seg-vol">{{ formatVolume(region.volumeMm3) }}</span>
-                                    </span>
-                                </div>
-                                <div class="result-summary-card-meta" v-if="tumorArea > 0">
-                                    区域占比 {{ (tumorArea * 100).toFixed(2) }}% · 总体积 {{ formatVolume(segTotalVolume) }} mm³
-                                </div>
-                            </div>
-                            <div
-                                class="result-summary-card result-chart-card"
-                                data-reveal
-                                data-ring="probability"
-                                v-if="probabilitySeries.length >= 2"
-                            >
-                                <div class="result-summary-card-label">切片阳性概率曲线</div>
-                                <div class="result-chart-wrap">
-                                    <svg
-                                        viewBox="0 0 280 96"
-                                        class="result-chart-svg"
-                                        preserveAspectRatio="none"
-                                        @mouseleave="chartHoverVisible = false"
-                                    >
-                                        <defs>
-                                            <clipPath id="btirProbClip" clipPathUnits="userSpaceOnUse">
-                                                <rect
-                                                    ref="probClipRect"
-                                                    x="0"
-                                                    y="0"
-                                                    width="0"
-                                                    height="96"
-                                                ></rect>
-                                            </clipPath>
-                                        </defs>
-                                        <line
-                                            x1="0"
-                                            :y1="probabilityThresholdY"
-                                            x2="280"
-                                            :y2="probabilityThresholdY"
-                                            class="result-chart-threshold"
-                                        ></line>
-                                        <polyline
-                                            :points="probabilityPoints"
-                                            class="result-chart-line"
-                                            clip-path="url(#btirProbClip)"
-                                        ></polyline>
-                                    </svg>
-                                    <span
-                                        class="result-chart-node"
-                                        v-for="point in chartPoints"
-                                        :key="point.index"
-                                        :style="{
-                                            left: (point.x / 280 * 100) + '%',
-                                            top: (point.y / 96 * 100) + '%',
-                                        }"
-                                        @mouseenter="showChartPoint(point, $event)"
-                                    ></span>
-                                    <div
-                                        :class="[
-                                            'result-chart-tooltip',
-                                            { visible: chartHoverVisible, below: chartHover && chartHover.below },
-                                        ]"
-                                        :style="chartHover ? {
-                                            left: 'clamp(54px, ' + chartHover.xPx + 'px, calc(100% - 54px))',
-                                            top: chartHover.yPx + 'px',
-                                        } : {}"
-                                    >
-                                        <div class="result-chart-tip-slice">切片 {{ chartHover ? chartHover.sliceIndex : '' }}</div>
-                                        <div class="result-chart-tip-value">{{ chartHover ? chartHover.probabilityText : '' }}</div>
-                                    </div>
-                                </div>
-                                <div class="result-chart-meta">阈值 {{ thresholdText }} · 采样 {{ probabilitySeries.length }} 个切片</div>
-                            </div>
-                        </div>
-                        <div class="result-item" data-reveal v-if="modelConsensus && selectedFileType !== 'integrated'">
-                            <div class="result-label">分类与分割一致性：</div>
-                            <div class="result-value result-analysis">
-                                <div>{{ modelConsensus.summary }}</div>
-                                <div class="result-consensus-review" v-if="modelConsensus.requires_review">分类与分割结果存在差异，建议重点复核分割区域与输入影像。</div>
-                            </div>
-                        </div>
-                        <div
-                            class="result-item"
-                            data-reveal
-                            v-if="supplementaryAnalysis && supplementaryAnalysis.status !== 'disabled' && selectedFileType !== 'integrated'"
-                        >
-                            <div class="result-label">AI 分析结论：</div>
-                            <div class="result-value result-analysis">
-                                <template v-if="supplementaryAnalysis.status === 'succeeded'">
-                                    <div>{{ supplementaryAnalysis.content.summary }}</div>
-                                    <div><strong>建议：</strong>{{ supplementaryRecommendation(supplementaryAnalysis) }}</div>
-                                    <div class="result-analysis-provider">
-                                        分析模型：{{ supplementaryAnalysis.provider === 'ai' ? 'AI' : supplementaryAnalysis.provider }} · {{ supplementaryAnalysis.model }}
-                                    </div>
-                                </template>
-                                <template v-else>
-                                    {{ supplementaryAnalysis.message || '综合分析服务暂不可用；本地结果不受影响。' }}
-                                </template>
-                            </div>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -542,15 +368,6 @@
                             :class="{ active: viewerPane === 'json' }"
                             @click="switchViewerPane('json')"
                         >数据分析</button>
-                    </div>
-                    <div class="file-tabs" v-if="fileList.filter(file => file.type !== 'volume').length > 1">
-                        <div
-                            v-for="f in fileList"
-                            :key="f.path"
-                            :class="['file-tab', { active: selectedFilePath === f.path, loading: fileLoading && selectedFilePath === f.path }]"
-                            :data-testid="f.type === 'volume' ? 'volume-viewer-tab' : null"
-                            @click="selectFile(f)"
-                        >{{ f.label }}</div>
                     </div>
                     <div class="volume-viewer" :class="{ 'volume-viewer-expanded': volumeViewerExpanded }" v-if="selectedFileType === 'volume'" v-show="viewerPane === '3d'">
                         <div class="volume-viewer-toolbar">
@@ -656,8 +473,31 @@
                     ></btir-detail-table>
                     </div>
                     <div class="case-data-column" ref="caseDataColumn">
+                    <section
+                        class="case-summary-card"
+                        :class="`case-summary-${consensusCard.tone}`"
+                        data-testid="dual-model-summary"
+                        v-if="consensusCard"
+                    >
+                        <div class="case-summary-topline">
+                            <span>综合结果</span>
+                            <span class="case-summary-consistency">{{ consensusCard.consistencyText }}</span>
+                        </div>
+                        <div class="case-summary-result">{{ consensusCard.label }}</div>
+                        <p class="case-summary-description">{{ consensusCard.summary }}</p>
+                        <div class="case-summary-evidence">
+                            <div class="case-summary-evidence-item">
+                                <span>分类提示</span>
+                                <strong>{{ consensusCard.classificationText }}</strong>
+                            </div>
+                            <div class="case-summary-evidence-item">
+                                <span>分割结果</span>
+                                <strong>{{ consensusCard.segmentationText }}</strong>
+                            </div>
+                        </div>
+                    </section>
                     <div class="case-overview" v-if="classificationLabel || tumorArea !== null">
-                        <div class="case-overview-title">病例概览</div>
+                        <div class="case-overview-title">影像与模型依据</div>
                         <div class="case-overview-grid">
                             <div
                                 class="case-overview-card case-verdict result-ring-card case-overview-ring"
@@ -762,7 +602,7 @@
                                     alt="四模态 MRI 切片预览"
                                 />
                             </a>
-                            <figcaption>病灶最大层面　红：NCR/NET　绿：ED　黄：ET</figcaption>
+                            <figcaption>四模态最大病灶层面　红：NCR/NET　绿：ED　黄：ET</figcaption>
                         </figure>
                         <section class="case-evidence-section">
                             <div class="case-evidence-title">定量证据</div>
@@ -792,7 +632,7 @@
                                     <template v-for="key in ['WT', 'TC', 'ET']" :key="key">
                                         <span v-if="tumorComposites[key]">
                                             <i class="volume-stack-dot" :class="`volume-stack-dot-${key.toLowerCase()}`"></i>
-                                            {{ key }} {{ formatVolume(tumorComposites[key].volume_mm3) }} mm³
+                                            {{ compositeDisplayName(key) }} {{ key }} {{ formatVolume(tumorComposites[key].volume_mm3) }} mm³
                                         </span>
                                     </template>
                                 </div>
