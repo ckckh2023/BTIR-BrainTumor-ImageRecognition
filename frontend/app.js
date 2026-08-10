@@ -14,7 +14,6 @@
                     statusText: '等待识别...',
                     taskId: '',
                     analysisActive: false,
-                    modelMetrics: null,
                     tumorComposites: {},
                     tumorMorphology: {},
                     tumorSpatial: {},
@@ -2726,19 +2725,6 @@
                 document.addEventListener('click', this.handleGlobalClick)
                 window.addEventListener('resize', this.updateResultSplitViewport)
                 this.$nextTick(() => this.updateResultSplitViewport())
-
-                fetch(`${this.API_BASE}/assets/metrics.json`, { headers: this.authHeaders })
-                    .then((response) => (response.ok ? response.json() : null))
-                    .then((data) => {
-                        if (
-                            data
-                            && typeof data.correct === 'number'
-                            && typeof data.total === 'number'
-                        ) {
-                            this.modelMetrics = data
-                        }
-                    })
-                    .catch(() => {})
 
                 const token = localStorage.getItem('btir_token')
                 if (!token) {

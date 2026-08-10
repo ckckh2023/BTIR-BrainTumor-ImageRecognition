@@ -1573,29 +1573,6 @@ body {
             line-height: 1.5;
         }
 
-        .result-metrics-cases {
-            display: grid;
-            gap: 4px;
-            margin-top: 4px;
-        }
-
-        .result-metrics-row {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 4px 14px;
-            padding: 5px 8px;
-            color: var(--btir-text);
-            background: var(--btir-surface-muted);
-            border: 1px solid var(--btir-border);
-            border-radius: var(--btir-radius-sm);
-            font-size: 12px;
-        }
-
-        .result-metrics-id {
-            color: var(--btir-accent);
-            font-family: var(--btir-mono);
-        }
-
         .case-overview {
             margin-bottom: 14px;
             padding: 14px;
