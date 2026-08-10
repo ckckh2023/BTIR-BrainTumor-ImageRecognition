@@ -12,6 +12,15 @@
             var theme = 'light'
             try {
                 theme = localStorage.getItem('btir_theme') || 'light'
+                var url = new URL(window.location.href)
+                if (
+                    url.searchParams.get('task')
+                    || url.searchParams.get('view')
+                    || sessionStorage.getItem('btir_workspace')
+                    || localStorage.getItem('btir_workspace')
+                ) {
+                    document.documentElement.classList.add('btir-workspace-restoring')
+                }
             } catch (e) { /* 忽略存储不可用 */ }
             document.documentElement.setAttribute('data-theme', theme)
         })()
@@ -364,7 +373,7 @@
 
             <div class="right-panel" v-if="hasRightPanel">
                 <div class="right-content" ref="rightContent" v-show="activeRightView === 'results'">
-                    <div class="case-viewer-column">
+                    <div class="case-viewer-column" :class="{ 'viewer-column-dark': viewerPane === '3d' }">
                     <div class="case-viewer-tabs" v-if="fileList.length">
                         <button
                             type="button"
@@ -455,7 +464,10 @@
                                 </div>
                             </div>
                             <div class="volume-viewer-status error" v-else-if="volumeViewerError">
-                                {{ volumeViewerError }}
+                                <div class="volume-viewer-error-panel">
+                                    <span>{{ volumeViewerError }}</span>
+                                    <button type="button" @click="retryVolumeViewer">重新加载 3D 视图</button>
+                                </div>
                             </div>
                         </div>
                         <div class="volume-viewer-legend" v-if="volumeViewerSources?.mask">
@@ -487,6 +499,7 @@
                     <section
                         class="case-summary-card"
                         :class="`case-summary-${consensusCard.tone}`"
+                        data-reveal
                         data-testid="dual-model-summary"
                         v-if="consensusCard"
                     >
@@ -514,7 +527,7 @@
                         </div>
                         <button type="button" @click="startFollowUpUpload">新增复查</button>
                     </div>
-                    <section class="follow-up-comparison" v-if="followUpComparison" data-testid="follow-up-comparison">
+                    <section class="follow-up-comparison" v-if="followUpComparison" data-reveal data-testid="follow-up-comparison">
                         <div class="follow-up-heading">
                             <div>
                                 <span>随访对比</span>
@@ -571,7 +584,7 @@
                             </div>
                         </div>
                     </section>
-                    <section class="case-imaging-features" v-if="imagingKeyMetrics.length">
+                    <section class="case-imaging-features" v-if="imagingKeyMetrics.length" data-reveal>
                         <div class="case-imaging-features-heading">
                             <span>影像学关键特征</span>
                             <span>基于当前分割结果</span>
@@ -716,20 +729,32 @@
                                     :disabled="casePreviewActiveIndex === 0"
                                     @click="selectCasePreviewFrame(casePreviewActiveIndex - 1)"
                                 >‹</button>
-                                <a
-                                    v-if="casePreviewUrl"
-                                    :href="casePreviewUrl"
-                                    target="_blank"
-                                    rel="noopener"
-                                    title="打开原始尺寸预览"
-                                >
-                                    <img
-                                        class="case-preview-img"
-                                        :src="casePreviewUrl"
-                                        :alt="casePreviewCaption"
-                                    />
-                                </a>
-                                <div class="case-preview-loading" v-else>正在载入切片...</div>
+                                <div class="case-preview-viewport">
+                                    <transition
+                                        :name="casePreviewDirection > 0 ? 'case-preview-slide-next' : 'case-preview-slide-prev'"
+                                        mode="out-in"
+                                    >
+                                        <a
+                                            v-if="casePreviewUrl"
+                                            :key="`case-preview-image-${casePreviewPath}-${casePreviewMode}`"
+                                            :href="casePreviewUrl"
+                                            target="_blank"
+                                            rel="noopener"
+                                            title="打开原始尺寸预览"
+                                        >
+                                            <img
+                                                class="case-preview-img"
+                                                :src="casePreviewUrl"
+                                                :alt="casePreviewCaption"
+                                            />
+                                        </a>
+                                        <div
+                                            v-else
+                                            :key="`case-preview-loading-${casePreviewPath}-${casePreviewMode}`"
+                                            class="case-preview-loading"
+                                        >正在载入切片...</div>
+                                    </transition>
+                                </div>
                                 <button
                                     type="button"
                                     class="case-preview-nav"

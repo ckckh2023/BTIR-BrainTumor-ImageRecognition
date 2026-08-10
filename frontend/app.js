@@ -28,6 +28,7 @@
                     casePreviewUrls: {},
                     casePreviewMode: 'overlay',
                     casePreviewActiveIndex: 0,
+                    casePreviewDirection: 1,
                     casePreviewRequestId: 0,
                     volumeModalities: [
                         { key: 'flair', label: 'FLAIR' },
@@ -815,6 +816,10 @@
                     url.searchParams.delete('view')
                     window.history.replaceState(null, '', url)
                 },
+                finishWorkspaceRestore() {
+                    this.workspaceRestoring = false
+                    document.documentElement.classList.remove('btir-workspace-restoring')
+                },
                 async restoreWorkspaceState() {
                     let savedWorkspace = null
                     try {
@@ -832,7 +837,7 @@
                         this.clearWorkspaceState()
                     }
                     if (!savedWorkspace) {
-                        this.workspaceRestoring = false
+                        this.finishWorkspaceRestore()
                         return
                     }
 
@@ -841,7 +846,7 @@
                             this.activeRightView = 'tasks'
                             await this.loadTaskHistory()
                         }
-                        this.workspaceRestoring = false
+                        this.finishWorkspaceRestore()
                         return
                     }
 
@@ -871,7 +876,7 @@
                             this.clearWorkspaceState()
                         }
                     } finally {
-                        this.workspaceRestoring = false
+                        this.finishWorkspaceRestore()
                     }
                 },
                 switchTaskList(mode) {
@@ -1323,6 +1328,7 @@
                     this.dicomSeriesSelections = {}
                     this.clearVolumeSelectionState()
                     this.$nextTick(() => {
+                        this.initRevealObserver()
                         this.$refs.volumeDropZone?.scrollIntoView({ behavior: 'smooth', block: 'start' })
                     })
                 },
@@ -1444,6 +1450,7 @@
                             const history = Array.isArray(payload.history) ? payload.history : []
                             this.followUp = payload.baseline || history.length ? payload : null
                             this.selectedFollowUpTaskId = payload.baseline?.task_id || history[0]?.task?.task_id || ''
+                            this.$nextTick(() => this.initRevealObserver())
                         }
                     } catch {
                         if (taskId === this.taskId) {
@@ -1467,6 +1474,7 @@
                     this.casePreviewUrls = {}
                     this.casePreviewMode = 'overlay'
                     this.casePreviewActiveIndex = 0
+                    this.casePreviewDirection = 1
                 },
                 async loadCasePreview(series, fallbackPath = '') {
                     this.clearCasePreview()
@@ -1543,12 +1551,14 @@
                     if (mode !== 'overlay' && mode !== 'raw') return
                     if (mode === 'raw' && !this.casePreviewHasRaw) return
                     if (this.casePreviewMode === mode && this.casePreviewUrl) return
+                    this.casePreviewDirection = 1
                     this.casePreviewMode = mode
                     void this.loadActiveCasePreview()
                 },
                 selectCasePreviewFrame(index) {
                     if (index < 0 || index >= this.casePreviewFrames.length) return
                     if (index === this.casePreviewActiveIndex && this.casePreviewUrl) return
+                    this.casePreviewDirection = index > this.casePreviewActiveIndex ? 1 : -1
                     this.casePreviewActiveIndex = index
                     void this.loadActiveCasePreview()
                 },
@@ -1583,7 +1593,6 @@
                     const volumeEntry = this.fileList.find(file => file.type === 'volume')
                     if (!volumeEntry?.sources?.modalities) return
                     await this.openVolumeViewer(volumeEntry)
-                    this.$refs.caseDataColumn?.scrollTo({ top: 0, behavior: 'smooth' })
                 },
                 toggleVolumeViewerExpanded() {
                     this.volumeViewerExpanded = !this.volumeViewerExpanded
@@ -1600,6 +1609,7 @@
                         this.selectedFileType === 'volume'
                         && this.selectedFilePath === file.path
                         && this.volumeViewer
+                        && !this.volumeViewerError
                     ) {
                         return
                     }
@@ -1625,10 +1635,25 @@
                     })
                     await this.loadSelectedVolume()
                 },
+                async waitForVolumeCanvas() {
+                    for (let attempt = 0; attempt < 12; attempt += 1) {
+                        await this.$nextTick()
+                        await new Promise(resolve => requestAnimationFrame(resolve))
+                        const canvas = this.$refs.volumeCanvas
+                        if (
+                            canvas?.isConnected
+                            && canvas.clientWidth > 16
+                            && canvas.clientHeight > 16
+                        ) {
+                            return canvas
+                        }
+                    }
+                    return this.$refs.volumeCanvas || null
+                },
                 async loadSelectedVolume() {
                     const sources = this.volumeViewerSources
                     const base = sources?.modalities?.[this.selectedVolumeModality]
-                    const canvas = this.$refs.volumeCanvas
+                    const canvas = await this.waitForVolumeCanvas()
                     if (!sources || !base || !canvas) {
                         this.volumeViewerError = '3D 查看器未完成初始化，请重新展开 3D 查看'
                         return
@@ -1670,6 +1695,11 @@
                         this.volumeViewerLoading = false
                         this.volumeDownload = null
                     }
+                },
+                async retryVolumeViewer() {
+                    const volumeEntry = this.fileList.find(file => file.type === 'volume')
+                    if (!volumeEntry) return
+                    await this.openVolumeViewer(volumeEntry)
                 },
                 async changeVolumeModality(modality) {
                     if (
@@ -2449,7 +2479,28 @@
                         this.revealElement(el)
                     }
                 },
+                registerScrollRevealTargets() {
+                    const selectors = [
+                        '.input-group',
+                        '.volume-source-summary',
+                        '.case-follow-up-action',
+                        '.case-evidence-section',
+                        '.analysis-summary',
+                        '.region-overview',
+                        '.case-meta-section',
+                        '.task-query-row',
+                        '.task-message',
+                        '.task-empty',
+                        '.task-case-group',
+                    ]
+                    document.querySelectorAll(selectors.join(',')).forEach((el) => {
+                        if (!el.hasAttribute('data-reveal')) {
+                            el.dataset.reveal = 'scroll'
+                        }
+                    })
+                },
                 initRevealObserver() {
+                    this.registerScrollRevealTargets()
                     const targets = Array.from(document.querySelectorAll('[data-reveal]'))
                     if (!targets.length) return
                     this._revealObserver?.disconnect()
