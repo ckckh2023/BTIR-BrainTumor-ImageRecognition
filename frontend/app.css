@@ -3691,7 +3691,7 @@ body {
 
         .task-small-btn {
             flex-shrink: 0;
-            padding: 8px 12px;
+            padding: 8px 15px 8px 9px;
             color: var(--btir-text);
             background: var(--btir-surface-muted);
             border: 1px solid var(--btir-border);
