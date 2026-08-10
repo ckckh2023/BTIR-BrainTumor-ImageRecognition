@@ -178,6 +178,18 @@ data/
 - `frontend_result.json` 更新为最新统一结果
 - 不创建新的任务，也不覆盖已有历史运行目录
 
+## 病例连续性与随访
+
+任务可保存 `case_id`、`case_name` 和 `study_date`<br>
+`case_id` 用于将同一用户的多次检查归为同一病例，`case_name` 仅用于页面展示
+
+`GET /tasks/{task_id}/follow-up` 只读取当前用户、同一 `case_id` 且早于当前任务的
+`succeeded` 或 `partial` 任务<br>
+接口从每个历史任务读取已脱敏的 `frontend_result`，用于前端比较体积、最大横截面积和分类概率
+
+归档或永久清除历史任务后，该任务不再参与随访列表<br>
+恢复归档任务后，满足条件时会重新出现在随访历史中
+
 任务文件接口会限制读取范围，并过滤 JSON 中的本机路径字段<br>
 不要把任务目录
 作为静态目录直接对外暴露
