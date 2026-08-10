@@ -227,6 +227,9 @@ class Segmentation3DTests(unittest.TestCase):
         self.assertEqual(result["bounding_box_size_voxels"], [2, 2, 2])
         self.assertEqual(result["bounding_box_size_mm"], [2.0, 4.0, 6.0])
         self.assertEqual(result["bounding_box_fill_ratio"], 1.0)
+        self.assertEqual(result["max_axial_area_voxels"], 4)
+        self.assertEqual(result["max_axial_area_mm2"], 8.0)
+        self.assertEqual(result["max_axial_slice_index"], 1)
         self.assertEqual(result["centroid_normalized"], [0.214286, 0.214286, 0.214286])
 
         composites = inference._composite_region_statistics(segmentation, reference)

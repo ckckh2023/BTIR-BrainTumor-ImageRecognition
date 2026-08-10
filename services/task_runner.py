@@ -11,7 +11,7 @@ from collections.abc import Callable
 from typing import Any
 
 from core.task_definitions import ModelName, TaskArtifact
-from services.case_preview import render_case_preview
+from services.case_preview import render_case_preview, render_case_preview_series
 from services.inference_service import (
     classify_volume,
     segment_volume,
@@ -164,13 +164,18 @@ def _render_case_preview(
     segmentation_result: dict[str, Any],
 ) -> None:
     '''生成四模态切片预览图并登记到前端结果，失败不影响任务结果'''
-    mask_relative = segmentation_result.get("mask_file")
-    if not mask_relative:
+    mask_value = segmentation_result.get("mask_path") or segmentation_result.get(
+        "mask_file"
+    )
+    if not mask_value:
         return
+    mask_path = Path(str(mask_value))
+    if not mask_path.is_absolute() and not mask_path.is_file():
+        mask_path = task_dir / mask_path
     try:
         preview_path = render_case_preview(
             modality_paths=modality_paths,
-            mask_path=task_dir / Path(str(mask_relative)),
+            mask_path=mask_path,
             output_path=task_dir / TaskArtifact.PREVIEW,
         )
         if preview_path is None:
@@ -180,6 +185,13 @@ def _render_case_preview(
             return
         payload = json.loads(frontend_path.read_text(encoding="utf-8"))
         payload.setdefault("result_files", {})["preview"] = TaskArtifact.PREVIEW
+        preview_series = render_case_preview_series(
+            modality_paths=modality_paths,
+            mask_path=mask_path,
+            output_dir=task_dir / TaskArtifact.PREVIEW_DIRECTORY,
+        )
+        if preview_series is not None:
+            payload["result_files"]["preview_series"] = preview_series
         frontend_path.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2),
             encoding="utf-8",

@@ -19,8 +19,14 @@
                     tumorMorphology: {},
                     tumorSpatial: {},
                     classProbabilities: {},
+                    caseInputFiles: {},
                     casePreviewPath: '',
                     casePreviewUrl: '',
+                    casePreviewFrames: [],
+                    casePreviewUrls: {},
+                    casePreviewMode: 'overlay',
+                    casePreviewActiveIndex: 0,
+                    casePreviewRequestId: 0,
                     volumeModalities: [
                         { key: 'flair', label: 'FLAIR' },
                         { key: 't1ce', label: 'T1CE' },
@@ -318,6 +324,146 @@
                         (sum, region) => sum + region.volumeMm3,
                         0,
                     )
+                },
+                imagingKeyMetrics() {
+                    const compositeVolume = key => {
+                        const value = Number(this.tumorComposites[key]?.volume_mm3)
+                        return Number.isFinite(value) && value >= 0 ? value : null
+                    }
+                    const regionVolume = label => {
+                        const value = this.regionStats.find(region => region.label === label)?.volumeMm3
+                        return Number.isFinite(value) && value >= 0 ? value : null
+                    }
+                    const percentage = (part, whole) => (
+                        Number.isFinite(part) && Number.isFinite(whole) && whole > 0
+                            ? Math.max(0, Math.min(100, part / whole * 100))
+                            : null
+                    )
+                    const metrics = []
+                    const dimensions = this.tumorMorphology.bounding_box_size_mm
+                    if (Array.isArray(dimensions) && dimensions.length === 3) {
+                        const values = dimensions.map(Number)
+                        if (values.every(value => Number.isFinite(value) && value > 0)) {
+                            const longest = Math.max(...values)
+                            metrics.push({
+                                key: 'extent',
+                                tone: 'extent',
+                                label: '病灶范围',
+                                tag: '三维大小',
+                                value: `${Math.round(longest)} mm`,
+                                detail: `${values.map(value => Math.round(value)).join(' × ')} mm`,
+                                meter: null,
+                                meterLabel: '',
+                            })
+                        }
+                    }
+
+                    const maxAxialArea = Number(this.tumorMorphology.max_axial_area_mm2)
+                    const maxAxialSlice = Number(this.tumorMorphology.max_axial_slice_index)
+                    if (Number.isFinite(maxAxialArea) && maxAxialArea > 0) {
+                        metrics.push({
+                            key: 'axial-area',
+                            tone: 'area',
+                            label: '最大横截面积',
+                            tag: '轴位切面',
+                            value: `${this.formatVolume(maxAxialArea)} mm²`,
+                            detail: Number.isFinite(maxAxialSlice)
+                                ? `对应切片 ${Math.round(maxAxialSlice)}`
+                                : '对应最大病灶层',
+                            meter: null,
+                            meterLabel: '',
+                        })
+                    }
+
+                    const wholeTumor = compositeVolume('WT')
+                    const edema = regionVolume('2')
+                    const edemaRatio = percentage(edema, wholeTumor)
+                    if (edemaRatio !== null) {
+                        metrics.push({
+                            key: 'edema',
+                            tone: 'edema',
+                            label: '瘤周水肿',
+                            tag: 'ED / WT',
+                            value: `${edemaRatio.toFixed(1)}%`,
+                            detail: `ED ${this.formatVolume(edema)} mm³，占全病灶`,
+                            meter: edemaRatio,
+                            meterLabel: '水肿体积占比',
+                        })
+                    }
+
+                    const tumorCore = compositeVolume('TC')
+                    const enhancingTumor = compositeVolume('ET')
+                    const enhancingRatio = percentage(enhancingTumor, tumorCore)
+                    if (enhancingRatio !== null) {
+                        metrics.push({
+                            key: 'enhancement',
+                            tone: 'enhancement',
+                            label: '强化成分',
+                            tag: 'ET / TC',
+                            value: `${enhancingRatio.toFixed(1)}%`,
+                            detail: `ET ${this.formatVolume(enhancingTumor)} mm³，占肿瘤核心`,
+                            meter: enhancingRatio,
+                            meterLabel: '强化区域体积占比',
+                        })
+                    }
+
+                    const components = Number(this.tumorMorphology.connected_components)
+                    const dominantRatio = Number(this.tumorMorphology.largest_component_ratio)
+                    if (Number.isFinite(components) && components > 0 && Number.isFinite(dominantRatio)) {
+                        const ratio = Math.max(0, Math.min(100, dominantRatio * 100))
+                        metrics.push({
+                            key: 'distribution',
+                            tone: 'distribution',
+                            label: '空间分布',
+                            tag: '连通性',
+                            value: `主体 ${ratio.toFixed(1)}%`,
+                            detail: `${Math.round(components)} 个分割连通域`,
+                            meter: ratio,
+                            meterLabel: '最大连通域占比',
+                        })
+                    }
+                    return metrics
+                },
+                caseInputQuality() {
+                    const present = this.volumeModalities.filter(
+                        modality => Boolean(this.caseInputFiles[modality.key]),
+                    )
+                    if (!present.length) return null
+                    const missing = this.volumeModalities
+                        .filter(modality => !this.caseInputFiles[modality.key])
+                        .map(modality => modality.label)
+                    return {
+                        present: present.map(modality => modality.label),
+                        missing,
+                        complete: missing.length === 0,
+                    }
+                },
+                activeCasePreviewFrame() {
+                    return this.casePreviewFrames[this.casePreviewActiveIndex] || null
+                },
+                activeCasePreviewPath() {
+                    const frame = this.activeCasePreviewFrame
+                    if (!frame) return ''
+                    return this.casePreviewMode === 'raw' && frame.raw
+                        ? frame.raw
+                        : frame.overlay
+                },
+                casePreviewHasRaw() {
+                    return this.casePreviewFrames.some(frame => Boolean(frame.raw))
+                },
+                casePreviewCaption() {
+                    const frame = this.activeCasePreviewFrame
+                    if (!frame) return ''
+                    const position = frame.offset === 0
+                        ? '最大病灶层'
+                        : (frame.offset < 0 ? '最大病灶层前一层' : '最大病灶层后一层')
+                    const source = this.casePreviewMode === 'raw'
+                        ? '四模态原始切片'
+                        : '四模态切片与分割叠加'
+                    const slice = Number.isInteger(frame.sliceIndex)
+                        ? ` · 切片 ${frame.sliceIndex}`
+                        : ''
+                    return `${position}${slice}　${source}`
                 },
                 consensusCard() {
                     const consensus = this.modelConsensus
@@ -960,6 +1106,7 @@
                     this.tumorMorphology = {}
                     this.tumorSpatial = {}
                     this.classProbabilities = {}
+                    this.caseInputFiles = {}
                     this.clearCasePreview()
                     this.probabilitySeries = []
                     this.probabilityThreshold = 0.548381
@@ -1070,17 +1217,65 @@
                     return `${this.API_BASE}/tasks/${taskId}/files/${path}`
                 },
                 clearCasePreview() {
-                    if (this.casePreviewUrl) {
-                        URL.revokeObjectURL(this.casePreviewUrl)
+                    this.casePreviewRequestId += 1
+                    const previewUrls = new Set([
+                        this.casePreviewUrl,
+                        ...Object.values(this.casePreviewUrls),
+                    ])
+                    for (const url of previewUrls) {
+                        if (url) URL.revokeObjectURL(url)
                     }
                     this.casePreviewPath = ''
                     this.casePreviewUrl = ''
+                    this.casePreviewFrames = []
+                    this.casePreviewUrls = {}
+                    this.casePreviewMode = 'overlay'
+                    this.casePreviewActiveIndex = 0
                 },
-                async loadCasePreview(filePath) {
+                async loadCasePreview(series, fallbackPath = '') {
                     this.clearCasePreview()
+                    if (!this.taskId) return
+
+                    const frames = Array.isArray(series?.frames)
+                        ? series.frames.map(frame => ({
+                            sliceIndex: Number.isInteger(frame?.slice_index)
+                                ? frame.slice_index
+                                : null,
+                            offset: Number.isInteger(frame?.offset) ? frame.offset : 0,
+                            raw: typeof frame?.raw === 'string' ? frame.raw : '',
+                            overlay: typeof frame?.overlay === 'string' ? frame.overlay : '',
+                        })).filter(frame => frame.raw || frame.overlay)
+                        : []
+                    if (!frames.length && fallbackPath) {
+                        frames.push({
+                            sliceIndex: null,
+                            offset: 0,
+                            raw: '',
+                            overlay: fallbackPath,
+                        })
+                    }
+                    if (!frames.length) return
+
+                    this.casePreviewFrames = frames
+                    const focusIndex = frames.findIndex(frame => frame.offset === 0)
+                    this.casePreviewActiveIndex = focusIndex >= 0 ? focusIndex : 0
+                    await this.loadActiveCasePreview()
+                },
+                async loadActiveCasePreview() {
+                    const filePath = this.activeCasePreviewPath
                     if (!filePath || !this.taskId) return
 
+                    this.casePreviewPath = filePath
+                    const cached = this.casePreviewUrls[filePath]
+                    if (cached) {
+                        this.casePreviewUrl = cached
+                        return
+                    }
+
+                    this.casePreviewUrl = ''
+                    const requestId = ++this.casePreviewRequestId
                     const requestTaskId = this.taskId
+
                     try {
                         const response = await fetch(this.taskFileUrl(filePath), {
                             headers: this.authHeaders,
@@ -1089,16 +1284,37 @@
                             throw new Error(`HTTP ${response.status}`)
                         }
                         const previewUrl = URL.createObjectURL(await response.blob())
-                        if (requestTaskId !== this.taskId) {
+                        if (
+                            requestTaskId !== this.taskId
+                            || requestId !== this.casePreviewRequestId
+                            || filePath !== this.activeCasePreviewPath
+                        ) {
                             URL.revokeObjectURL(previewUrl)
                             return
                         }
-                        this.casePreviewPath = filePath
+                        this.casePreviewUrls = {
+                            ...this.casePreviewUrls,
+                            [filePath]: previewUrl,
+                        }
                         this.casePreviewUrl = previewUrl
                     } catch {
-                        this.casePreviewPath = filePath
-                        this.casePreviewUrl = ''
+                        if (requestId === this.casePreviewRequestId) {
+                            this.casePreviewUrl = ''
+                        }
                     }
+                },
+                setCasePreviewMode(mode) {
+                    if (mode !== 'overlay' && mode !== 'raw') return
+                    if (mode === 'raw' && !this.casePreviewHasRaw) return
+                    if (this.casePreviewMode === mode && this.casePreviewUrl) return
+                    this.casePreviewMode = mode
+                    void this.loadActiveCasePreview()
+                },
+                selectCasePreviewFrame(index) {
+                    if (index < 0 || index >= this.casePreviewFrames.length) return
+                    if (index === this.casePreviewActiveIndex && this.casePreviewUrl) return
+                    this.casePreviewActiveIndex = index
+                    void this.loadActiveCasePreview()
                 },
                 playResultAnimations() {
                     this.ringRevealed = false
@@ -1318,6 +1534,7 @@
                     this.tumorMorphology = {}
                     this.tumorSpatial = {}
                     this.classProbabilities = {}
+                    this.caseInputFiles = resultData.input_files || taskData?.input?.files || {}
                     this.clearCasePreview()
                     this.modelConsensus = resultData.model_consensus || null
                     this.supplementaryAnalysis = resultData.supplementary_analysis || null
@@ -1354,7 +1571,10 @@
                         }
                     }
                     const resultFiles = resultData.result_files || {}
-                    void this.loadCasePreview(resultFiles.preview || '')
+                    void this.loadCasePreview(
+                        resultFiles.preview_series,
+                        resultFiles.preview || '',
+                    )
 
                     this.fileList = this.buildFileList(resultData, taskData)
                     this.selectedFilePath = ''
