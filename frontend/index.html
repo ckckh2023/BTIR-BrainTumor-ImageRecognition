@@ -102,16 +102,27 @@
                 <div class="left-panel-scroll">
 
                     <div class="input-group" v-if="!loading && !taskId">
-                    <div class="follow-up-upload-context" v-if="caseId">
-                        <div>
+                    <div class="follow-up-upload-context" v-if="caseId && !followUpContextDismissed">
+                        <div class="follow-up-name">
                             <span>新增复查</span>
                             <strong>{{ caseName }}</strong>
                         </div>
-                        <label>
+                        <label class="follow-up-date">
                             <span>检查日期</span>
                             <input v-model="studyDate" type="date" />
                         </label>
                         <button type="button" @click="startNewUpload">作为新病例上传</button>
+                        <button
+                            type="button"
+                            class="follow-up-close-btn"
+                            title="关闭复查提示"
+                            aria-label="关闭复查提示"
+                            @click="dismissFollowUpContext"
+                        >
+                            <svg class="icon" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                <path d="M4 4l8 8M12 4l-8 8"></path>
+                            </svg>
+                        </button>
                     </div>
                     <div
                         :class="['volume-drop-zone', { dragging: volumeDropActive }]"
@@ -547,13 +558,6 @@
                             </div>
                         </div>
                     </section>
-                    <div class="case-follow-up-action" v-if="caseId">
-                        <div>
-                            <span>病例 {{ caseName }}</span>
-                            <small>继续上传复查影像将自动对比上一期</small>
-                        </div>
-                        <button type="button" @click="startFollowUpUpload">新增复查</button>
-                    </div>
                     <section class="follow-up-comparison" v-if="followUpComparison" data-reveal data-testid="follow-up-comparison">
                         <div class="follow-up-heading">
                             <div>
@@ -1119,19 +1123,6 @@
                             v-for="caseGroup in taskCaseGroups"
                             :key="caseGroup.caseId"
                         >
-                            <div class="task-case-group-heading">
-                                <div>
-                                    <span>病例</span>
-                                    <strong>{{ caseGroup.name }}</strong>
-                                    <small>{{ caseGroup.tasks.length }} 次检查</small>
-                                </div>
-                                <button
-                                    type="button"
-                                    class="task-small-btn"
-                                    v-if="taskListMode === 'active'"
-                                    @click="startFollowUpUpload(caseGroup.tasks[0])"
-                                >新增复查</button>
-                            </div>
                         <div
                             :class="['task-card', {
                                 current: task.task_id === taskId,
@@ -1146,13 +1137,68 @@
                             @keydown.enter.prevent="taskListMode === 'active' && viewTaskResult(task)"
                             @keydown.space.prevent="taskListMode === 'active' && viewTaskResult(task)"
                         >
-                            <div class="task-card-header">
-                                <div style="min-width: 0;">
-                                    <div class="task-card-name" :title="task.name">
-                                        {{ task.name || '未命名任务' }}
-                                    </div>
-                                    <div class="task-card-id">{{ task.task_id }}</div>
+                        <div class="task-card-header">
+                            <div style="min-width: 0;">
+                                <div class="task-card-name-line">
+                                    <template v-if="taskRenameTaskId === task.task_id">
+                                        <input
+                                            v-model="taskRenameDraft"
+                                            class="task-card-name-input"
+                                            :ref="`task-rename-${task.task_id}`"
+                                            maxlength="100"
+                                            placeholder="输入任务名称"
+                                            @click.stop
+                                            @keydown.enter.stop.prevent="saveTaskRename(task)"
+                                            @keydown.esc.stop.prevent="cancelTaskRename(task)"
+                                            @blur="onTaskRenameBlur(task, $event)"
+                                        />
+                                        <button
+                                            type="button"
+                                            class="task-rename-confirm-btn"
+                                            title="保存"
+                                            aria-label="保存重命名"
+                                            @click.stop="saveTaskRename(task)"
+                                        >
+                                            <svg class="icon" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M3 8.5 6.5 12 13 4.5"></path>
+                                            </svg>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="task-rename-cancel-btn"
+                                            title="取消"
+                                            aria-label="取消重命名"
+                                            @click.stop="cancelTaskRename(task)"
+                                        >
+                                            <svg class="icon" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                                <path d="M4 4l8 8M12 4l-8 8"></path>
+                                            </svg>
+                                        </button>
+                                    </template>
+                                    <template v-else>
+                                        <div
+                                            class="task-card-name"
+                                            :title="task.name || '未命名任务'"
+                                        >
+                                            {{ task.name || '未命名任务' }}
+                                        </div>
+                                        <button
+                                            v-if="taskListMode === 'active'"
+                                            type="button"
+                                            class="task-rename-btn"
+                                            title="重命名任务"
+                                            aria-label="重命名任务"
+                                            @click.stop="startTaskRename(task)"
+                                        >
+                                            <svg class="icon" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M11.2 2.3 13.7 4.8 6.1 12.4 3 13l0.6-3.1L11.2 2.3Z"></path>
+                                                <path d="M9.8 3.7 12.3 6.2"></path>
+                                            </svg>
+                                        </button>
+                                    </template>
                                 </div>
+                                <div class="task-card-id">{{ task.task_id }}</div>
+                            </div>
                                 <div class="task-card-status-group">
                                     <span class="task-current-badge" v-if="task.task_id === taskId">当前查看</span>
                                     <span :class="['task-status', task.status]">
@@ -1191,11 +1237,6 @@
                                     </svg>
                                     {{ taskActionId === task.task_id ? '读取中...' : '查看结果' }}
                                 </button>
-                                <button
-                                    class="task-small-btn"
-                                    v-if="taskListMode === 'active'"
-                                    @click="startFollowUpUpload(task)"
-                                >新增复查</button>
                                 <button
                                     class="task-small-btn"
                                     v-if="taskListMode === 'active'"
@@ -1295,6 +1336,19 @@
                                     <span>{{ formatInferenceTime(run.inference_ms) }}</span>
                                 </div>
                             </div>
+                        </div>
+                        <div class="task-case-group-heading">
+                            <div>
+                                <span>病例</span>
+                                <strong>{{ caseGroup.name }}</strong>
+                                <small>{{ caseGroup.tasks.length }} 次检查</small>
+                            </div>
+                            <button
+                                type="button"
+                                class="task-small-btn"
+                                v-if="taskListMode === 'active'"
+                                @click="startFollowUpUpload(caseGroup.tasks[0])"
+                            >新增复查</button>
                         </div>
                         </section>
                     </div>

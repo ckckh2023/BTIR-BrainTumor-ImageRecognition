@@ -89,6 +89,11 @@ class TaskSummaryResponse(BaseModel):
     error: TaskErrorData | None = None
 
 
+'''任务重命名请求模型'''
+class TaskRenameRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
 class TaskListResponse(BaseModel):
     schema_version: Literal["0.1"] = "0.1"
     items: list[TaskSummaryResponse]
