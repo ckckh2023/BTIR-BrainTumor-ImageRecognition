@@ -526,13 +526,8 @@ class SqliteTaskRepository:
                 query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             )
             search_pattern = f"%{escaped_query}%"
-            conditions.append(
-                "("
-                "name COLLATE NOCASE LIKE ? ESCAPE '\\' OR "
-                "task_id COLLATE NOCASE LIKE ? ESCAPE '\\'"
-                ")"
-            )
-            parameters.extend((search_pattern, search_pattern))
+            conditions.append("name COLLATE NOCASE LIKE ? ESCAPE '\\'")
+            parameters.append(search_pattern)
         if created_from is not None:
             conditions.append("julianday(created_at) >= julianday(?)")
             parameters.append(created_from.isoformat())
@@ -581,13 +576,8 @@ class SqliteTaskRepository:
                 query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             )
             search_pattern = f"%{escaped_query}%"
-            conditions.append(
-                "("
-                "name COLLATE NOCASE LIKE ? ESCAPE '\\' OR "
-                "task_id COLLATE NOCASE LIKE ? ESCAPE '\\'"
-                ")"
-            )
-            parameters.extend((search_pattern, search_pattern))
+            conditions.append("name COLLATE NOCASE LIKE ? ESCAPE '\\'")
+            parameters.append(search_pattern)
 
         where_clause = f"WHERE {' AND '.join(conditions)}"
         with self._connect() as connection:
