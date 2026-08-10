@@ -372,7 +372,12 @@
             </div>
 
             <div class="right-panel" v-if="hasRightPanel">
-                <div class="right-content" ref="rightContent" v-show="activeRightView === 'results'">
+                <div
+                    class="right-content"
+                    ref="rightContent"
+                    :style="resultSplitStyle"
+                    v-show="activeRightView === 'results'"
+                >
                     <div class="case-viewer-column" :class="{ 'viewer-column-dark': viewerPane === '3d' }">
                     <div class="case-viewer-tabs" v-if="fileList.length">
                         <button
@@ -495,6 +500,25 @@
                         @copied="showToastMessage()"
                     ></btir-detail-table>
                     </div>
+                    <div
+                        class="result-column-resizer"
+                        :class="{ dragging: resultSplitDragging }"
+                        v-if="fileList.length"
+                        role="separator"
+                        aria-orientation="vertical"
+                        aria-label="调整结果与三维视图宽度"
+                        :aria-valuenow="Math.round(resultSplitRatio * 100)"
+                        aria-valuemin="40"
+                        aria-valuemax="68"
+                        tabindex="0"
+                        title="拖动调整区域宽度，双击恢复默认"
+                        @pointerdown="startResultSplitResize"
+                        @dblclick="resetResultSplit"
+                        @keydown.left.prevent="nudgeResultSplit(-0.02)"
+                        @keydown.right.prevent="nudgeResultSplit(0.02)"
+                        @keydown.home.prevent="setResultSplitRatio(0.4)"
+                        @keydown.end.prevent="setResultSplitRatio(0.68)"
+                    ><span></span></div>
                     <div class="case-data-column" ref="caseDataColumn">
                     <section
                         class="case-summary-card"
@@ -1054,10 +1078,9 @@
                             type="search"
                             v-model.trim="taskQuery"
                             placeholder="任务 ID 或名称"
-                            @input="scheduleTaskSearch"
                             @keyup.enter="searchTasks"
                         />
-                        <select v-model="taskStatusFilter" @change="scheduleTaskSearch(true)">
+                        <select v-model="taskStatusFilter">
                             <option value="">全部状态</option>
                             <option value="created">待运行</option>
                             <option value="queued">排队中</option>

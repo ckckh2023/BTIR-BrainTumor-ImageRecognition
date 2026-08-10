@@ -90,6 +90,19 @@
                     volumeViewMode: 'multiplanar',
                     volumeViewerExpanded: false,
                     deferredVolumeLoadTimer: null,
+                    resultSplitRatio: (() => {
+                        try {
+                            const value = Number(localStorage.getItem('btir_result_split_ratio'))
+                            return Number.isFinite(value) && value >= 0.4 && value <= 0.68
+                                ? value
+                                : 0.618
+                        } catch {
+                            return 0.618
+                        }
+                    })(),
+                    resultSplitViewportWidth: 0,
+                    resultSplitDragging: false,
+                    resultSplitDrawFrame: null,
                     activeRightView: (() => {
                         try {
                             const url = new URL(window.location.href)
@@ -112,7 +125,6 @@
                     taskOffset: 0,
                     taskQuery: '',
                     taskStatusFilter: '',
-                    taskSearchTimer: null,
                     taskHistoryRequestId: 0,
                     taskListMode: 'active',
                     taskHistoryLoading: false,
@@ -297,6 +309,16 @@
                 hasRightPanel() {
                     return this.activeRightView === 'tasks'
                         || Boolean(this.selectedFileType || this.fileList.length)
+                },
+                resultSplitStyle() {
+                    const width = this.resultSplitViewportWidth
+                    const availableWidth = width - 16
+                    if (availableWidth < 760) return {}
+                    const dataWidth = Math.min(
+                        availableWidth - 360,
+                        Math.max(360, availableWidth * this.resultSplitRatio),
+                    )
+                    return { '--btir-result-data-width': `${Math.round(dataWidth)}px` }
                 },
                 volumeSourceSummary() {
                     if (this.volumeArchiveFile) {
@@ -785,6 +807,77 @@
                         })
                     }
                 },
+                updateResultSplitViewport() {
+                    this.resultSplitViewportWidth = this.$refs.rightContent?.clientWidth || 0
+                    this.scheduleResultViewerResize()
+                },
+                startResultSplitResize(event) {
+                    if (event.pointerType === 'mouse' && event.button !== 0) return
+                    this.updateResultSplitViewport()
+                    if (this.resultSplitViewportWidth < 776) return
+                    event.preventDefault()
+                    this.resultSplitDragging = true
+                    document.body.classList.add('btir-result-split-dragging')
+                    this._resultSplitPointerMove = moveEvent => this.updateResultSplitFromPointer(moveEvent)
+                    this._resultSplitPointerUp = () => this.stopResultSplitResize()
+                    window.addEventListener('pointermove', this._resultSplitPointerMove)
+                    window.addEventListener('pointerup', this._resultSplitPointerUp, { once: true })
+                    window.addEventListener('pointercancel', this._resultSplitPointerUp, { once: true })
+                    this.updateResultSplitFromPointer(event)
+                },
+                updateResultSplitFromPointer(event) {
+                    if (!this.resultSplitDragging) return
+                    const container = this.$refs.rightContent
+                    if (!container) return
+                    const rect = container.getBoundingClientRect()
+                    const availableWidth = rect.width - 16
+                    if (availableWidth < 760) return
+                    const dataWidth = Math.min(
+                        availableWidth - 360,
+                        Math.max(360, event.clientX - rect.left),
+                    )
+                    this.resultSplitViewportWidth = rect.width
+                    this.resultSplitRatio = dataWidth / availableWidth
+                    this.scheduleResultViewerResize()
+                },
+                stopResultSplitResize() {
+                    const wasDragging = this.resultSplitDragging
+                    this.resultSplitDragging = false
+                    document.body.classList.remove('btir-result-split-dragging')
+                    window.removeEventListener('pointermove', this._resultSplitPointerMove)
+                    window.removeEventListener('pointerup', this._resultSplitPointerUp)
+                    window.removeEventListener('pointercancel', this._resultSplitPointerUp)
+                    this._resultSplitPointerMove = null
+                    this._resultSplitPointerUp = null
+                    if (wasDragging) {
+                        try {
+                            localStorage.setItem('btir_result_split_ratio', this.resultSplitRatio.toFixed(4))
+                        } catch {}
+                    }
+                },
+                setResultSplitRatio(ratio) {
+                    this.resultSplitRatio = Math.max(0.4, Math.min(0.68, ratio))
+                    try {
+                        localStorage.setItem('btir_result_split_ratio', this.resultSplitRatio.toFixed(4))
+                    } catch {}
+                    this.scheduleResultViewerResize()
+                },
+                nudgeResultSplit(amount) {
+                    this.setResultSplitRatio(this.resultSplitRatio + amount)
+                },
+                resetResultSplit() {
+                    this.setResultSplitRatio(0.618)
+                    try {
+                        localStorage.removeItem('btir_result_split_ratio')
+                    } catch {}
+                },
+                scheduleResultViewerResize() {
+                    if (this.resultSplitDrawFrame !== null) return
+                    this.resultSplitDrawFrame = requestAnimationFrame(() => {
+                        this.resultSplitDrawFrame = null
+                        this.volumeViewer?.drawScene?.()
+                    })
+                },
                 switchViewerPane(pane) {
                     if (!['3d', 'json'].includes(pane) || pane === this.viewerPane) {
                         return
@@ -892,10 +985,6 @@
                 },
                 switchTaskList(mode) {
                     if (this.taskListMode === mode) return
-                    if (this.taskSearchTimer) {
-                        clearTimeout(this.taskSearchTimer)
-                        this.taskSearchTimer = null
-                    }
                     this.taskListMode = mode
                     this.taskOffset = 0
                     this.loadTaskHistory()
@@ -1058,26 +1147,7 @@
                         this.$nextTick(() => this.initRevealObserver())
                     }
                 },
-                scheduleTaskSearch(immediate = false) {
-                    if (this.taskSearchTimer) {
-                        clearTimeout(this.taskSearchTimer)
-                        this.taskSearchTimer = null
-                    }
-                    this.taskOffset = 0
-                    if (immediate) {
-                        this.loadTaskHistory()
-                        return
-                    }
-                    this.taskSearchTimer = setTimeout(() => {
-                        this.taskSearchTimer = null
-                        this.loadTaskHistory()
-                    }, 250)
-                },
                 searchTasks() {
-                    if (this.taskSearchTimer) {
-                        clearTimeout(this.taskSearchTimer)
-                        this.taskSearchTimer = null
-                    }
                     this.taskOffset = 0
                     this.loadTaskHistory()
                 },
@@ -1870,7 +1940,10 @@
                         this.selectFile(detailEntry)
                     }
                     this.persistWorkspaceState()
-                    this.$nextTick(() => this.initRevealObserver())
+                    this.$nextTick(() => {
+                        this.initRevealObserver()
+                        this.updateResultSplitViewport()
+                    })
                     void this.loadFollowUpComparison()
                     this.deferCaseVolumeViewer()
                 },
@@ -2547,6 +2620,7 @@
                         '.left-panel-scroll',
                         '.result-box',
                         '.right-content',
+                        '.case-data-column',
                         '.task-manager',
                     ]
                     containers.forEach((selector) => {
@@ -2577,6 +2651,8 @@
                 this.$nextTick(() => this.initRevealObserver())
                 this.initScrollRevealFallback()
                 document.addEventListener('click', this.handleGlobalClick)
+                window.addEventListener('resize', this.updateResultSplitViewport)
+                this.$nextTick(() => this.updateResultSplitViewport())
 
                 fetch(`${this.API_BASE}/assets/metrics.json`, { headers: this.authHeaders })
                     .then((response) => (response.ok ? response.json() : null))
@@ -2625,8 +2701,11 @@
                     this.progressAnimFrame = null
                 }
                 document.removeEventListener('click', this.handleGlobalClick)
-                if (this.taskSearchTimer) {
-                    clearTimeout(this.taskSearchTimer)
+                this.stopResultSplitResize()
+                window.removeEventListener('resize', this.updateResultSplitViewport)
+                if (this.resultSplitDrawFrame !== null) {
+                    cancelAnimationFrame(this.resultSplitDrawFrame)
+                    this.resultSplitDrawFrame = null
                 }
                 this.destroyVolumeViewer()
                 this.clearCasePreview()
