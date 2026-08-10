@@ -25,6 +25,7 @@ GET /tasks/{task_id} 轮询状态和读取最新结果
 GET /tasks 查询任务列表
     ↓
 GET /tasks/{task_id}/runs 查询该任务的运行历史
+GET /tasks/{task_id}/follow-up 查询同一病例的历史检查并构建随访对比
 
 GET /tasks/archived 查询可恢复的归档任务
     ↓
@@ -66,6 +67,7 @@ POST /tasks/{task_id}/restore 恢复所选任务
 | `GET` | `/tasks/archived` | 分页、筛选尚未永久清除的归档任务 |
 | `GET` | `/tasks/{task_id}` | 查询任务状态与最新结果 |
 | `GET` | `/tasks/{task_id}/runs` | 查询模型运行历史 |
+| `GET` | `/tasks/{task_id}/follow-up` | 查询同一病例的可对比历史检查 |
 | `GET` | `/tasks/{task_id}/files/{file_path}` | 读取公开结果文件 |
 | `POST` | `/tasks/{task_id}/run-async` | 提交完整异步推理 |
 | `POST` | `/tasks/{task_id}/retry` | 重新提交最终失败的任务 |
@@ -242,6 +244,9 @@ Content-Type: multipart/form-data
 | `t1` | 是 | T1，`.nii` 或 `.nii.gz` |
 | `t2` | 是 | T2，`.nii` 或 `.nii.gz` |
 | `name` | 否 | 任务显示名称 |
+| `case_id` | 否 | 病例分组标识，最长 128 字符，省略时使用任务 ID |
+| `case_name` | 否 | 病例显示名称，最长 100 字符 |
+| `study_date` | 否 | 检查日期，格式 `YYYY-MM-DD`，省略时使用创建日期 |
 
 后端会校验四个文件的 shape、affine、spacing 和方向是否一致<br>
 文件名无须遵循
@@ -249,6 +254,9 @@ BraTS 命名规则，模态由表单字段确定<br>
 四个文件总大小由
 `BTIR_MAX_3D_UPLOAD_BYTES` 限制，解压后的单个体积还受
 `BTIR_MAX_3D_VOXELS` 限制
+
+`case_id`、`case_name` 和 `study_date` 同样适用于 DICOM 与 ZIP 上传接口<br>
+同一用户下 `case_id` 相同的历史成功任务可用于随访对比
 
 也可使用 `POST /tasks/3d/dicom` 上传同一病例的原始 DICOM 文件夹：表单字段
 `files` 携带一组 DICOM 文件（最多 `BTIR_MAX_DICOM_FILES` 个，总大小受
@@ -364,6 +372,9 @@ GET /tasks/{task_id}
   "name": "示例任务",
   "status": "succeeded",
   "analysis_mode": "3d",
+  "case_id": "case-001",
+  "case_name": "Patient A",
+  "study_date": "2026-08-01",
   "created_at": "2026-07-28T12:00:00+08:00",
   "updated_at": "2026-07-28T12:00:03+08:00",
   "completed_models": ["classification", "segmentation"],
@@ -531,8 +542,8 @@ AI 服务，因此外部综合分析未启用或不可用时仍会返回
 发送给外部服务的数据仅包括经白名单提取的分类概率/阈值/切片
 摘要、各区域定量数据和非背景总体素数/体积/占比，以及连通域数、最大连通域、包围盒尺度和归一化
 质心等形态摘要，不包含原始影像、文件名、任务 ID、用户资料或服务器路径<br>
-页面在结论末尾显示实际
-提供综合分析的服务及模型名称
+页面仅在 AI 辅助分析成功且包含有效内容时显示其结论、建议与观察项<br>
+综合结果由本地双模型固定显示，页面会标出实际提供 AI 分析的服务及模型名称
 
 为提升综合说明的可解释性，证据包还包括全部已采样切片的阳性概率曲线、概率分布及距阈值的差值、
 阳性切片连续性、输入体积覆盖度，以及 BraTS 的 WT、TC、ET 复合区域定量数据<br>
@@ -580,10 +591,13 @@ GET /tasks?q=Patient&status=succeeded&created_from=2026-07-01T00:00:00%2B08:00&c
     {
       "task_id": "20260728_120000_001",
       "name": "Patient A",
-      "status": "succeeded",
-      "created_at": "2026-07-28T12:00:00+08:00",
-      "updated_at": "2026-07-28T12:00:03+08:00",
-      "analysis_mode": "3d",
+       "status": "succeeded",
+       "created_at": "2026-07-28T12:00:00+08:00",
+       "updated_at": "2026-07-28T12:00:03+08:00",
+       "case_id": "case-001",
+       "case_name": "Patient A",
+       "study_date": "2026-07-28",
+       "analysis_mode": "3d",
       "completed_models": ["classification", "segmentation"],
       "input": {
         "size_bytes": 4096,
@@ -602,6 +616,35 @@ GET /tasks?q=Patient&status=succeeded&created_from=2026-07-01T00:00:00%2B08:00&c
   "total": 1,
   "limit": 20,
   "offset": 0
+}
+```
+
+## 查询随访对比
+
+```http
+GET /tasks/{task_id}/follow-up
+```
+
+返回当前任务所属病例及同一用户下较早完成的检查<br>
+历史项按检查日期和创建时间倒序排列，前端默认选择最近一次，也可让用户切换其他历史项
+
+只有 `case_id` 相同且状态为 `succeeded` 或 `partial` 的任务会进入历史列表<br>
+每项携带任务摘要和已脱敏的 `frontend_result`，前端可比较 WT、TC、ET 体积、最大横截面积和分类阳性概率
+
+```json
+{
+  "schema_version": "0.1",
+  "task_id": "20260801_120000_001",
+  "case_id": "case-001",
+  "case_name": "Patient A",
+  "study_date": "2026-08-01",
+  "baseline": {"task_id": "20260701_120000_001", "study_date": "2026-07-01"},
+  "history": [
+    {
+      "task": {"task_id": "20260701_120000_001", "study_date": "2026-07-01"},
+      "frontend_result": {"classification": {}, "segmentation": {}}
+    }
+  ]
 }
 ```
 

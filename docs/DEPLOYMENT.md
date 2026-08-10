@@ -96,7 +96,7 @@ BTIR_CORS_ORIGINS=http://127.0.0.1:8000,http://localhost:8000
 BTIR_TASK_DATABASE_PATH=data/btir.db
 BTIR_TASK_QUEUE_NAME=inference-3d
 BTIR_WORKER_PRELOAD_MODELS=true
-BTIR_LINUX_WORKER_MODE=standard
+BTIR_LINUX_WORKER_MODE=simple
 BTIR_JWT_SECRET_KEY=至少32字节的随机字符串
 BTIR_REGISTRATION_ENABLED=false
 BTIR_AUTH_LOGIN_USER_ATTEMPTS=10
@@ -110,14 +110,14 @@ BTIR_TASK_CANCEL_CHECK_INTERVAL_SECONDS=0.5
 BTIR_MAX_3D_UPLOAD_BYTES=536870912
 BTIR_MAX_3D_VOXELS=20000000
 BTIR_3D_SEGMENTER_OVERLAP=0.5
-BTIR_3D_CUDA_ACCUMULATOR_RESERVE_MB=2048
+BTIR_3D_CUDA_ACCUMULATOR_RESERVE_MB=3072
 BTIR_3D_FAST_INFERENCE=true
 BTIR_VIT_CLASSIFIER_MODEL_DIR=models/classification/vit-binary
 BTIR_VIT_CLASSIFIER_MAX_SLICES=25
 BTIR_VIT_CLASSIFIER_BATCH_SIZE=25
 BTIR_VIT_CLASSIFIER_THRESHOLD=0.548381
 BTIR_3D_CLASSIFIER_MODALITY=flair
-BTIR_AI_ANALYSIS_ENABLED=false
+BTIR_AI_ANALYSIS_ENABLED=true
 BTIR_AI_API_KEY=仅部署环境设置，不提交到仓库
 BTIR_AI_BASE_URL=https://api.deepseek.com
 BTIR_AI_MODEL=deepseek-v4-flash
@@ -180,16 +180,15 @@ BTIR_CORS_ORIGINS=https://你的前端域名
 
 ### AI 综合分析
 
-默认 `BTIR_AI_ANALYSIS_ENABLED=false`，因此不会产生任何外部请求<br>
-启用后在
-部署机器的 `.env` 中设置 `BTIR_AI_API_KEY`，密钥不得写入代码、前端或提交到仓库
+将 `BTIR_AI_ANALYSIS_ENABLED` 设为 `true` 且在部署机器的 `.env` 中设置
+`BTIR_AI_API_KEY` 后才会产生外部请求，密钥不得写入代码、前端或提交到仓库
 服务只发送白名单字段：本地分类的类别/概率/阈值/切片摘要，以及分割区域的体素数、体积和
 占比；不会发送原始 MRI、NIfTI、文件名、任务 ID、用户名或服务器路径
 同一份白名单数据还会在本地生成以分割为主的 `model_consensus`，并作为外部综合说明的
 确定性基线
 
-AI 服务超时、限流、网络错误、空响应或不符合协议的 JSON 都会被记录为“综合分析暂不可用”，
-不会影响本地分类和分割任务的成功状态<br>
+AI 服务超时、限流、网络错误、空响应或不符合协议的 JSON 都不会影响本地分类和分割任务的成功状态<br>
+前端会继续展示本地双模型综合结果，并只在 AI 返回有效结构化内容时显示 AI 辅助分析区
 
 `BTIR_3D_FAST_INFERENCE=true` 会为 CUDA 推理启用 cuDNN benchmark 与 TF32，以降低
 滑窗分割耗时；默认启用<br>
@@ -345,15 +344,7 @@ python -c "import torch; print(torch.__version__); print(torch.cuda.is_available
 Windows 使用单进程 `SimpleWorker`，默认在启动阶段预加载本地 ViT 与
 SuperLightNet，把第一次任务的模型冷启动移到 Worker 启动阶段
 
-Linux 默认使用标准 RQ Worker：
-
-```dotenv
-BTIR_LINUX_WORKER_MODE=standard
-```
-
-标准模式会跳过模型预加载，避免 fork 后 CUDA 初始化风险<br>
-Linux GPU
-服务器需要预热时可改为：
+Linux 默认使用单进程 `SimpleWorker`，并在启动阶段预加载模型：
 
 ```dotenv
 BTIR_LINUX_WORKER_MODE=simple
@@ -362,7 +353,14 @@ BTIR_WORKER_PRELOAD_MODELS=true
 
 `simple` 不 fork，一次执行一个任务，应由 systemd 或项目守护脚本在进程
 异常退出时重新拉起<br>
-Worker 会复用自身的模型缓存；标准 Worker 每项作业使用
+需要使用标准 RQ Worker 时可改为：
+
+```dotenv
+BTIR_LINUX_WORKER_MODE=standard
+```
+
+标准模式会跳过模型预加载，避免 fork 后 CUDA 初始化风险<br>
+`simple` Worker 会复用自身的模型缓存；标准 Worker 每项作业使用
 子进程，模型会在该作业中按需加载<br>
 Worker 只监听 `BTIR_TASK_QUEUE_NAME`
 指定的 3D 推理队列

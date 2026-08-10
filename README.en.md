@@ -11,7 +11,7 @@
 
 BTIR is a complete analysis system for four‑modality brain tumor MRI.
 
-Users can log in via a browser, drag and drop a case folder or ZIP archive, view classification, segmentation, comprehensive model conclusions, and AI‑generated result interpretations, and perform 3D visualization inside the web page.
+Users can log in via a browser, run classification, segmentation, and AI-assisted analysis, then inspect key imaging features, slices, comparisons, and 3D imaging in the web page.
 
 Visit our deployed service (occasionally open): https://btir.online/
 
@@ -23,9 +23,9 @@ Visit our deployed service (occasionally open): https://btir.online/
 | --- | --- |
 | Case Upload | Supports four‑modality NIfTI or raw DICOM folders and ZIP archives. Automatically matches and converts FLAIR, T1CE, T1, T2; provides correction options when NIfTI files are missing or duplicated. |
 | Model Analysis | Combines evidence from a local ViT multi‑slice binary classifier and a SuperLightNet 3D segmentation model to generate comprehensive conclusions. |
-| Result Display | Shows key conclusions, segmentation region statistics, model observations, structured AI interpretation, and recommendations. |
+| Result Display | Keeps the dual-model conclusion, follow-up comparison, and key imaging features in the first view, then provides slice probability curves, segmentation overlays, and expandable region details. |
 | 3D Viewer | Switch between four modalities, tri‑planar views, and volume rendering; overlay predicted masks with adjustable opacity. |
-| Task Management | Asynchronous submission, progress polling, cancellation, failed retries, run history, archiving, and restoration. |
+| Follow-up & Tasks | Groups historical examinations by case and compares a chosen pair of studies, with asynchronous submission, polling, cancellation, failed retries, run history, archiving, and restoration. |
 | Multi‑user | JWT‑based login isolation, user task quotas, mandatory password change, admin user and task management, audit queries. |
 | Testing | Unit tests, interface contracts, task flow tests, and optional browser end‑to‑end tests. |
 | Deployment & Runtime | SQLite persistence, Redis + RQ queue, CPU, CUDA, and Linux ROCm support; audit logs rotate by size with automatic retention. |
@@ -43,7 +43,7 @@ flowchart LR
     W --> S[SuperLightNet Segmentation Model]
     W --> O[Task Results & NIfTI Files]
     A --> O
-    A -. Structured Results .-> DS[AI Analysis Service]
+    A -. Structured Results .-> AI[AI Analysis Service]
 ```
 
 The frontend does not directly read the database or task directories; all data is obtained through authenticated APIs. 
@@ -56,8 +56,10 @@ The AI service receives only local structured quantitative information produced 
 3. Drag a case folder or ZIP archive containing four‑modality NIfTI or raw DICOM.
 4. If the system detects missing or duplicate modalities, follow the on‑screen prompts to select or supplement the corresponding files.
 5. Start analysis; the page displays upload, queuing, and inference progress.
-6. View comprehensive results, detailed data, and downloadable files.
-7. In the “3D Viewer”, switch modalities, view segmentation masks, or use volume rendering.
+6. Review results in the order of comprehensive conclusion, follow-up comparison, imaging features, and model evidence.
+7. Expand segmentation region details or “Detailed Data” for quantitative fields and file metadata.
+8. In the “3D Viewer”, switch modalities, view segmentation masks, or use volume rendering.
+9. After uploading a follow-up study for the same case, choose a historical examination on the analysis page for comparison.
 
 The browser must support WebGL2 to use the 3D viewer.<br>
 The viewer is based on NiiVue; see [Third‑Party Notices](THIRD_PARTY_NOTICES.md) for license information.
@@ -134,7 +136,8 @@ The system combines classification and segmentation results into a unified `fron
 - The classification model provides case‑level `no/yes` probabilities.
 - The segmentation model provides region statistics for NCR/NET, ED, ET, and volumes.
 - Comprehensive conclusions primarily use segmentation results, supplemented by classification evidence.
-- The AI summarization service interprets only the structured information above and marks the source of analysis on the frontend.
+- The AI-assisted analysis interprets only the structured information above and shows conclusions, recommendations, and observations when successful, including the actual provider on the frontend.
+- An unavailable AI service does not affect local classification, segmentation, or the comprehensive conclusion.
 
 Classification and segmentation model outputs are independently saved in the task directory for traceability and comparison.  
 For detailed result fields and API conventions, see the [API Documentation](docs/API.md).
