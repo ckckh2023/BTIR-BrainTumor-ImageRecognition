@@ -357,8 +357,8 @@ body {
 
         .result-workspace .right-content {
             display: grid;
-            grid-template-columns: minmax(0, 1.618fr) minmax(360px, 1fr);
-            gap: 18px;
+            grid-template-columns: minmax(360px, var(--btir-result-data-width, 1.618fr)) 16px minmax(360px, 1fr);
+            gap: 0;
             align-items: stretch;
             padding-right: 4px;
             overflow: hidden;
@@ -370,14 +370,86 @@ body {
             min-height: 0;
             overflow-y: auto;
             padding-right: 4px;
+            container-type: inline-size;
         }
 
         .result-workspace .case-viewer-column {
-            order: 2;
+            order: 3;
             min-width: 0;
             min-height: 0;
             display: flex;
             flex-direction: column;
+        }
+
+        .result-column-resizer {
+            order: 2;
+            position: relative;
+            min-height: 100%;
+            cursor: col-resize;
+            touch-action: none;
+            outline: none;
+        }
+
+        .result-column-resizer::before {
+            position: absolute;
+            top: 10px;
+            bottom: 10px;
+            left: 7px;
+            width: 2px;
+            background: var(--btir-border);
+            border-radius: 999px;
+            content: '';
+            transition: background-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+        }
+
+        .result-column-resizer span {
+            position: absolute;
+            top: 50%;
+            left: 2px;
+            z-index: 1;
+            width: 12px;
+            height: 42px;
+            border: 1px solid var(--btir-border-strong);
+            border-radius: 999px;
+            background: var(--btir-surface);
+            box-shadow: var(--btir-shadow-sm);
+            transform: translateY(-50%);
+            pointer-events: none;
+            transition: color 0.16s ease, background-color 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+        }
+
+        .result-column-resizer span::before {
+            position: absolute;
+            top: 11px;
+            left: 4px;
+            width: 2px;
+            height: 18px;
+            border-radius: 999px;
+            background: currentColor;
+            box-shadow: 0 5px currentColor, 0 10px currentColor;
+            color: var(--btir-text-muted);
+            content: '';
+        }
+
+        .result-column-resizer:hover::before,
+        .result-column-resizer:focus-visible::before,
+        .result-column-resizer.dragging::before {
+            background: var(--btir-primary);
+            box-shadow: 0 0 10px color-mix(in srgb, var(--btir-primary) 40%, transparent);
+            transform: scaleX(1.5);
+        }
+
+        .result-column-resizer:hover span,
+        .result-column-resizer:focus-visible span,
+        .result-column-resizer.dragging span {
+            border-color: var(--btir-primary);
+            background: var(--btir-primary-soft);
+            box-shadow: 0 6px 14px color-mix(in srgb, var(--btir-primary) 22%, transparent);
+        }
+
+        body.btir-result-split-dragging {
+            cursor: col-resize;
+            user-select: none;
         }
 
         .result-workspace .case-viewer-column.viewer-column-dark {
@@ -1525,33 +1597,27 @@ body {
         }
 
         .case-summary-card.revealed .case-summary-result,
-        .follow-up-comparison.revealed .follow-up-metric strong,
-        .case-imaging-features.revealed .case-imaging-feature-value {
+        .follow-up-comparison.revealed .follow-up-metric strong {
             animation: result-value-enter 0.5s 0.14s both;
         }
 
-        .follow-up-comparison.revealed .follow-up-metric,
-        .case-imaging-features.revealed .case-imaging-feature-card {
+        .follow-up-comparison.revealed .follow-up-metric {
             animation: result-card-enter 0.4s both;
         }
 
-        .follow-up-comparison.revealed .follow-up-metric:nth-child(1),
-        .case-imaging-features.revealed .case-imaging-feature-card:nth-child(1) {
+        .follow-up-comparison.revealed .follow-up-metric:nth-child(1) {
             animation-delay: 0.1s;
         }
 
-        .follow-up-comparison.revealed .follow-up-metric:nth-child(2),
-        .case-imaging-features.revealed .case-imaging-feature-card:nth-child(2) {
+        .follow-up-comparison.revealed .follow-up-metric:nth-child(2) {
             animation-delay: 0.16s;
         }
 
-        .follow-up-comparison.revealed .follow-up-metric:nth-child(3),
-        .case-imaging-features.revealed .case-imaging-feature-card:nth-child(3) {
+        .follow-up-comparison.revealed .follow-up-metric:nth-child(3) {
             animation-delay: 0.22s;
         }
 
-        .follow-up-comparison.revealed .follow-up-metric:nth-child(n + 4),
-        .case-imaging-features.revealed .case-imaging-feature-card:nth-child(n + 4) {
+        .follow-up-comparison.revealed .follow-up-metric:nth-child(n + 4) {
             animation-delay: 0.28s;
         }
 
@@ -1618,9 +1684,7 @@ body {
             .case-imaging-features.revealed .case-imaging-features-heading,
             .case-summary-card.revealed .case-summary-result,
             .follow-up-comparison.revealed .follow-up-metric strong,
-            .case-imaging-features.revealed .case-imaging-feature-value,
             .follow-up-comparison.revealed .follow-up-metric,
-            .case-imaging-features.revealed .case-imaging-feature-card,
             .follow-up-comparison.revealed .follow-up-bar-track i,
             .case-imaging-features.revealed .case-imaging-feature-meter span {
                 animation: none;
@@ -2216,6 +2280,34 @@ body {
         .result-workspace .case-prob-expanded .result-chart-node::before {
             width: 8px;
             height: 8px;
+        }
+
+        @container (max-width: 540px) {
+            .case-summary-topline,
+            .case-summary-evidence,
+            .case-imaging-features-heading {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+
+            .case-summary-consistency {
+                white-space: normal;
+            }
+
+            .case-imaging-features-grid,
+            .result-workspace .case-overview-grid,
+            .case-evidence-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .case-evidence-grid .case-prob-expanded {
+                grid-column: auto;
+            }
+
+            .result-workspace .case-overview-ring .result-ring {
+                margin-right: auto;
+                margin-left: auto;
+            }
         }
 
         .case-overview-title {
@@ -4140,6 +4232,10 @@ body {
 
             .result-workspace .right-content {
                 grid-template-columns: 1fr;
+            }
+
+            .result-workspace .result-column-resizer {
+                display: none;
             }
 
             .result-workspace .case-viewer-column {

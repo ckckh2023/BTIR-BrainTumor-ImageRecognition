@@ -267,8 +267,9 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('class="result-section"', self.html)
         self.assertIn("v-if=\"taskId || analysisActive\"", self.html)
         self.assertIn("analysis-pending", self.html)
-        self.assertIn("scheduleTaskSearch", self.app_js)
-        self.assertIn("@input=\"scheduleTaskSearch\"", self.html)
+        self.assertIn("searchTasks", self.app_js)
+        self.assertNotIn("@input=\"scheduleTaskSearch\"", self.html)
+        self.assertNotIn("@change=\"scheduleTaskSearch(true)\"", self.html)
         self.assertIn("workspaceRestoring", self.html)
         self.assertIn("analysisActive: false", self.app_js)
         self.assertIn("this.analysisActive = true", self.app_js)
@@ -587,6 +588,18 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("PREVIEW = \"preview.png\"", (
             PROJECT_ROOT / "core" / "task_definitions.py"
         ).read_text(encoding="utf-8"))
+
+    def test_result_workspace_allows_resizing_the_viewer_and_analysis_columns(self) -> None:
+        self.assertIn("result-column-resizer", self.html)
+        self.assertIn("startResultSplitResize", self.html)
+        self.assertIn("resultSplitStyle", self.html)
+        self.assertIn("resultSplitRatio", self.app_js)
+        self.assertIn("btir_result_split_ratio", self.app_js)
+        self.assertIn("updateResultSplitFromPointer", self.app_js)
+        self.assertIn(".result-column-resizer", self.app_css)
+        self.assertIn("--btir-result-data-width", self.app_css)
+        self.assertIn("container-type: inline-size", self.app_css)
+        self.assertIn("@container (max-width: 540px)", self.app_css)
 
     def test_detailed_result_merged_with_graphical_sections(self) -> None:
         self.assertIn("analysis-summary", self.html)
