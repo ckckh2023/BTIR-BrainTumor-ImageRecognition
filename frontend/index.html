@@ -36,7 +36,7 @@
                         <h1>脑肿瘤MRI图像识别</h1>
                     </div>
                 </a>
-                <nav class="app-main-nav" aria-label="主导航">
+                <nav class="app-main-nav" :class="{ restoring: workspaceRestoring }" aria-label="主导航">
                     <button
                         type="button"
                         :class="['app-main-nav-btn', { active: activeRightView === 'results' }]"
@@ -50,13 +50,13 @@
                     >任务管理</button>
                 </nav>
                 <div class="app-user-area">
-                    <span v-if="currentUser" class="app-username" :title="currentUser.username">{{ currentUser.username }}</span>
                     <button
                         v-if="taskId && !loading"
                         type="button"
                         class="topbar-reupload-btn"
                         @click="startNewUpload()"
                     >重新上传病例</button>
+                    <span v-if="currentUser" class="app-username" :title="currentUser.username">{{ currentUser.username }}</span>
                     <button
                         type="button"
                         class="theme-toggle"
@@ -93,6 +93,17 @@
                 <div class="left-panel-scroll">
 
                     <div class="input-group" v-if="!loading && !taskId">
+                    <div class="follow-up-upload-context" v-if="caseId">
+                        <div>
+                            <span>新增复查</span>
+                            <strong>{{ caseName }}</strong>
+                        </div>
+                        <label>
+                            <span>检查日期</span>
+                            <input v-model="studyDate" type="date" />
+                        </label>
+                        <button type="button" @click="startNewUpload">作为新病例上传</button>
+                    </div>
                     <div
                         :class="['volume-drop-zone', { dragging: volumeDropActive }]"
                         ref="volumeDropZone"
@@ -295,8 +306,8 @@
                     </div>
                 </div>
 
-                <div class="result-section" v-if="taskId || analysisActive">
-                    <div class="result-header">
+                <div class="result-section" :class="{ 'analysis-pending': isAnalysisInProgress }" v-if="taskId || analysisActive">
+                    <div class="result-header" v-if="!isAnalysisInProgress">
                         <div class="result-title">识别结果</div>
                         <button
                             type="button"
@@ -493,6 +504,70 @@
                             <div class="case-summary-evidence-item">
                                 <span>分割结果</span>
                                 <strong>{{ consensusCard.segmentationText }}</strong>
+                            </div>
+                        </div>
+                    </section>
+                    <div class="case-follow-up-action" v-if="caseId">
+                        <div>
+                            <span>病例 {{ caseName }}</span>
+                            <small>继续上传复查影像将自动对比上一期</small>
+                        </div>
+                        <button type="button" @click="startFollowUpUpload">新增复查</button>
+                    </div>
+                    <section class="follow-up-comparison" v-if="followUpComparison" data-testid="follow-up-comparison">
+                        <div class="follow-up-heading">
+                            <div>
+                                <span>随访对比</span>
+                                <small>{{ followUpUsesRecommendedBaseline ? '默认上一期' : '已选择历史检查' }} · {{ followUpComparison.baseline.study_date || formatTaskTime(followUpComparison.baseline.created_at) }} → 本次</small>
+                            </div>
+                        </div>
+                        <details class="follow-up-history" v-if="followUpHistoryItems.length > 1">
+                            <summary class="follow-up-history-toggle">
+                                <strong>
+                                    <svg class="icon" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M3 4.5h10M3 8h7M3 11.5h4"></path>
+                                        <path d="m10.5 10.5 2.5 2.5 2.5-2.5"></path>
+                                    </svg>
+                                    更换对比检查
+                                </strong>
+                                <span>{{ followUpHistoryItems.length }} 份历史检查</span>
+                            </summary>
+                            <div class="follow-up-history-list">
+                                <button
+                                    type="button"
+                                    class="follow-up-history-item"
+                                    :class="{ active: item.task.task_id === selectedFollowUpItem.task.task_id }"
+                                    v-for="item in followUpHistoryItems"
+                                    :key="item.task.task_id"
+                                    @click="selectFollowUpComparison(item.task.task_id)"
+                                >
+                                    <span>{{ item.task.study_date || formatTaskTime(item.task.created_at) }}</span>
+                                    <small>{{ item.task.name }}</small>
+                                    <em v-if="item.task.task_id === followUp?.baseline?.task_id">默认</em>
+                                </button>
+                            </div>
+                        </details>
+                        <div class="follow-up-metrics">
+                            <article
+                                class="follow-up-metric"
+                                :class="metric.tone"
+                                v-for="metric in followUpComparison.metrics"
+                                :key="metric.key"
+                            >
+                                <span class="follow-up-metric-label">{{ metric.label }}</span>
+                                <strong>{{ metric.current }}</strong>
+                                <span class="follow-up-change">较基线 {{ metric.changeText }}</span>
+                                <small>基线 {{ metric.baseline }}</small>
+                            </article>
+                        </div>
+                        <div class="follow-up-trend" v-if="followUpComparison.trend.length">
+                            <div class="follow-up-trend-title">全肿瘤体积变化</div>
+                            <div class="follow-up-bars">
+                                <div class="follow-up-bar-item" v-for="point in followUpComparison.trend" :key="point.label">
+                                    <span class="follow-up-bar-value">{{ point.display }}</span>
+                                    <span class="follow-up-bar-track"><i :style="{ height: Math.max(point.height, 4) + '%' }"></i></span>
+                                    <span>{{ point.label }}</span>
+                                </div>
                             </div>
                         </div>
                     </section>
@@ -946,7 +1021,7 @@
                         <button
                             :class="['task-list-tab', { active: taskListMode === 'active' }]"
                             @click="switchTaskList('active')"
-                        >当前任务</button>
+                        >病例检查</button>
                         <button
                             :class="['task-list-tab', { active: taskListMode === 'archived' }]"
                             @click="switchTaskList('archived')"
@@ -958,9 +1033,10 @@
                             type="search"
                             v-model.trim="taskQuery"
                             placeholder="任务 ID 或名称"
+                            @input="scheduleTaskSearch"
                             @keyup.enter="searchTasks"
                         />
-                        <select v-model="taskStatusFilter" @change="searchTasks">
+                        <select v-model="taskStatusFilter" @change="scheduleTaskSearch(true)">
                             <option value="">全部状态</option>
                             <option value="created">待运行</option>
                             <option value="queued">排队中</option>
@@ -994,12 +1070,30 @@
                             </div>
                         </div>
                         <div class="task-empty" v-else-if="!taskItems.length">暂无符合条件的任务</div>
+                        <section
+                            class="task-case-group"
+                            v-for="caseGroup in taskCaseGroups"
+                            :key="caseGroup.caseId"
+                        >
+                            <div class="task-case-group-heading">
+                                <div>
+                                    <span>病例</span>
+                                    <strong>{{ caseGroup.name }}</strong>
+                                    <small>{{ caseGroup.tasks.length }} 次检查</small>
+                                </div>
+                                <button
+                                    type="button"
+                                    class="task-small-btn"
+                                    v-if="taskListMode === 'active'"
+                                    @click="startFollowUpUpload(caseGroup.tasks[0])"
+                                >新增复查</button>
+                            </div>
                         <div
                             :class="['task-card', {
                                 current: task.task_id === taskId,
                                 clickable: taskListMode === 'active',
                             }]"
-                            v-for="(task, index) in taskItems"
+                            v-for="(task, index) in caseGroup.tasks"
                             :key="task.task_id"
                             :style="{ animationDelay: Math.min(index * 40, 240) + 'ms' }"
                             :role="taskListMode === 'active' ? 'button' : null"
@@ -1032,6 +1126,10 @@
                                 <template v-else>
                                     创建：{{ formatTaskTime(task.created_at) }}
                                 </template>
+                                <template v-if="task.case_id">
+                                    <br>病例：{{ task.case_name || task.name }}<br>
+                                    检查：{{ task.study_date || '未登记日期' }}
+                                </template>
                             </div>
                             <div class="task-error-text" v-if="task.error?.message">
                                 {{ task.error.message }}
@@ -1049,6 +1147,11 @@
                                     </svg>
                                     {{ taskActionId === task.task_id ? '读取中...' : '查看结果' }}
                                 </button>
+                                <button
+                                    class="task-small-btn"
+                                    v-if="taskListMode === 'active'"
+                                    @click="startFollowUpUpload(task)"
+                                >新增复查</button>
                                 <button
                                     class="task-small-btn"
                                     v-if="taskListMode === 'active'"
@@ -1114,6 +1217,19 @@
                                     </svg>
                                     {{ taskActionId === task.task_id ? '恢复中...' : '恢复任务' }}
                                 </button>
+                                <button
+                                    class="task-small-btn danger"
+                                    v-if="taskListMode === 'archived'"
+                                    @click="purgeArchivedTask(task)"
+                                    :disabled="taskActionId === task.task_id"
+                                >
+                                    <svg class="icon" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M3 5.5h10l-0.9 8H3.9L3 5.5Z"></path>
+                                        <path d="M2 2.5h12"></path>
+                                        <path d="M6 8v3.5M10 8v3.5"></path>
+                                    </svg>
+                                    {{ taskActionId === task.task_id ? '删除中...' : '彻底删除' }}
+                                </button>
                             </div>
                             <div
                                 class="task-run-history"
@@ -1136,6 +1252,7 @@
                                 </div>
                             </div>
                         </div>
+                        </section>
                     </div>
 
                     <div class="task-pagination">

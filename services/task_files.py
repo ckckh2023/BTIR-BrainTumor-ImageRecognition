@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import date, datetime
 import gzip
 import hashlib
 import json
@@ -77,6 +77,9 @@ def _save_created_task(
     task_dir: Path,
     name: str | None,
     input_record: StoredTaskInput,
+    case_id: str | None = None,
+    case_name: str | None = None,
+    study_date: date | None = None,
     user_id: str | None = None,
     max_tasks_per_user: int | None = None,
 ) -> None:
@@ -90,6 +93,13 @@ def _save_created_task(
             status=TaskStatus.CREATED,
             created_at=now,
             updated_at=now,
+            case_id=case_id.strip() if case_id and case_id.strip() else task_dir.name,
+            case_name=(
+                case_name.strip()
+                if case_name and case_name.strip()
+                else (name.strip() if name and name.strip() else f"病例 {task_dir.name}")
+            ),
+            study_date=study_date or now.date(),
             input=input_record,
         ),
         user_id=user_id,
@@ -102,6 +112,9 @@ def initialize_uploaded_volume_task(
     uploads: Mapping[str, BinaryIO],
     filenames: Mapping[str, str | None],
     name: str | None = None,
+    case_id: str | None = None,
+    case_name: str | None = None,
+    study_date: date | None = None,
     user_id: str | None = None,
     max_tasks_per_user: int | None = None,
 ) -> dict[str, Path]:
@@ -195,6 +208,9 @@ def initialize_uploaded_volume_task(
             sha256=_modality_manifest_hash(modality_records),
             modalities=modality_records,
         ),
+        case_id=case_id,
+        case_name=case_name,
+        study_date=study_date,
         user_id=user_id,
         max_tasks_per_user=max_tasks_per_user,
     )

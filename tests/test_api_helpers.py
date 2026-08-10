@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import nullcontext
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
@@ -23,6 +23,7 @@ from api.app import app
 from api.auth import get_current_user
 from api.routes.tasks import (
     bad_request_http_error,
+    get_task_follow_up,
     sanitize_public_payload,
     task_input_data,
     task_summary_data,
@@ -106,6 +107,73 @@ class TaskRouteHelperTests(unittest.TestCase):
 
         self.assertEqual(summary["error"]["code"], "inference_failed")
         self.assertNotIn("detail", summary["error"])
+
+    def test_follow_up_uses_latest_earlier_completed_task_for_same_case(self) -> None:
+        now = datetime.fromisoformat("2026-08-10T12:00:00+08:00")
+        current = TaskRecord(
+            task_id="task-current",
+            name="P-001 · 2026-08-10",
+            status=TaskStatus.SUCCEEDED,
+            created_at=now,
+            updated_at=now,
+            case_id="case-001",
+            case_name="病例 001",
+            study_date=date(2026, 8, 10),
+            input=StoredTaskInput(size_bytes=1, sha256="a" * 64),
+        )
+        older = current.model_copy(
+            update={
+                "task_id": "task-older",
+                "status": TaskStatus.PARTIAL,
+                "created_at": now - timedelta(days=30),
+                "updated_at": now - timedelta(days=30),
+                "study_date": date(2026, 7, 11),
+            }
+        )
+        latest = current.model_copy(
+            update={
+                "task_id": "task-latest",
+                "created_at": now - timedelta(days=10),
+                "updated_at": now - timedelta(days=10),
+                "study_date": date(2026, 7, 31),
+            }
+        )
+        other_case = latest.model_copy(
+            update={"task_id": "task-other", "case_id": "case-002"}
+        )
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            directories = {}
+            for record in (older, latest, other_case):
+                task_dir = root / record.task_id
+                task_dir.mkdir()
+                (task_dir / "frontend_result.json").write_text(
+                    json.dumps({"task_id": record.task_id, "path": "private"}),
+                    encoding="utf-8",
+                )
+                directories[record.task_id] = task_dir
+            with (
+                patch(
+                    "api.routes.tasks.task_repository.load_for_user",
+                    return_value=current,
+                ),
+                patch(
+                    "api.routes.tasks.task_repository.list_tasks",
+                    return_value=([older, latest, other_case], 3),
+                ),
+                patch(
+                    "api.routes.tasks.require_task_dir",
+                    side_effect=lambda task_id: directories[task_id],
+                ),
+            ):
+                response = get_task_follow_up(current.task_id, TEST_USER)
+
+        self.assertEqual(response.baseline.task_id, latest.task_id)
+        self.assertEqual(response.baseline_frontend_result, {"task_id": latest.task_id})
+        self.assertEqual(
+            [item.task.task_id for item in response.history],
+            [latest.task_id, older.task_id],
+        )
 
     def test_public_json_sanitizer_removes_paths_and_diagnostics(self) -> None:
         sanitized = sanitize_public_payload(
@@ -293,6 +361,7 @@ class TaskHttpEndpointTests(unittest.TestCase):
         self.assertIn("/tasks/archived", paths)
         self.assertIn("delete", paths["/tasks/{task_id}"])
         self.assertIn("/tasks/{task_id}/restore", paths)
+        self.assertIn("delete", paths["/tasks/{task_id}/purge"])
 
     def test_create_3d_task_accepts_four_named_modalities(self) -> None:
         with TemporaryDirectory() as directory:

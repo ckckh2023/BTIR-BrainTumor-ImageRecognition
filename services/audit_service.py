@@ -55,14 +55,22 @@ def _normalize_timestamp(value: datetime) -> datetime:
 
 
 def _rotated_audit_log_paths(audit_dir: Path) -> list[Path]:
-    paths: list[tuple[str, Path]] = []
+    paths: list[Path] = []
     for path in audit_dir.glob(_ROTATED_AUDIT_LOG_GLOB):
         try:
             if path.is_file():
-                paths.append((path.name, path))
+                paths.append(path)
         except OSError:
             continue
-    return [path for _, path in sorted(paths)]
+    return sorted(paths, key=_rotated_audit_log_sort_key)
+
+
+def _rotated_audit_log_sort_key(path: Path) -> tuple[str, int, str]:
+    '''按轮转时间和同一时间内序号排序'''
+    parts = path.name.split(".")
+    timestamp = parts[1] if len(parts) >= 3 else ""
+    sequence = int(parts[2]) if len(parts) == 4 and parts[2].isdigit() else 0
+    return timestamp, sequence, path.name
 
 
 def _prune_rotated_audit_logs(

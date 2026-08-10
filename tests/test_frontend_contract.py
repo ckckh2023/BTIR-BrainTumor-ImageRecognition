@@ -264,7 +264,12 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("正在压缩/上传数据", self.app_js)
 
     def test_result_status_visible_during_upload_before_task_id(self) -> None:
-        self.assertIn('class="result-section" v-if="taskId || analysisActive"', self.html)
+        self.assertIn('class="result-section"', self.html)
+        self.assertIn("v-if=\"taskId || analysisActive\"", self.html)
+        self.assertIn("analysis-pending", self.html)
+        self.assertIn("scheduleTaskSearch", self.app_js)
+        self.assertIn("@input=\"scheduleTaskSearch\"", self.html)
+        self.assertIn("workspaceRestoring", self.html)
         self.assertIn("analysisActive: false", self.app_js)
         self.assertIn("this.analysisActive = true", self.app_js)
         self.assertIn("this.analysisActive = false", self.app_js)
@@ -447,6 +452,29 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("case-imaging-features-grid", self.app_css)
         self.assertIn("最大横截面积", self.html)
         self.assertIn("caseInputQuality", self.app_js)
+
+    def test_follow_up_comparison_uses_case_timeline_automatically(self) -> None:
+        self.assertIn("随访对比", self.html)
+        self.assertIn("follow-up-comparison", self.html)
+        self.assertIn("followUpComparison", self.html)
+        self.assertIn("新增复查", self.html)
+        self.assertIn("检查日期", self.html)
+        self.assertIn("caseId", self.app_js)
+        self.assertIn("startFollowUpUpload", self.app_js)
+        self.assertIn("studyDate", self.app_js)
+        self.assertIn("loadFollowUpComparison", self.app_js)
+        self.assertIn("/follow-up", self.app_js)
+        self.assertIn("更换对比检查", self.html)
+        self.assertIn("followUpHistoryItems", self.app_js)
+        self.assertIn("selectFollowUpComparison", self.app_js)
+        self.assertIn("isAnalysisInProgress", self.app_js)
+        self.assertIn("analysis-pending", self.html)
+        self.assertIn("彻底删除", self.html)
+        self.assertIn("purgeArchivedTask", self.app_js)
+        self.assertNotIn("设为随访基线", self.html)
+        self.assertNotIn("followUpBaseline", self.app_js)
+        self.assertIn("max_axial_area_mm2", self.app_js)
+        self.assertIn("follow-up-bars", self.app_css)
 
     def test_task_flow_optimizations(self) -> None:
         self.assertNotIn("this.taskListMode = 'archived'", self.html)

@@ -131,6 +131,45 @@ def restore_task(
         )
 
 
+def purge_archived_task(
+    task_id: str,
+    *,
+    actor_user_id: str | None = None,
+    target_user_id: str | None = None,
+    now: datetime | None = None,
+    repository: TaskRepository = task_repository,
+    archive_dir: Path = SETTINGS.task_archive_dir,
+) -> TaskRecord:
+    '''彻底删除一项已归档任务'''
+    now = now or datetime.now().astimezone()
+    try:
+        archived_dir = _task_directory(archive_dir / "tasks", task_id)
+        pending_dir = _task_directory(archive_dir / ".purge-pending", task_id)
+    except ValueError as exc:
+        raise TaskNotFoundError("任务不存在") from exc
+
+    if not archived_dir.is_dir() or pending_dir.exists():
+        raise TaskNotFoundError("归档任务不存在")
+    _ensure_same_volume(archived_dir, pending_dir)
+    with task_write_lock(task_id):
+        current = repository.load(archived_dir)
+        if current.archived_at is None:
+            raise ValueError("任务尚未归档，不能彻底删除")
+        if not archived_dir.is_dir() or pending_dir.exists():
+            raise TaskNotFoundError("归档任务不存在")
+        return _purge_archived_task_directory(
+            archived_dir=archived_dir,
+            pending_dir=pending_dir,
+            record=current,
+            timestamp=now,
+            repository=repository,
+            archive_dir=archive_dir,
+            audit_operation="purge_api",
+            actor_user_id=actor_user_id,
+            target_user_id=target_user_id,
+        )
+
+
 def archive_expired_tasks(
     *,
     dry_run: bool,
@@ -222,30 +261,16 @@ def purge_expired_archives(
             if not _is_purge_eligible(current, now) or not archived_dir.is_dir() or pending_dir.exists():
                 report.skipped_task_ids.append(candidate.task_id)
                 continue
-            pending_dir.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(archived_dir), str(pending_dir))
-            try:
-                repository.delete(current.task_id)
-            except Exception:
-                shutil.move(str(pending_dir), str(archived_dir))
-                raise
-            try:
-                shutil.rmtree(pending_dir)
-            except OSError:
-                append_audit_event(
-                    audit_dir=archive_dir,
-                    operation="purge_pending",
-                    task_id=current.task_id,
-                    timestamp=now,
-                )
-                raise
-            append_audit_event(
-                audit_dir=archive_dir,
-                operation="purge",
-                task_id=current.task_id,
+            _purge_archived_task_directory(
+                archived_dir=archived_dir,
+                pending_dir=pending_dir,
+                record=current,
                 timestamp=now,
+                repository=repository,
+                archive_dir=archive_dir,
+                audit_operation="purge",
             )
-            report.processed_task_ids.append(current.task_id)
+            report.processed_task_ids.append(candidate.task_id)
     return report
 
 
@@ -266,6 +291,49 @@ def _is_purge_eligible(record: TaskRecord, now: datetime) -> bool:
         record.archived_at is not None
         and record.archived_at <= now - timedelta(days=SETTINGS.task_archive_grace_days)
     )
+
+
+def _purge_archived_task_directory(
+    *,
+    archived_dir: Path,
+    pending_dir: Path,
+    record: TaskRecord,
+    timestamp: datetime,
+    repository: TaskRepository,
+    archive_dir: Path,
+    audit_operation: str,
+    actor_user_id: str | None = None,
+    target_user_id: str | None = None,
+) -> TaskRecord:
+    '''移入待清理目录后删除归档任务和元数据'''
+    pending_dir.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(archived_dir), str(pending_dir))
+    try:
+        repository.delete(record.task_id)
+    except Exception:
+        shutil.move(str(pending_dir), str(archived_dir))
+        raise
+    try:
+        shutil.rmtree(pending_dir)
+    except OSError:
+        append_audit_event(
+            audit_dir=archive_dir,
+            operation="purge_pending",
+            task_id=record.task_id,
+            timestamp=timestamp,
+            actor_user_id=actor_user_id,
+            target_user_id=target_user_id,
+        )
+        raise
+    append_audit_event(
+        audit_dir=archive_dir,
+        operation=audit_operation,
+        task_id=record.task_id,
+        timestamp=timestamp,
+        actor_user_id=actor_user_id,
+        target_user_id=target_user_id,
+    )
+    return record
 
 
 def _move_task_to_archive(

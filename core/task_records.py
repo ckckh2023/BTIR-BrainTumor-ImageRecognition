@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -85,6 +85,9 @@ class TaskRecord(BaseModel):
     status: TaskStatus
     created_at: datetime
     updated_at: datetime
+    case_id: str | None = None
+    case_name: str | None = None
+    study_date: date | None = None
     archived_at: datetime | None = None
     analysis_mode: Literal["3d"] = "3d"
     completed_models: list[ModelName] = Field(default_factory=list)

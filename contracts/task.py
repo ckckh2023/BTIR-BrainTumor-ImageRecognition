@@ -3,11 +3,10 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel
-
-from datetime import datetime
+from pydantic import BaseModel, Field
 
 from core.task_definitions import JobStatus, ModelName, TaskStatus
 
@@ -19,6 +18,7 @@ class VolumeTaskCreatedResponse(BaseModel):
     status: TaskStatus = TaskStatus.CREATED
     analysis_mode: Literal["3d"] = "3d"
     input_files: dict[str, str]
+    case_id: str | None = None
 
 
 class TaskInputFileData(BaseModel):
@@ -60,6 +60,9 @@ class TaskStatusResponse(BaseModel):
     status: TaskStatus
     created_at: datetime
     updated_at: datetime
+    case_id: str | None = None
+    case_name: str | None = None
+    study_date: date | None = None
     analysis_mode: Literal["3d"]
     completed_models: list[str]
     input: TaskInputData
@@ -76,6 +79,9 @@ class TaskSummaryResponse(BaseModel):
     status: TaskStatus
     created_at: datetime
     updated_at: datetime
+    case_id: str | None = None
+    case_name: str | None = None
+    study_date: date | None = None
     analysis_mode: Literal["3d"]
     completed_models: list[str]
     input: TaskInputData
@@ -89,6 +95,22 @@ class TaskListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class TaskFollowUpHistoryItem(BaseModel):
+    task: TaskSummaryResponse
+    frontend_result: dict[str, Any]
+
+
+class TaskFollowUpResponse(BaseModel):
+    schema_version: Literal["0.1"] = "0.1"
+    task_id: str
+    case_id: str | None = None
+    case_name: str | None = None
+    study_date: date | None = None
+    baseline: TaskSummaryResponse | None = None
+    baseline_frontend_result: dict[str, Any] | None = None
+    history: list[TaskFollowUpHistoryItem] = Field(default_factory=list)
 
 
 class AdminTaskSummaryResponse(TaskSummaryResponse):
@@ -205,3 +227,10 @@ class TaskRestoredResponse(BaseModel):
     status: Literal["restored"] = "restored"
     task_status: TaskStatus
     restored_at: datetime
+
+
+class TaskPurgedResponse(BaseModel):
+    schema_version: Literal["0.1"] = "0.1"
+    task_id: str
+    status: Literal["purged"] = "purged"
+    purged_at: datetime
