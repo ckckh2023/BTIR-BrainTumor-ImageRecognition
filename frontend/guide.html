@@ -147,46 +147,19 @@ body {
         }
 
         .guide-demo-slot {
-            display: flex;
-            align-items: center;
-            justify-content: center;
             aspect-ratio: 16 / 9;
             margin: 0 0 18px;
-            padding: 20px;
-            color: var(--btir-text-secondary);
-            background:
-                linear-gradient(135deg, color-mix(in srgb, var(--btir-primary) 10%, transparent), transparent 56%),
-                var(--btir-surface);
-            border: 1px dashed color-mix(in srgb, var(--btir-primary) 48%, var(--btir-border));
+            overflow: hidden;
+            background: #0b1322;
+            border: 1px solid var(--btir-border);
             border-radius: var(--btir-radius-sm);
-            text-align: center;
         }
 
-        .guide-demo-slot-content {
-            display: grid;
-            gap: 5px;
-            justify-items: center;
-        }
-
-        .guide-demo-slot-icon {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 34px;
-            height: 34px;
-            color: var(--btir-primary);
-            background: var(--btir-primary-soft);
-            border-radius: 50%;
-        }
-
-        .guide-demo-slot strong {
-            color: var(--btir-text);
-            font-size: 14px;
-        }
-
-        .guide-demo-slot span {
-            color: var(--btir-text-muted);
-            font-size: 12px;
+        .guide-demo-video {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
         }
 
         .guide-sample-grid {
@@ -512,15 +485,15 @@ body {
                 <h1 class="guide-samples-heading" id="sampleDownloadTitle">下载一个测试病例</h1>
                 <p class="guide-samples-description">每个压缩包包含同一病例的四模态 NIfTI 文件，可直接拖入上传区</p>
                 <div class="guide-demo-slot" data-testid="guide-demo-slot">
-                    <div class="guide-demo-slot-content">
-                        <span class="guide-demo-slot-icon" aria-hidden="true">
-                            <svg viewBox="0 0 16 16" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                                <rect x="2" y="3.5" width="12" height="9" rx="1.5"></rect>
-                                <path d="m6.5 6 3.2 2-3.2 2Z" fill="currentColor" stroke="none"></path>
-                            </svg>
-                        </span>
-                        <strong>上传操作演示</strong>
-                    </div>
+                    <video
+                        class="guide-demo-video"
+                        src="/assets/guideSources/upload-demo.mp4"
+                        autoplay
+                        muted
+                        loop
+                        playsinline
+                        controls
+                    ></video>
                 </div>
                 <div class="guide-sample-grid">
                     <article class="guide-sample">
