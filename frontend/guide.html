@@ -406,18 +406,29 @@ body {
             const sizeLabel = document.querySelector('.guide-download-meta')
             const zipUrl = downloadLink ? downloadLink.getAttribute('href') : null
             if (zipUrl && sizeLabel) {
-                fetch(zipUrl, { method: 'HEAD' })
+                const updateDownloadMeta = () => {
+                    const latestUrl = new URL(zipUrl, window.location.origin)
+                    latestUrl.searchParams.set('_', Date.now().toString())
+                    return fetch(latestUrl, {
+                        method: 'HEAD',
+                        cache: 'no-store',
+                    })
                     .then((response) => {
                         const length = Number(response.headers.get('content-length'))
                         if (Number.isFinite(length) && length > 0) {
                             sizeLabel.textContent = formatFileSize(length)
-                        } else {
-                            sizeLabel.remove()
                         }
                     })
-                    .catch(() => {
-                        sizeLabel.remove()
-                    })
+                    .catch(() => {})
+                }
+
+                updateDownloadMeta()
+                window.setInterval(updateDownloadMeta, 30_000)
+                document.addEventListener('visibilitychange', () => {
+                    if (!document.hidden) {
+                        updateDownloadMeta()
+                    }
+                })
             }
 
             fetch('/assets/guide.md')
