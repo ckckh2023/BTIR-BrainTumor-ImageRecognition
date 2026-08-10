@@ -12,7 +12,7 @@ import numpy as np
 import torch
 
 from models.segmentation3d import inference
-from Jnetworks.superlightnet import THPAEncFR3
+from superlightnet import THPAEncFR3
 
 
 class Segmentation3DTests(unittest.TestCase):

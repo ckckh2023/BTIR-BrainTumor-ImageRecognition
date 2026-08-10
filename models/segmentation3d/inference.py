@@ -35,7 +35,7 @@ NET_DIR = MODEL_DIR / "SuperLightNet-main"
 if str(NET_DIR) not in sys.path:
     sys.path.insert(0, str(NET_DIR))
 
-from Jnetworks.superlightnet import NormalU_Net  # noqa: E402
+from superlightnet import NormalU_Net  # noqa: E402
 
 
 MODEL_WEIGHTS = MODEL_DIR / "model_epoch_297.pth"

@@ -234,7 +234,8 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("viewTaskResult(task)", self.html)
         self.assertIn("task-card-actions\" @click.stop", self.html)
         self.assertIn(".task-card.clickable", self.app_css)
-        self.assertNotIn("查看结果", self.html)
+        self.assertIn("查看结果", self.html)
+        self.assertIn("task-small-btn primary", self.html)
 
     def test_upload_flow_supports_dicom_folder_conversion(self) -> None:
         self.assertIn("DICOM 病例文件夹", self.html)
@@ -329,12 +330,23 @@ class FrontendContractTests(unittest.TestCase):
     def test_detail_table_and_toast_are_extracted_components(self) -> None:
         self.assertIn("components/btir-detail-table.js", self.html)
         self.assertIn("components/btir-toast.js", self.html)
-        self.assertNotIn("<btir-detail-table", self.html)
+        self.assertIn("<btir-detail-table", self.html)
         self.assertIn("<btir-toast></btir-toast>", self.html)
         self.assertIn("registry['btir-detail-table']", self.detail_html)
         self.assertIn("registry['btir-toast']", self.toast_html)
         self.assertIn("btirApp.component(name", self.app_js)
         self.assertIn("btir:toast", self.toast_html)
+
+    def test_result_viewer_switches_between_3d_and_json(self) -> None:
+        self.assertIn("viewerPane: '3d'", self.app_js)
+        self.assertIn("switchViewerPane", self.app_js)
+        self.assertIn("case-viewer-tabs", self.html)
+        self.assertIn("switchViewerPane('3d')", self.html)
+        self.assertIn("switchViewerPane('json')", self.html)
+        self.assertIn("3D视图", self.html)
+        self.assertIn("数据分析", self.html)
+        self.assertIn("case-viewer-tab", self.html)
+        self.assertIn("integratedSources", self.app_js)
 
     def test_login_page_synced_with_design_tokens(self) -> None:
         self.assertIn("--btir-primary:", self.theme_css)
@@ -383,7 +395,7 @@ class FrontendContractTests(unittest.TestCase):
         self.assertNotIn("addFile('segmentation.json'", self.html)
         self.assertLess(
             self.app_js.index("label: '病例概览'"),
-            self.app_js.index("label: '3D查看'"),
+            self.app_js.index("label: '3D视图'"),
         )
 
     def test_modern_ui_tokens_toast_skeleton_and_visualization(self) -> None:
@@ -513,8 +525,9 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("data-ring=\"classification\"", self.html)
         self.assertIn("data-ring=\"segmentation\"", self.html)
         self.assertIn("data-ring=\"probability\"", self.html)
-        self.assertIn("openCaseVolumeViewer", self.html)
-        self.assertIn("case-volume-viewer", self.html)
+        self.assertIn("volume-viewer-tab", self.html)
+        self.assertIn("void this.openCaseVolumeViewer()", self.app_js)
+        self.assertNotIn("case-preview-3d-btn", self.html)
         self.assertIn("returnToCaseOverview", self.app_js)
         self.assertIn("rightContent?.scrollTo", self.app_js)
         self.assertIn("3D 查看器未完成初始化", self.app_js)
