@@ -93,6 +93,81 @@ class TaskStorageTests(unittest.TestCase):
         with self.assertRaises(TaskNotFoundError):
             self.repository.load_for_user(task_dir.name, "owner-b")
 
+    def test_rename_task_updates_name_and_preserves_ownership(self) -> None:
+        now = datetime.fromisoformat("2026-01-01T00:00:00+00:00")
+        first = self.output_dir / "renamed-task-001"
+        second = self.output_dir / "renamed-task-002"
+        other = self.output_dir / "renamed-task-003"
+        first.mkdir(parents=True)
+        second.mkdir(parents=True)
+        other.mkdir(parents=True)
+
+        def case_record(task_id: str, case_id: str, case_name: str) -> TaskRecord:
+            record = self._record(task_id)
+            record.case_id = case_id
+            record.case_name = case_name
+            record.created_at = now
+            record.updated_at = now
+            return record
+
+        self.repository.save(first, case_record(first.name, "case-a", "病例A"), user_id="owner-a")
+        self.repository.save(second, case_record(second.name, "case-a", "病例A"), user_id="owner-a")
+        self.repository.save(other, case_record(other.name, "case-b", "病例B"), user_id="owner-a")
+
+        updated = self.repository.rename_task(first.name, "新任务名", "owner-a")
+
+        self.assertEqual(updated.name, "新任务名")
+        first_record = self.repository.load(first)
+        self.assertEqual(first_record.name, "新任务名")
+        self.assertEqual(first_record.case_name, "新任务名")
+        self.assertEqual(self.repository.load(second).case_name, "新任务名")
+        self.assertEqual(self.repository.load(other).case_name, "病例B")
+        self.assertEqual(self.repository.get_task_user_id(first.name), "owner-a")
+        with self.assertRaises(TaskNotFoundError):
+            self.repository.rename_task(first.name, "越权改名", "owner-b")
+
+    def test_rename_task_is_idempotent(self) -> None:
+        task_dir = self.output_dir / "renamed-task-002"
+        task_dir.mkdir(parents=True)
+        record = self._record(task_dir.name)
+        record.case_id = "case-c"
+        record.case_name = record.name
+        self.repository.save(task_dir, record, user_id="owner-a")
+        original_updated_at = record.updated_at
+
+        updated = self.repository.rename_task(task_dir.name, record.name, "owner-a")
+
+        self.assertEqual(updated.updated_at, original_updated_at)
+        self.assertEqual(self.repository.load(task_dir).updated_at, original_updated_at)
+
+    def test_rename_task_round_trips_utf8_chinese_name(self) -> None:
+        task_dir = self.output_dir / "renamed-task-utf8"
+        task_dir.mkdir(parents=True)
+        record = self._record(task_dir.name)
+        record.case_id = "case-utf8"
+        record.case_name = "患者张三"
+        self.repository.save(task_dir, record, user_id="owner-a")
+        chinese_name = "患者张三 · 第二次复查"
+
+        updated = self.repository.rename_task(task_dir.name, chinese_name, "owner-a")
+
+        self.assertEqual(updated.name, chinese_name)
+        self.assertEqual(updated.case_name, chinese_name)
+        self.assertEqual(self.repository.load(task_dir).name, chinese_name)
+        self.assertEqual(self.repository.load(task_dir).case_name, chinese_name)
+
+    def test_rename_task_updates_legacy_task_without_case_id(self) -> None:
+        task_dir = self.output_dir / "renamed-task-null-case"
+        task_dir.mkdir(parents=True)
+        self.repository.save(task_dir, self._record(task_dir.name), user_id="owner-a")
+
+        updated = self.repository.rename_task(task_dir.name, "web-3d-analysis-新名", "owner-a")
+
+        self.assertEqual(updated.name, "web-3d-analysis-新名")
+        loaded = self.repository.load(task_dir)
+        self.assertEqual(loaded.name, "web-3d-analysis-新名")
+        self.assertEqual(loaded.case_name, "web-3d-analysis-新名")
+
     def test_task_owner_is_preserved_across_regular_updates(self) -> None:
         task_dir = self.output_dir / "owned-task"
         task_dir.mkdir(parents=True)

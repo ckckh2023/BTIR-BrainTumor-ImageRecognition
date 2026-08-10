@@ -32,6 +32,7 @@ from contracts.task import (
     TaskRestoredResponse,
     TaskStatusResponse,
     TaskSummaryResponse,
+    TaskRenameRequest,
     VolumeTaskCreatedResponse,
 )
 from core.settings import SETTINGS
@@ -715,6 +716,29 @@ def get_task_follow_up(
         response.baseline = response.history[0].task
         response.baseline_frontend_result = response.history[0].frontend_result
     return response
+
+
+@router.patch("/{task_id}/rename", response_model=TaskSummaryResponse)
+def rename_task(
+    task_id: str,
+    payload: TaskRenameRequest,
+    current_user: UserRecord = Depends(require_password_changed),
+) -> TaskSummaryResponse:
+    '''重命名任务，并同步更新该病例的病例名'''
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="任务名称不能为空",
+        )
+    try:
+        updated = task_repository.rename_task(task_id, name, current_user.user_id)
+    except TaskNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="任务不存在",
+        ) from exc
+    return task_summary_data(updated)
 
 
 @router.delete("/{task_id}", response_model=TaskArchivedResponse)

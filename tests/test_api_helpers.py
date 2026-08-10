@@ -24,11 +24,13 @@ from api.auth import get_current_user
 from api.routes.tasks import (
     bad_request_http_error,
     get_task_follow_up,
+    rename_task,
     sanitize_public_payload,
     task_input_data,
     task_summary_data,
 )
 from api.routes.runtime import get_liveness, get_queue_status, get_readiness
+from contracts.task import TaskRenameRequest
 from core.task_definitions import JobStatus, ModelName, TaskStatus
 from core.task_records import (
     StoredTaskInput,
@@ -1110,6 +1112,49 @@ class TaskHttpEndpointTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
         self.assertEqual(response.json()["detail"], "仅排队或运行中的任务可以取消")
+
+    def test_rename_task_updates_database_and_returns_updated_task(self) -> None:
+        now = datetime.fromisoformat("2026-01-01T00:00:00+00:00")
+        record = TaskRecord(
+            task_id="task-http-rename-001",
+            name="旧任务名",
+            status=TaskStatus.SUCCEEDED,
+            created_at=now,
+            updated_at=now,
+            case_id="case-http-001",
+            input=StoredTaskInput(size_bytes=1, sha256="a" * 64),
+        )
+        new_name = "患者张三 · 第二次复查"
+        updated_record = record.model_copy(update={"name": new_name})
+
+        with (
+            patch(
+                "api.routes.tasks.task_repository.rename_task",
+                return_value=updated_record,
+            ) as rename_task_mock,
+        ):
+            response = rename_task(
+                record.task_id,
+                TaskRenameRequest(name=new_name),
+                TEST_USER,
+            )
+
+        self.assertEqual(response.name, new_name)
+        rename_task_mock.assert_called_once_with(
+            record.task_id,
+            new_name,
+            TEST_USER.user_id,
+        )
+
+    def test_rename_task_rejects_blank_name(self) -> None:
+        with self.assertRaises(HTTPException) as caught:
+            rename_task(
+                "task-http-rename-blank",
+                TaskRenameRequest(name="   "),
+                TEST_USER,
+            )
+
+        self.assertEqual(caught.exception.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_internal_error_file_is_not_downloadable(self) -> None:
         with TemporaryDirectory() as directory:

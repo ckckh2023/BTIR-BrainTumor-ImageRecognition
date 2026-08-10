@@ -47,6 +47,7 @@
                     volumeFolderLabel: '',
                     caseId: '',
                     caseName: '',
+                    followUpContextDismissed: false,
                     studyDate: new Date().toISOString().slice(0, 10),
                     volumeDropActive: false,
                     volumeSourceMenuVisible: false,
@@ -132,6 +133,8 @@
                     taskRunHistoryTaskId: '',
                     taskRunHistoryItems: [],
                     taskRunHistoryLoading: false,
+                    taskRenameTaskId: '',
+                    taskRenameDraft: '',
                     taskMessage: '',
                     taskMessageIsError: false,
                     currentUser: null,
@@ -1162,6 +1165,73 @@
                     this.taskRunHistoryItems = []
                     this.taskRunHistoryLoading = false
                 },
+                startTaskRename(task) {
+                    this.taskRenameTaskId = task.task_id
+                    this.taskRenameDraft = task.name || ''
+                    this.taskMessage = ''
+                    this.$nextTick(() => {
+                        const input = this.$refs[`task-rename-${task.task_id}`]?.[0]
+                        input?.focus()
+                        input?.select()
+                    })
+                },
+                cancelTaskRename(task) {
+                    if (this.taskRenameTaskId === task.task_id) {
+                        this.taskRenameTaskId = ''
+                        this.taskRenameDraft = ''
+                    }
+                },
+                onTaskRenameBlur(task, event) {
+                    const related = event?.relatedTarget
+                    if (
+                        related
+                        && (
+                            related.classList.contains('task-rename-confirm-btn')
+                            || related.classList.contains('task-rename-cancel-btn')
+                        )
+                    ) {
+                        return
+                    }
+                    this.cancelTaskRename(task)
+                },
+                async saveTaskRename(task) {
+                    if (this.taskRenameTaskId !== task.task_id) return
+                    const name = (this.taskRenameDraft || '').trim()
+                    if (!name || name === task.name) {
+                        this.cancelTaskRename(task)
+                        return
+                    }
+                    this.taskRenameTaskId = ''
+                    this.taskRenameDraft = ''
+                    try {
+                        const response = await fetch(
+                            `${this.API_BASE}/tasks/${encodeURIComponent(task.task_id)}/rename`,
+                            {
+                                method: 'PATCH',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    ...this.authHeaders,
+                                },
+                                body: JSON.stringify({ name }),
+                            }
+                        )
+                        if (!response.ok) {
+                            throw new Error(await this.responseError(response, '重命名任务'))
+                        }
+                        const updated = await response.json()
+                        task.name = updated.name || name
+                        if (task.case_id) {
+                            for (const item of this.taskItems) {
+                                if (item.case_id === task.case_id) {
+                                    item.case_name = name
+                                }
+                            }
+                        }
+                    } catch (error) {
+                        this.taskMessage = error.message
+                        this.taskMessageIsError = true
+                    }
+                },
                 async toggleTaskRunHistory(task) {
                     const taskId = task.task_id
                     if (this.taskRunHistoryTaskId === taskId) {
@@ -1423,6 +1493,10 @@
                     this.startNewUpload()
                     this.caseId = caseId
                     this.caseName = caseName
+                    this.followUpContextDismissed = false
+                },
+                dismissFollowUpContext() {
+                    this.followUpContextDismissed = true
                 },
                 buildFileList(resultData = {}, taskData = null) {
                     const files = []
@@ -2567,7 +2641,6 @@
                     const selectors = [
                         '.input-group',
                         '.volume-source-summary',
-                        '.case-follow-up-action',
                         '.case-evidence-section',
                         '.analysis-summary',
                         '.region-overview',

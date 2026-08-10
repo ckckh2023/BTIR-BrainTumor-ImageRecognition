@@ -376,6 +376,51 @@ class SqliteTaskRepository:
 
         return self._record_from_row(row)
 
+    def rename_task(self, task_id: str, name: str, user_id: str) -> TaskRecord:
+        record = self.load_for_user(task_id, user_id)
+        case_id = record.case_id or record.task_id
+        now = datetime.now().astimezone()
+        touched = False
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT task_id, record_json FROM tasks
+                WHERE user_id = ? AND archived_at IS NULL
+                  AND (json_extract(record_json, '$.case_id') = ? OR task_id = ?)
+                """,
+                (user_id, case_id, task_id),
+            ).fetchall()
+            for row in rows:
+                case_task = TaskRecord.model_validate_json(row["record_json"])
+                if case_task.task_id == task_id:
+                    target_name = name
+                else:
+                    target_name = case_task.name
+                if case_task.name == target_name and case_task.case_name == name:
+                    continue
+                touched = True
+                case_task.name = target_name
+                case_task.case_name = name
+                case_task.updated_at = now
+                connection.execute(
+                    """
+                    UPDATE tasks
+                    SET name = ?, updated_at = ?, record_json = ?
+                    WHERE task_id = ?
+                    """,
+                    (
+                        case_task.name,
+                        case_task.updated_at.isoformat(),
+                        case_task.model_dump_json(exclude_none=True),
+                        case_task.task_id,
+                    ),
+                )
+        if touched:
+            record.name = name
+            record.case_name = name
+            record.updated_at = now
+        return record
+
     @staticmethod
     def _record_from_row(row: sqlite3.Row | None) -> TaskRecord:
         if row is None:

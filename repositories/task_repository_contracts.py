@@ -34,6 +34,9 @@ class TaskRepository(Protocol):
     def load_for_user(self, task_id: str, user_id: str) -> TaskRecord:
         '''读取指定用户的一条任务元数据，不存在或越权时抛出 TaskNotFoundError'''
 
+    def rename_task(self, task_id: str, name: str, user_id: str) -> TaskRecord:
+        '''重命名指定任务，并同步更新同一病例下所有活动任务的病例名'''
+
     def save(
         self,
         task_dir: Path,
