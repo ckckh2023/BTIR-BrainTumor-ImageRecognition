@@ -128,8 +128,16 @@ def _validate_supplementary_analysis(value: Any) -> None:
 def _validate_model_consensus(value: Any) -> None:
     if not isinstance(value, dict):
         raise ValueError("model_consensus 必须是对象")
-    for key in ("version", "summary", "consistency", "primary_evidence"):
+    for key in ("version", "level", "label", "summary", "consistency", "primary_evidence"):
         _require_nonempty_string(value, key, "model_consensus")
+    if value["level"] not in {
+        "high_probability_present",
+        "possible_present",
+        "likely_absent",
+        "high_probability_absent",
+        "inconclusive",
+    }:
+        raise ValueError("model_consensus.level 无效")
     if value["consistency"] not in {"consistent", "inconclusive", "conflicting"}:
         raise ValueError("model_consensus.consistency 无效")
     if value["primary_evidence"] != "segmentation":
@@ -137,6 +145,10 @@ def _validate_model_consensus(value: Any) -> None:
     for key in ("requires_review", "segmentation_detected"):
         if not isinstance(value.get(key), bool):
             raise ValueError(f"model_consensus.{key} 必须是布尔值")
+    for key in ("segmentation_volume_mm3", "segmentation_ratio"):
+        value_number = value.get(key)
+        if isinstance(value_number, bool) or not isinstance(value_number, (int, float)):
+            raise ValueError(f"model_consensus.{key} 必须是数字")
 
 
 def _require_nonempty_string(

@@ -45,16 +45,6 @@
         return niivueLoadPromise
     }
 
-    function preloadNiiVue() {
-        const schedule = global.requestIdleCallback
-            || ((callback) => global.setTimeout(callback, 800))
-        schedule(() => {
-            ensureNiiVue().catch(() => {
-                /* 预加载失败不影响点击时的按需加载 */
-            })
-        })
-    }
-
     class BtirVolumeViewer {
         constructor(canvas) {
             if (!(canvas instanceof HTMLCanvasElement)) {
@@ -329,5 +319,4 @@
     }
 
     global.BtirVolumeViewer = BtirVolumeViewer
-    global.BtirVolumeViewer.preload = preloadNiiVue
 })(window)
