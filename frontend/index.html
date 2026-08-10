@@ -558,21 +558,22 @@
                             </div>
                         </div>
                     </section>
-                    <section class="follow-up-comparison" v-if="followUpComparison" data-reveal data-testid="follow-up-comparison">
+                    <section class="follow-up-comparison" v-if="followUp" data-reveal data-testid="follow-up-comparison">
                         <div class="follow-up-heading">
                             <div>
                                 <span>随访对比</span>
-                                <small>{{ followUpUsesRecommendedBaseline ? '默认上一期' : '已选择历史检查' }} · {{ followUpComparison.baseline.study_date || formatTaskTime(followUpComparison.baseline.created_at) }} → 本次</small>
+                                <small v-if="followUpComparison">{{ followUpUsesRecommendedBaseline ? '默认上一期' : '已选择历史检查' }} · {{ followUpComparison.baseline.study_date || formatTaskTime(followUpComparison.baseline.created_at) }} → 本次</small>
+                                <small v-else>选择同一病例的历史检查进行对比</small>
                             </div>
                         </div>
-                        <details class="follow-up-history" v-if="followUpHistoryItems.length > 1">
+                        <details class="follow-up-history" v-if="followUpHistoryItems.length">
                             <summary class="follow-up-history-toggle">
                                 <strong>
                                     <svg class="icon" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
                                         <path d="M3 4.5h10M3 8h7M3 11.5h4"></path>
                                         <path d="m10.5 10.5 2.5 2.5 2.5-2.5"></path>
                                     </svg>
-                                    更换对比检查
+                                    自由选择对比检查
                                 </strong>
                                 <span>{{ followUpHistoryItems.length }} 份历史检查</span>
                             </summary>
@@ -591,7 +592,7 @@
                                 </button>
                             </div>
                         </details>
-                        <div class="follow-up-metrics">
+                        <div class="follow-up-metrics" v-if="followUpComparison">
                             <article
                                 class="follow-up-metric"
                                 :class="metric.tone"
@@ -604,7 +605,7 @@
                                 <small>基线 {{ metric.baseline }}</small>
                             </article>
                         </div>
-                        <div class="follow-up-trend" v-if="followUpComparison.trend.length">
+                        <div class="follow-up-trend" v-if="followUpComparison?.trend.length">
                             <div class="follow-up-trend-title">全肿瘤体积变化</div>
                             <div class="follow-up-bars">
                                 <div class="follow-up-bar-item" v-for="point in followUpComparison.trend" :key="point.label">
