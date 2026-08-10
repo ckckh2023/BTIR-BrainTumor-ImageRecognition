@@ -372,6 +372,14 @@ class TaskStorageTests(unittest.TestCase):
         self.assertEqual(matched_total, 1)
         self.assertEqual([record.task_id for record in matched_records], ["task-alpha"])
 
+        id_records, id_total = self.repository.list_tasks(
+            limit=20,
+            offset=0,
+            query="task-alpha",
+        )
+        self.assertEqual(id_total, 0)
+        self.assertEqual(id_records, [])
+
         active_records, active_total = self.repository.list_tasks(limit=20, offset=0)
         self.assertEqual(active_total, 2)
         self.assertNotIn(

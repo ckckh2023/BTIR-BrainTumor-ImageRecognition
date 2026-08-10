@@ -274,6 +274,8 @@ body {
             display: flex;
             align-items: center;
             gap: 10px;
+            min-width: max-content;
+            overflow: visible;
             flex-shrink: 0;
             justify-self: end;
         }
@@ -286,6 +288,37 @@ body {
             color: var(--btir-accent);
             font-size: 13px;
             font-weight: 600;
+        }
+
+        .topbar-github-link {
+            position: relative;
+            z-index: 1;
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 34px;
+            height: 34px;
+            overflow: visible;
+            color: var(--btir-text-secondary);
+            background: transparent;
+            border: none;
+            border-radius: 50%;
+            transition: background-color 0.2s, color 0.2s, transform 0.2s;
+        }
+
+        .topbar-github-link svg {
+            display: block;
+            flex: none;
+        }
+
+        .topbar-github-link:hover {
+            color: var(--btir-primary);
+            background: var(--btir-primary-soft);
+        }
+
+        .topbar-github-link:active {
+            transform: scale(0.92);
         }
 
         .app-content {

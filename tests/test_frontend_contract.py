@@ -274,6 +274,10 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("analysisActive: false", self.app_js)
         self.assertIn("this.analysisActive = true", self.app_js)
         self.assertIn("this.analysisActive = false", self.app_js)
+        self.assertIn("topbar-github-link", self.html)
+        self.assertIn("https://github.com/ckckh2023/BTIR-BrainTumor-ImageRecognition", self.html)
+        self.assertIn('M8 0C3.58 0 0 3.58 0 8', self.html)
+        self.assertIn(".topbar-github-link:hover", self.app_css)
 
     def test_volume_upload_starts_with_drop_zone_and_recovers_from_ambiguity(self) -> None:
         self.assertIn("拖入 NIfTI 或 DICOM 病例文件夹，或 ZIP 压缩包", self.html)
