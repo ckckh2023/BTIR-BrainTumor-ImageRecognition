@@ -1485,6 +1485,16 @@
                 openSampleGuide() {
                     window.location.href = 'guide.html'
                 },
+                openAbout() {
+                    window.location.href = 'about.html'
+                },
+                handleHomeClick() {
+                    if (this.taskId) {
+                        this.startNewUpload()
+                    } else {
+                        this.openAbout()
+                    }
+                },
                 startFollowUpUpload(task = null) {
                     const caseId = task?.case_id || this.caseId || task?.task_id || this.taskId
                     const caseName = task?.case_name || this.caseName || task?.name || '当前病例'
