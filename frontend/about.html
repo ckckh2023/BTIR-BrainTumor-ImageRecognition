@@ -204,7 +204,7 @@
 
         .about-feature-grid {
             display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
+            grid-template-columns: repeat(4, minmax(0, 1fr));
             gap: 14px;
         }
 
@@ -373,7 +373,7 @@
 
         @media (max-width: 860px) {
             .about-feature-grid {
-                grid-template-columns: 1fr;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
             }
             .about-tech-list {
                 grid-template-columns: 1fr;
@@ -386,6 +386,106 @@
                 align-items: flex-start;
                 text-align: left;
             }
+        }
+
+        @media (max-width: 560px) {
+            .about-feature-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .about-inline-link {
+            color: var(--btir-primary);
+            text-decoration: none;
+        }
+
+        .about-inline-link:hover {
+            text-decoration: underline;
+        }
+
+        .about-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 18px;
+        }
+
+        .about-badges a {
+            display: inline-flex;
+            line-height: 0;
+        }
+
+        .about-badges img {
+            height: 20px;
+            vertical-align: middle;
+        }
+
+        .about-code {
+            padding: 1px 6px;
+            color: var(--btir-primary);
+            background: var(--btir-primary-soft);
+            border-radius: 4px;
+            font-family: var(--btir-mono);
+            font-size: 0.92em;
+        }
+
+        .about-contributors {
+            margin: 18px 0 4px;
+            padding: 16px 18px;
+            background: var(--btir-bg-soft);
+            border: 1px solid var(--btir-border);
+            border-radius: var(--btir-radius-sm);
+        }
+
+        .about-contributors-label {
+            margin-bottom: 12px;
+            color: var(--btir-text-secondary);
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .about-contributor-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .about-contributor {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 14px 8px 8px;
+            color: var(--btir-text);
+            background: var(--btir-surface);
+            border: 1px solid var(--btir-border);
+            border-radius: 999px;
+            text-decoration: none;
+            transition: border-color 0.2s, transform 0.2s;
+        }
+
+        .about-contributor:hover {
+            border-color: var(--btir-primary);
+            transform: translateY(-2px);
+        }
+
+        .about-contributor-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            background: var(--btir-bg);
+        }
+
+        .about-contributor-name {
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .about-contributor-count {
+            color: var(--btir-text-muted);
+            font-size: 12px;
         }
 
         @keyframes fade-in {
@@ -422,24 +522,31 @@
             <section class="about-hero">
                 <span class="about-hero-logo" role="img" aria-label="BTIR"></span>
                 <div class="about-hero-text">
-                    <h1 class="about-hero-name">脑肿瘤 MRI 图像识别</h1>
-                    <p class="about-hero-tagline">基于深度学习的多模态 MRI 影像分析平台，辅助临床快速完成脑肿瘤分类与分割。</p>
+                    <h1 class="about-hero-name">脑肿瘤 MRI 图像分析</h1>
+                    <p class="about-hero-tagline">面向四模态脑肿瘤 MRI 的完整分析系统，浏览器中登录即可完成分类、分割与 AI 辅助分析，并查看关键影像特征、切片、对比和 3D 影像。</p>
                 </div>
             </section>
 
             <section class="about-section">
                 <h2 class="about-section-heading">项目简介</h2>
                 <p class="about-paragraph">
-                    BTIR（Brain Tumor Image Recognition）是一个面向脑肿瘤 MRI 影像的智能识别平台。系统接收患者多模态 MRI 数据（T1、T1c、T2、FLAIR），自动完成肿瘤分类概率预测与三分区（WT、TC、ET）体积分割，并通过三维体素可视化呈现结果，为放射科医生提供辅助诊断参考。
+                    BTIR 是一个面向四模态脑肿瘤 MRI 的完整分析系统。用户可在浏览器中登录、完成分类、分割与 AI 辅助分析，并在网页内查看关键影像特征、切片、对比和 3D 影像。
                 </p>
-                <p class="about-paragraph">
-                    平台支持 NIfTI、DICOM 文件夹及 ZIP 压缩包上传，提供任务管理与复查随访功能，可对同一病例的多次检查进行纵向对比，帮助跟踪病情变化。
-                </p>
+                <div class="about-badges">
+                    <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-red?logo=opensourceinitiative&amp;logoColor=white" alt="License"></a>
+                    <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.11-blue?logo=python&amp;logoColor=white" alt="Python"></a>
+                    <img src="https://img.shields.io/badge/Platform-Linux-lightgrey?logo=linux&amp;logoColor=white" alt="Platform">
+                    <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/FastAPI-0.139-009688?logo=fastapi&amp;logoColor=white" alt="FastAPI"></a>
+                    <a href="https://pytorch.org/"><img src="https://img.shields.io/badge/PyTorch-2.5.1-EE4C2C?logo=pytorch&amp;logoColor=white" alt="PyTorch"></a>
+                    <a href="https://developer.nvidia.com/cuda-toolkit"><img src="https://img.shields.io/badge/CUDA-12.1-76B900?logo=nvidia&amp;logoColor=white" alt="CUDA"></a>
+                    <a href="https://redis.io/"><img src="https://img.shields.io/badge/Redis-5.2-DC382D?logo=redis&amp;logoColor=white" alt="Redis"></a>
+                    <img src="https://img.shields.io/github/stars/ckckh2023/BTIR-BrainTumor-ImageRecognition?style=social&amp;logo=github" alt="Stars">
+                </div>
             </section>
 
             <section class="about-section">
-                <h2 class="about-section-heading">核心功能</h2>
-                <p class="about-section-description">覆盖从影像上传到结果可视化的完整临床工作流</p>
+                <h2 class="about-section-heading">项目能力</h2>
+                <p class="about-section-description">覆盖病例上传、模型分析、结果展示、3D 查看与多用户管理的完整流程</p>
                 <div class="about-feature-grid">
                     <article class="about-feature">
                         <span class="about-feature-icon">
@@ -448,8 +555,8 @@
                                 <path d="M5 6.5h6M5 9h4"></path>
                             </svg>
                         </span>
-                        <h3 class="about-feature-title">多模态上传</h3>
-                        <p class="about-feature-desc">支持 NIfTI、DICOM 文件夹与 ZIP 包，拖拽即可提交 T1 / T1c / T2 / FLAIR 四模态数据。</p>
+                        <h3 class="about-feature-title">病例上传</h3>
+                        <p class="about-feature-desc">支持四模态 NIfTI 或原始 DICOM 文件夹与 ZIP，自动匹配并转换 FLAIR、T1CE、T1、T2；缺失或重复时提供对应校正项。</p>
                     </article>
                     <article class="about-feature">
                         <span class="about-feature-icon">
@@ -458,8 +565,8 @@
                                 <path d="M5.5 8l2 2 3-4"></path>
                             </svg>
                         </span>
-                        <h3 class="about-feature-title">肿瘤分类</h3>
-                        <p class="about-feature-desc">深度学习模型输出肿瘤概率，辅助判断是否存在肿瘤及恶性程度。</p>
+                        <h3 class="about-feature-title">模型分析</h3>
+                        <p class="about-feature-desc">本地 ViT 多切片二分类与 SuperLightNet 3D 分割共同提供证据，生成综合结论。</p>
                     </article>
                     <article class="about-feature">
                         <span class="about-feature-icon">
@@ -468,8 +575,8 @@
                                 <circle cx="2" cy="13" r="1"></circle>
                             </svg>
                         </span>
-                        <h3 class="about-feature-title">三分区分割</h3>
-                        <p class="about-feature-desc">自动分割整体肿瘤（WT）、肿瘤核心（TC）与增强肿瘤（ET），并给出体积。</p>
+                        <h3 class="about-feature-title">结果展示</h3>
+                        <p class="about-feature-desc">首屏展示双模型综合结论、随访对比和关键影像特征，下方提供切片概率曲线、分割叠加和区域明细。</p>
                     </article>
                     <article class="about-feature">
                         <span class="about-feature-icon">
@@ -477,8 +584,8 @@
                                 <path d="M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z"></path>
                             </svg>
                         </span>
-                        <h3 class="about-feature-title">三维可视化</h3>
-                        <p class="about-feature-desc">基于 NiiVue 的体素渲染，多视图联动浏览，直观观察肿瘤空间分布。</p>
+                        <h3 class="about-feature-title">3D 查看</h3>
+                        <p class="about-feature-desc">切换四模态、三视图与体渲染，叠加预测掩码并调整透明度（需 WebGL2）。</p>
                     </article>
                     <article class="about-feature">
                         <span class="about-feature-icon">
@@ -486,72 +593,65 @@
                                 <path d="M3 4h10M3 8h10M3 12h6"></path>
                             </svg>
                         </span>
-                        <h3 class="about-feature-title">任务管理</h3>
-                        <p class="about-feature-desc">批量提交与跟踪识别任务，查看历史记录与处理状态，提升工作效率。</p>
+                        <h3 class="about-feature-title">随访与任务</h3>
+                        <p class="about-feature-desc">按病例分组历史检查并选择两次结果对比，支持异步提交、进度轮询、取消、失败重试、运行历史、归档与恢复。</p>
+                    </article>
+                    <article class="about-feature">
+                        <span class="about-feature-icon">
+                            <svg viewBox="0 0 16 16" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="8" cy="6" r="3"></circle>
+                                <path d="M3 14c0-3 2.5-5 5-5s5 2 5 5"></path>
+                            </svg>
+                        </span>
+                        <h3 class="about-feature-title">多用户</h3>
+                        <p class="about-feature-desc">JWT 登录隔离、用户任务配额、强制改密、管理员用户与任务管理、审计查询。</p>
                     </article>
                     <article class="about-feature">
                         <span class="about-feature-icon">
                             <svg viewBox="0 0 16 16" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                                 <circle cx="8" cy="8" r="6"></circle>
-                                <path d="M8 4v4l3 2"></path>
+                                <path d="M5 8h6"></path>
                             </svg>
                         </span>
-                        <h3 class="about-feature-title">复查随访</h3>
-                        <p class="about-feature-desc">对同一病例多次检查进行纵向对比，跟踪肿瘤体积与性状变化趋势。</p>
+                        <h3 class="about-feature-title">测试保障</h3>
+                        <p class="about-feature-desc">单元测试、接口契约、任务流程与可选浏览器端到端测试。</p>
+                    </article>
+                    <article class="about-feature">
+                        <span class="about-feature-icon">
+                            <svg viewBox="0 0 16 16" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="2" y="3" width="12" height="10" rx="1"></rect>
+                                <path d="M5 6h6M5 9h4"></path>
+                            </svg>
+                        </span>
+                        <h3 class="about-feature-title">部署运行</h3>
+                        <p class="about-feature-desc">SQLite 持久化、Redis + RQ 队列、CPU、CUDA 与 Linux ROCm 运行支持，审计日志按大小轮转并自动保留。</p>
                     </article>
                 </div>
             </section>
 
             <section class="about-section">
-                <h2 class="about-section-heading">关键指标</h2>
-                <div class="about-stats">
-                    <div class="about-stat">
-                        <span class="about-stat-value">4</span>
-                        <span class="about-stat-label">MRI 模态</span>
-                    </div>
-                    <div class="about-stat">
-                        <span class="about-stat-value">3</span>
-                        <span class="about-stat-label">分割分区</span>
-                    </div>
-                    <div class="about-stat">
-                        <span class="about-stat-value">3D</span>
-                        <span class="about-stat-label">体素可视化</span>
-                    </div>
-                    <div class="about-stat">
-                        <span class="about-stat-value">开源</span>
-                        <span class="about-stat-label">项目代码</span>
-                    </div>
-                </div>
-            </section>
 
-            <section class="about-section">
-                <h2 class="about-section-heading">技术架构</h2>
-                <p class="about-section-description">前后端分离架构，前端专注交互与可视化，后端承担推理与存储</p>
-                <div class="about-tech-list">
-                    <div class="about-tech">
-                        <span class="about-tech-label">前端</span>
-                        <span class="about-tech-value">Vue 3 组件化开发，NiiVue 实现医学影像体素渲染，原生 CSS 变量主题系统支持深浅色切换。</span>
-                    </div>
-                    <div class="about-tech">
-                        <span class="about-tech-label">后端</span>
-                        <span class="about-tech-value">Python 服务端，提供影像上传、任务调度、模型推理与结果存储的 RESTful 接口。</span>
-                    </div>
-                    <div class="about-tech">
-                        <span class="about-tech-label">模型</span>
-                        <span class="about-tech-value">深度学习网络完成肿瘤分类与三分区分割，输出概率与逐体素标签。</span>
-                    </div>
-                    <div class="about-tech">
-                        <span class="about-tech-label">数据</span>
-                        <span class="about-tech-value">兼容 BraTS 系列数据格式，支持 NIfTI 与 DICOM 两种医学影像标准。</span>
-                    </div>
-                </div>
-            </section>
-
-            <section class="about-section">
                 <h2 class="about-section-heading">开源与协作</h2>
                 <p class="about-paragraph">
                     本项目为开源项目，欢迎在 GitHub 上查看源码、提交 Issue 或参与贡献。使用中如遇问题，可先查阅测试样例使用说明并下载示例病例体验完整流程。
                 </p>
+                <div class="about-contributors">
+                    <div class="about-contributors-label">贡献者</div>
+                    <div class="about-contributor-list">
+                        <a class="about-contributor" href="https://github.com/Songline-music" target="_blank" rel="noopener noreferrer">
+                            <img class="about-contributor-avatar" src="https://blog.songline-blog.com/uploads/songline/snowMan.png?size=64" alt="Songline-music" loading="lazy" onerror="this.style.display='none'">
+                            <span class="about-contributor-name">Songline-music</span>
+                        </a>
+                        <a class="about-contributor" href="https://github.com/ckckh2023" target="_blank" rel="noopener noreferrer">
+                            <img class="about-contributor-avatar" src="https://github.com/ckckh2023.png?size=64" alt="ckckh2023" loading="lazy" onerror="this.style.display='none'">
+                            <span class="about-contributor-name">ckckh2023</span>
+                        </a>
+                        <a class="about-contributor" href="https://github.com/TangibleDreams913" target="_blank" rel="noopener noreferrer">
+                            <img class="about-contributor-avatar" src="https://github.com/TangibleDreams913.png?size=64" alt="TangibleDreams913" loading="lazy" onerror="this.style.display='none'">
+                            <span class="about-contributor-name">TangibleDreams913</span>
+                        </a>
+                    </div>
+                </div>
                 <div class="about-actions">
                     <a class="about-btn" href="https://github.com/ckckh2023/BTIR-BrainTumor-ImageRecognition" target="_blank" rel="noopener noreferrer">
                         <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true">
