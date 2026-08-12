@@ -9,22 +9,13 @@
     const brandZone = document.getElementById('brandZone')
     const dragHint = document.getElementById('dragHint')
 
-    if (window.location.hostname.endsWith('.github.io')) {
-        document.querySelectorAll('a[href="index.html"]').forEach((link) => {
-            link.href = 'https://btir.online/'
-        })
-        document.querySelectorAll('a[href="guide.html"]').forEach((link) => {
-            link.href = 'https://github.com/ckckh2023/BTIR-BrainTumor-ImageRecognition#readme'
-            link.target = '_blank'
-            link.rel = 'noopener noreferrer'
-        })
-    }
-
     themeToggle.addEventListener('click', () => {
         const theme = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'
         root.setAttribute('data-theme', theme)
+        themeToggle.setAttribute('aria-pressed', String(theme === 'dark'))
         try { localStorage.setItem('btir_theme', theme) } catch (e) { /* 忽略 */ }
     })
+    themeToggle.setAttribute('aria-pressed', String(root.getAttribute('data-theme') === 'dark'))
 
     mobileMenu.addEventListener('click', () => {
         const open = siteNav.classList.toggle('open')
@@ -33,6 +24,18 @@
     siteNav.addEventListener('click', () => {
         siteNav.classList.remove('open')
         mobileMenu.setAttribute('aria-expanded', 'false')
+    })
+    document.addEventListener('click', (event) => {
+        if (!siteNav.classList.contains('open')) return
+        if (siteNav.contains(event.target) || mobileMenu.contains(event.target)) return
+        siteNav.classList.remove('open')
+        mobileMenu.setAttribute('aria-expanded', 'false')
+    })
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape' || !siteNav.classList.contains('open')) return
+        siteNav.classList.remove('open')
+        mobileMenu.setAttribute('aria-expanded', 'false')
+        mobileMenu.focus()
     })
 
     const revealItems = document.querySelectorAll('.reveal-item')
