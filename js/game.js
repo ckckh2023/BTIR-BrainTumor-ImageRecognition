@@ -326,6 +326,7 @@
     board.addEventListener('contextmenu', (event) => { const cell = event.target.closest('.game-cell'); if (!cell) return; event.preventDefault(); selected = Number(cell.dataset.index); toggleFlag(selected) })
     document.addEventListener('keydown', (event) => {
         if (!resultModal.hidden) { if (event.key === 'Escape') resultModal.hidden = true; return }
+        if (event.target.closest('a, button:not(.game-cell)')) return
         const key = event.key.toLowerCase()
         const moves = { arrowup: [-1, 0], w: [-1, 0], arrowdown: [1, 0], s: [1, 0], arrowleft: [0, -1], a: [0, -1], arrowright: [0, 1], d: [0, 1] }
         if (moves[key]) { event.preventDefault(); moveSelection(...moves[key]) }
@@ -337,7 +338,9 @@
     playAgain.addEventListener('click', resetGame)
     resultModal.addEventListener('click', (event) => { if (event.target === resultModal) resultModal.hidden = true })
     soundToggle.addEventListener('click', () => { muted = !muted; soundToggle.classList.toggle('muted', muted); soundToggle.setAttribute('aria-label', muted ? '开启游戏音效' : '关闭游戏音效'); toast(muted ? '音效已关闭' : '音效已开启') })
-    document.getElementById('gameTheme').addEventListener('click', () => { const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'; document.documentElement.setAttribute('data-theme', theme); try { localStorage.setItem('btir_theme', theme) } catch (e) { /* 忽略 */ } })
+    const gameTheme = document.getElementById('gameTheme')
+    gameTheme.setAttribute('aria-pressed', String(document.documentElement.getAttribute('data-theme') === 'dark'))
+    gameTheme.addEventListener('click', () => { const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'; document.documentElement.setAttribute('data-theme', theme); gameTheme.setAttribute('aria-pressed', String(theme === 'dark')); try { localStorage.setItem('btir_theme', theme) } catch (e) { /* 忽略 */ } })
 
     resetGame()
 })()
