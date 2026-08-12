@@ -1,0 +1,112 @@
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        [v-cloak] {
+            display: none;
+        }
+
+        :root {
+            --btir-primary: #1f477d;
+            --btir-primary-hover: #28619f;
+            --btir-primary-soft: #eaf2fb;
+            --btir-accent: #3d7fbd;
+            --btir-bg: #f2f5f9;
+            --btir-bg-soft: #e6edf5;
+            --btir-surface: #ffffff;
+            --btir-surface-muted: #f7f9fc;
+            --btir-border: #d4dfeb;
+            --btir-border-strong: #a9c1da;
+            --btir-text: #1e2d3e;
+            --btir-text-secondary: #586b82;
+            --btir-text-muted: #7d90a8;
+            --btir-success: #18794e;
+            --btir-success-bg: #dcfce7;
+            --btir-warning: #b45309;
+            --btir-warning-bg: #fef3c7;
+            --btir-danger: #b42318;
+            --btir-danger-bg: #fee2e2;
+            --btir-info: #1d4ed8;
+            --btir-info-bg: #dbeafe;
+            --btir-radius-sm: 6px;
+            --btir-radius-md: 10px;
+            --btir-radius-lg: 16px;
+            --btir-shadow-sm: 0 1px 3px rgba(30, 41, 59, 0.08);
+            --btir-shadow-md: 0 6px 18px rgba(30, 41, 59, 0.10);
+            --btir-shadow-lg: 0 18px 50px rgba(30, 41, 59, 0.22);
+            --btir-font: 'Microsoft YaHei', 'PingFang SC', 'Segoe UI', Arial, sans-serif;
+            --btir-mono: 'Consolas', 'Monaco', 'SFMono-Regular', monospace;
+            --btir-transition: 0.2s ease;
+            --btir-transition-slow: 0.3s ease;
+            --btir-surface-hover: #edf5ff;
+            --btir-progress-glow: rgba(59, 130, 246, 0.35);
+            --btir-volume-wt: #3b82f6;
+            --btir-volume-tc: #8b5cf6;
+            --btir-volume-et: #d97706;
+        }
+
+        [data-theme="dark"] {
+            color-scheme: dark;
+            --btir-primary: #5791d4;
+            --btir-primary-hover: #6aa5e8;
+            --btir-primary-soft: #1a365c;
+            --btir-accent: #78b2ed;
+            --btir-bg: #0a1220;
+            --btir-bg-soft: #111d31;
+            --btir-surface: #152239;
+            --btir-surface-muted: #1b2b46;
+            --btir-surface-hover: #223957;
+            --btir-border: #314865;
+            --btir-border-strong: #4c6687;
+            --btir-text: #f3f7fd;
+            --btir-text-secondary: #c2d0e2;
+            --btir-text-muted: #91a5c0;
+            --btir-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.45);
+            --btir-shadow-md: 0 6px 18px rgba(0, 0, 0, 0.5);
+            --btir-shadow-lg: 0 18px 50px rgba(0, 0, 0, 0.6);
+            --btir-progress-glow: rgba(59, 130, 246, 0.28);
+            --btir-volume-wt: #60a5fa;
+            --btir-volume-tc: #a78bfa;
+            --btir-volume-et: #f59e0b;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *,
+            *::before,
+            *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
+            }
+        }
+
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--btir-border-strong);
+            border: 2px solid transparent;
+            border-radius: 999px;
+            background-clip: padding-box;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--btir-accent);
+            background-clip: padding-box;
+        }
+
+        * {
+            scrollbar-width: thin;
+            scrollbar-color: var(--btir-border-strong) transparent;
+        }
+
+        
