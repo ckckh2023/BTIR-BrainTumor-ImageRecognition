@@ -501,13 +501,6 @@ class TaskStorageTests(unittest.TestCase):
                 else:
                     purge_logs.assert_not_called()
 
-    def test_game_command_bypasses_the_regular_command_parser(self) -> None:
-        with patch("Main.run_game", return_value=0) as game:
-            exit_code = main(["game"])
-
-        self.assertEqual(exit_code, 0)
-        game.assert_called_once_with()
-
     def test_model_commands_require_an_existing_task_id(self) -> None:
         parser = _build_parser()
         with redirect_stderr(StringIO()), self.assertRaises(SystemExit) as raised:

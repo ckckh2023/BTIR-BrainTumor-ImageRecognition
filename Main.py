@@ -25,7 +25,6 @@ from services.audit_service import append_audit_event
 from services.auth_service import hash_password
 from services.cleanup_service import clear_generated_files, purge_logs_and_data
 from services.console import ConsoleProgress, print_event
-from services.terminal_game import run_game
 from services.task_queue import clear_task_queue_state, reconcile_active_tasks
 from services.task_files import (
     get_task_dir,
@@ -37,8 +36,6 @@ from services.task_runner import run_task_models
 def main(argv: list[str] | None = None) -> int:
     '''主函数，解析命令行参数并执行相应操作'''
     command_args = list(sys.argv[1:] if argv is None else argv)
-    if command_args == ["game"]:
-        return run_game()
     parser = _build_parser()
     args = parser.parse_args(command_args)
     task_dir: Path | None = None
@@ -157,8 +154,6 @@ def _build_parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
 
     commands.add_parser("help", help="显示命令说明和使用示例")
-    commands.add_parser("game", help="启动终端扫瘤小游戏")
-
     clear = commands.add_parser(
         "clear",
         help="清空账号、任务、归档、BTIR 队列状态和 Python 缓存",
@@ -314,7 +309,6 @@ def _print_help(parser: argparse.ArgumentParser) -> None:
         "  python Main.py user disable <username>\n"
         "  python Main.py user reset-password <username>\n"
         "  python Main.py evaluate-3d <BraTS数据集目录>\n"
-        "  python Main.py game\n"
     )
 
 
