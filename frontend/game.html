@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="BTIR 彩蛋小游戏：在移动扫描线抵达前标记异常信号并完成安全区域扫描。">
+    <title>BTIR · 扫瘤行动</title>
+    <link rel="icon" type="image/png" href="../assets/icon_exp.png">
+    <script>
+        (function () {
+            var theme = 'light'
+            try { theme = localStorage.getItem('btir_theme') || 'light' } catch (e) { /* 忽略 */ }
+            document.documentElement.setAttribute('data-theme', theme)
+        })()
+    </script>
+    <link rel="stylesheet" href="./theme.css">
+    <link rel="stylesheet" href="./game.css">
+</head>
+<body>
+    <header class="game-header">
+        <a class="game-brand" href="about.html"><span class="game-logo" aria-hidden="true"></span><div><strong>BTIR</strong><span>隐藏实验室 / EASTER EGG</span></div></a>
+        <div class="game-header-actions"><button id="soundToggle" class="round-button" type="button" aria-label="切换游戏音效" title="切换游戏音效"><span class="sound-on">♪</span><span class="sound-off">×</span></button><button id="gameTheme" class="round-button" type="button" aria-label="切换明暗主题" title="切换明暗主题">◐</button><a class="back-button" href="about.html">返回展示页</a></div>
+    </header>
+
+    <main class="game-shell">
+        <section class="mission-copy">
+            <span class="mission-kicker">BTIR SIDE MISSION / 01</span>
+            <h1>扫瘤行动</h1>
+            <p>在异常信号和红色扫描线之间保持冷静。扫描所有安全区域，标记可疑位置，完成这次影像排查。</p>
+        </section>
+
+        <section class="game-layout">
+            <aside class="control-panel">
+                <div class="panel-heading"><span>任务参数</span><b>MISSION</b></div>
+                <div class="difficulty-block">
+                    <label>选择难度</label>
+                    <div class="difficulty-list" id="difficultyList">
+                        <button type="button" data-difficulty="easy" class="active"><span><strong>简单</strong><small>初次值班</small></span><b>8 × 8</b></button>
+                        <button type="button" data-difficulty="normal"><span><strong>普通</strong><small>常规排查</small></span><b>12 × 12</b></button>
+                        <button type="button" data-difficulty="hard"><span><strong>困难</strong><small>紧急会诊</small></span><b>16 × 16</b></button>
+                    </div>
+                </div>
+                <div class="rules-block">
+                    <h2>操作说明</h2>
+                    <div><kbd>左键</kbd><span>扫描单元格</span></div><div><kbd>右键</kbd><span>标记异常信号</span></div><div><kbd>↑ ↓ ← →</kbd><span>移动选择框</span></div><div><kbd>空格 / F</kbd><span>扫描 / 标记</span></div>
+                </div>
+                <div class="legend-block"><h2>图例</h2><span><i class="legend-safe"></i>已扫描</span><span><i class="legend-flag">!</i>异常标记</span><span><i class="legend-danger"></i>威胁扫描线</span></div>
+                <button class="restart-button" id="restartButton" type="button"><span>↻</span> 重新开始</button>
+            </aside>
+
+            <section class="game-console" aria-labelledby="boardTitle">
+                <div class="console-header">
+                    <div><span class="live-dot"></span><strong id="boardTitle">扫描区域 A-01</strong></div>
+                    <span id="gameStatus" class="game-status idle">等待首次扫描</span>
+                </div>
+                <div class="hud">
+                    <div><span>剩余异常</span><strong id="mineCounter">10</strong></div>
+                    <div><span>任务用时</span><strong id="timerValue">00:00</strong></div>
+                    <div><span>扫描进度</span><strong id="progressValue">0%</strong></div>
+                    <div class="threat-meter"><span>威胁等级</span><strong id="threatValue">低</strong><i><b id="threatBar"></b></i></div>
+                </div>
+                <div class="board-stage" id="boardStage">
+                    <div class="stage-grid" aria-hidden="true"></div>
+                    <div class="board-wrap"><div id="gameBoard" class="game-board" role="grid" aria-label="扫瘤游戏棋盘"></div></div>
+                    <div class="stage-corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+                </div>
+                <div class="console-footer"><span><i></i> 首次扫描安全保护已启用</span><span id="footerMessage">选择任意区域开始任务</span></div>
+            </section>
+        </section>
+        <section class="game-tip"><strong>任务提示</strong><p>数字表示周围 8 个单元格中的异常信号数量。已扫描数字周围的标记数一致时，再次扫描数字可以快速展开邻近区域。</p></section>
+    </main>
+
+    <div class="result-modal" id="resultModal" hidden>
+        <div class="result-card" role="dialog" aria-modal="true" aria-labelledby="resultTitle">
+            <span class="result-symbol" id="resultSymbol">✓</span><span class="result-kicker">MISSION REPORT</span><h2 id="resultTitle">扫描任务完成</h2><p id="resultText"></p>
+            <div class="result-stats"><div><span>用时</span><strong id="resultTime">00:00</strong></div><div><span>扫描率</span><strong id="resultProgress">100%</strong></div><div><span>难度</span><strong id="resultDifficulty">简单</strong></div></div>
+            <div class="result-actions"><button id="playAgain" type="button">再来一局</button><a href="about.html">返回展示页</a></div>
+        </div>
+    </div>
+    <div class="toast" id="gameToast" role="status"></div>
+    <script src="./game.js"></script>
+</body>
+</html>
