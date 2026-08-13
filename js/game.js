@@ -4,13 +4,15 @@
     const DIFFICULTIES = {
         easy: { name: '简单', rows: 8, columns: 8, mines: 10, maxLines: 1, firstDelay: 5400, spawnMin: 5000, spawnMax: 7000, moveEvery: 470, lineLength: 3, tumorDelay: 8200, tumorMin: 7600, tumorMax: 9400, tumorWarn: 1450, tumorLife: 2400, maxTumors: 1, splashRadius: 1, splashChance: .3 },
         normal: { name: '普通', rows: 12, columns: 12, mines: 24, maxLines: 2, firstDelay: 4000, spawnMin: 3200, spawnMax: 5000, moveEvery: 340, lineLength: 3, tumorDelay: 5800, tumorMin: 4800, tumorMax: 6400, tumorWarn: 1250, tumorLife: 3300, maxTumors: 2, splashRadius: 1, splashChance: .65 },
-        hard: { name: '困难', rows: 16, columns: 16, mines: 48, maxLines: 3, firstDelay: 3000, spawnMin: 2000, spawnMax: 3500, moveEvery: 240, lineLength: 4, tumorDelay: 3900, tumorMin: 3100, tumorMax: 4500, tumorWarn: 1050, tumorLife: 4200, maxTumors: 3, splashRadius: 2, splashChance: .58 }
+        hard: { name: '困难', rows: 16, columns: 16, mines: 48, maxLines: 3, firstDelay: 3000, spawnMin: 2000, spawnMax: 3500, moveEvery: 240, lineLength: 4, tumorDelay: 3900, tumorMin: 3100, tumorMax: 4500, tumorWarn: 1050, tumorLife: 4200, maxTumors: 3, splashRadius: 2, splashChance: .58 },
+        extreme: { name: '极难', rows: 20, columns: 20, mines: 86, maxLines: 5, firstDelay: 1800, spawnMin: 1200, spawnMax: 2100, moveEvery: 145, lineLength: 5, tumorDelay: 2500, tumorMin: 1800, tumorMax: 2800, tumorWarn: 760, tumorLife: 5200, maxTumors: 4, splashRadius: 2, splashChance: .78 }
     }
 
     const TUMOR_SPLASH = {
         easy: { radius: 1, chance: .3 },
         normal: { radius: 1, chance: .65 },
-        hard: { radius: 2, chance: .58 }
+        hard: { radius: 2, chance: .58 },
+        extreme: { radius: 2, chance: .78 }
     }
 
     const board = document.getElementById('gameBoard')
@@ -55,6 +57,7 @@
     let threatLines = []
     let tumorWarnings = new Map()
     let tumorCells = new Map()
+    let tumorWaves = []
     let nextTumorAt = 0
     let inputMode = 'mouse'
     let muted = false
@@ -89,7 +92,7 @@
     function createBoard() {
         board.innerHTML = ''
         board.style.setProperty('--board-size', config.columns)
-        const cellSize = config.columns === 8 ? 48 : config.columns === 12 ? 37 : 29
+        const cellSize = config.columns === 8 ? 48 : config.columns === 12 ? 37 : config.columns === 16 ? 29 : 34
         board.style.setProperty('--cell-size', `${cellSize}px`)
         for (let index = 0; index < config.rows * config.columns; index += 1) {
             const cell = document.createElement('button')
@@ -121,6 +124,7 @@
         threatLines = []
         tumorWarnings = new Map()
         tumorCells = new Map()
+        tumorWaves = []
         nextTumorAt = 0
         boardStage.querySelectorAll('.tumor-projectile').forEach((projectile) => projectile.remove())
         inputMode = 'mouse'
@@ -225,7 +229,7 @@
         const now = performance.now()
         if (now >= nextSpawnAt && threatLines.length < config.maxLines) {
             threatLines.push(randomLine())
-            if (difficultyKey === 'hard' && Math.random() < .45 && threatLines.length < config.maxLines) threatLines.push(randomLine())
+            if (['hard', 'extreme'].includes(difficultyKey) && Math.random() < (difficultyKey === 'extreme' ? .8 : .45) && threatLines.length < config.maxLines) threatLines.push(randomLine())
             nextSpawnAt = now + config.spawnMin + Math.random() * (config.spawnMax - config.spawnMin)
             tone(175, .09)
         }
@@ -282,12 +286,17 @@
                 changed = true
             }
         }
-        if (now < nextTumorAt || tumorWarnings.size || tumorCells.size >= config.maxTumors) return changed
+        tumorWaves = tumorWaves.filter((wave) => now < wave.expiresAt)
+        if (now < nextTumorAt || tumorWaves.length >= config.maxTumors) return changed
         const candidates = tumorSlots().filter((cell) => !tumorWarnings.has(cell) && !tumorCells.has(cell) && !revealed.has(cell) && !flagged.has(cell) && !mines.has(cell))
         if (candidates.length) {
-            const cell = candidates[Math.floor(Math.random() * candidates.length)]
-            tumorBlastCells(cell).forEach((target) => tumorWarnings.set(target.index, { landsAt: now + config.tumorWarn, center: target.center }))
-            throwTumor(cell)
+            const throws = Math.min(2, candidates.length, config.maxTumors - tumorWaves.length)
+            const selectedTargets = candidates.sort(() => Math.random() - .5).slice(0, throws)
+            selectedTargets.forEach((cell, actorIndex) => {
+                tumorBlastCells(cell).forEach((target) => tumorWarnings.set(target.index, { landsAt: now + config.tumorWarn, center: target.center }))
+                tumorWaves.push({ expiresAt: now + config.tumorWarn + config.tumorLife })
+                throwTumor(cell, actorIndex)
+            })
             footerMessage.textContent = '肿瘤正在锁定目标，圆环收缩后生效'
             tone(230, .12)
             changed = true
@@ -296,14 +305,14 @@
         return changed
     }
 
-    function throwTumor(cell) {
+    function throwTumor(cell, actorIndex = null) {
         const target = board.children[cell]
         if (!target || !brainActors.length) return
         const stageRect = boardStage.getBoundingClientRect()
         const targetRect = target.getBoundingClientRect()
         const targetX = targetRect.left - stageRect.left + targetRect.width / 2
         const targetY = targetRect.top - stageRect.top + targetRect.height / 2
-        const actor = targetX < stageRect.width / 2 ? brainActors[0] : brainActors[brainActors.length - 1]
+        const actor = actorIndex === null ? (targetX < stageRect.width / 2 ? brainActors[0] : brainActors[brainActors.length - 1]) : brainActors[actorIndex % brainActors.length]
         const actorRect = actor.getBoundingClientRect()
         const sourceX = actorRect.left - stageRect.left + actorRect.width / 2
         const sourceY = actorRect.top - stageRect.top + actorRect.height / 2
@@ -483,7 +492,15 @@
         else if (key === ' ' || key === 'enter' || key === 'j') { event.preventDefault(); reveal(selected) }
         else if (key === 'f' || key === 'k') { event.preventDefault(); toggleFlag(selected) }
     })
-    difficultyList.addEventListener('click', (event) => { const button = event.target.closest('[data-difficulty]'); if (!button) return; difficultyKey = button.dataset.difficulty; difficultyList.querySelectorAll('button').forEach((item) => item.classList.toggle('active', item === button)); resetGame() })
+    difficultyList.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-difficulty]')
+        if (!button) return
+        difficultyKey = button.dataset.difficulty
+        difficultyList.querySelectorAll('button').forEach((item) => item.classList.toggle('active', item === button))
+        document.body.classList.toggle('extreme-mode', difficultyKey === 'extreme')
+        if (difficultyKey === 'extreme' && !document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {})
+        resetGame()
+    })
     restartButton.addEventListener('click', resetGame)
     playAgain.addEventListener('click', resetGame)
     resultModal.addEventListener('click', (event) => { if (event.target === resultModal) resultModal.hidden = true })
