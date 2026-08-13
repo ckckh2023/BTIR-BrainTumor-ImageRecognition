@@ -38,6 +38,14 @@
         mobileMenu.focus()
     })
 
+    document.querySelectorAll('.footer-links a[href="#top"]').forEach((link) => {
+        link.addEventListener('click', (event) => {
+            event.preventDefault()
+            window.scrollTo({ top: 0, behavior: 'smooth' })
+            history.replaceState(null, '', '#top')
+        })
+    })
+
     const revealItems = document.querySelectorAll('.reveal-item')
     if ('IntersectionObserver' in window) {
         const observer = new IntersectionObserver((entries) => {

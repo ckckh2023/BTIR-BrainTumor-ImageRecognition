@@ -171,7 +171,6 @@
 
     function toggleFlag(index) {
         if (state === 'won' || state === 'lost' || revealed.has(index)) return
-        beginIfNeeded()
         if (flagged.has(index)) flagged.delete(index)
         else if (flagged.size < config.mines) flagged.add(index)
         else return toast('标记数量已达到本局异常信号上限')
@@ -215,7 +214,6 @@
             nextMoveAt = now + config.moveEvery
         }
         const activeCells = new Set(threatLines.flatMap(lineCells))
-        if (activeCells.has(selected)) return lose('触碰到红色扫描线，任务失败')
         renderThreats(activeCells)
         updateThreatMeter()
     }
@@ -301,14 +299,12 @@
 
     function moveSelection(deltaRow, deltaColumn) {
         if (state === 'won' || state === 'lost') return
-        beginIfNeeded()
         const [row, column] = positionOf(selected)
         const nextRow = Math.max(0, Math.min(config.rows - 1, row + deltaRow))
         const nextColumn = Math.max(0, Math.min(config.columns - 1, column + deltaColumn))
         selected = indexOf(nextRow, nextColumn)
         render()
         board.children[selected].focus({ preventScroll: true })
-        if (new Set(threatLines.flatMap(lineCells)).has(selected)) lose('触碰到红色扫描线，任务失败')
     }
 
     function toast(message) { gameToast.textContent = message; gameToast.classList.add('show'); window.clearTimeout(toast.handle); toast.handle = window.setTimeout(() => gameToast.classList.remove('show'), 1800) }
@@ -324,6 +320,14 @@
 
     board.addEventListener('click', (event) => { const cell = event.target.closest('.game-cell'); if (!cell) return; selected = Number(cell.dataset.index); reveal(selected) })
     board.addEventListener('contextmenu', (event) => { const cell = event.target.closest('.game-cell'); if (!cell) return; event.preventDefault(); selected = Number(cell.dataset.index); toggleFlag(selected) })
+    board.addEventListener('pointermove', (event) => {
+        const cell = event.target.closest('.game-cell')
+        if (!cell || state === 'won' || state === 'lost') return
+        const next = Number(cell.dataset.index)
+        if (next === selected) return
+        selected = next
+        render()
+    })
     document.addEventListener('keydown', (event) => {
         if (!resultModal.hidden) { if (event.key === 'Escape') resultModal.hidden = true; return }
         if (event.target.closest('a, button:not(.game-cell)')) return
