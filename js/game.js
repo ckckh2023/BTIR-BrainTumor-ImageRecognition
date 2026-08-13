@@ -2,14 +2,21 @@
     'use strict'
 
     const DIFFICULTIES = {
-        easy: { name: '简单', rows: 8, columns: 8, mines: 10, maxLines: 1, firstDelay: 5400, spawnMin: 5000, spawnMax: 7000, moveEvery: 470, lineLength: 3 },
-        normal: { name: '普通', rows: 12, columns: 12, mines: 24, maxLines: 2, firstDelay: 4000, spawnMin: 3200, spawnMax: 5000, moveEvery: 340, lineLength: 3 },
-        hard: { name: '困难', rows: 16, columns: 16, mines: 48, maxLines: 3, firstDelay: 3000, spawnMin: 2000, spawnMax: 3500, moveEvery: 240, lineLength: 4 }
+        easy: { name: '简单', rows: 8, columns: 8, mines: 10, maxLines: 1, firstDelay: 5400, spawnMin: 5000, spawnMax: 7000, moveEvery: 470, lineLength: 3, tumorDelay: 8200, tumorMin: 7600, tumorMax: 9400, tumorWarn: 1450, tumorLife: 2400, maxTumors: 1, splashRadius: 1, splashChance: .3 },
+        normal: { name: '普通', rows: 12, columns: 12, mines: 24, maxLines: 2, firstDelay: 4000, spawnMin: 3200, spawnMax: 5000, moveEvery: 340, lineLength: 3, tumorDelay: 5800, tumorMin: 4800, tumorMax: 6400, tumorWarn: 1250, tumorLife: 3300, maxTumors: 2, splashRadius: 1, splashChance: .65 },
+        hard: { name: '困难', rows: 16, columns: 16, mines: 48, maxLines: 3, firstDelay: 3000, spawnMin: 2000, spawnMax: 3500, moveEvery: 240, lineLength: 4, tumorDelay: 3900, tumorMin: 3100, tumorMax: 4500, tumorWarn: 1050, tumorLife: 4200, maxTumors: 3, splashRadius: 2, splashChance: .58 }
+    }
+
+    const TUMOR_SPLASH = {
+        easy: { radius: 1, chance: .3 },
+        normal: { radius: 1, chance: .65 },
+        hard: { radius: 2, chance: .58 }
     }
 
     const board = document.getElementById('gameBoard')
     const boardStage = document.getElementById('boardStage')
     const threatPreviewLayer = document.getElementById('threatPreviewLayer')
+    const brainActors = [...document.querySelectorAll('.brain-actor')]
     const difficultyList = document.getElementById('difficultyList')
     const restartButton = document.getElementById('restartButton')
     const mineCounter = document.getElementById('mineCounter')
@@ -46,6 +53,9 @@
     let nextSpawnAt = 0
     let nextMoveAt = 0
     let threatLines = []
+    let tumorWarnings = new Map()
+    let tumorCells = new Map()
+    let nextTumorAt = 0
     let inputMode = 'mouse'
     let muted = false
     let audioContext = null
@@ -99,6 +109,7 @@
         window.clearInterval(timerHandle)
         window.clearInterval(threatHandle)
         config = DIFFICULTIES[difficultyKey]
+        Object.assign(config, TUMOR_SPLASH[difficultyKey])
         mines = sampleMines()
         revealed = new Set()
         flagged = new Set()
@@ -108,6 +119,10 @@
         startedAt = null
         finalSeconds = 0
         threatLines = []
+        tumorWarnings = new Map()
+        tumorCells = new Map()
+        nextTumorAt = 0
+        boardStage.querySelectorAll('.tumor-projectile').forEach((projectile) => projectile.remove())
         inputMode = 'mouse'
         nextSpawnAt = 0
         nextMoveAt = 0
@@ -125,6 +140,7 @@
         startedAt = performance.now()
         nextSpawnAt = startedAt + config.firstDelay
         nextMoveAt = startedAt + config.moveEvery
+        nextTumorAt = startedAt + config.tumorDelay
         status.textContent = '扫描进行中'
         status.className = 'game-status running'
         footerMessage.textContent = '红色扫描线即将进入区域'
@@ -150,6 +166,7 @@
 
     function reveal(index) {
         if (state === 'won' || state === 'lost' || flagged.has(index)) return
+        if (tumorCells.has(index)) return toast('肿瘤干扰中，请等待该区域恢复')
         beginIfNeeded()
         if (firstScan) { protectOpening(index); firstScan = false }
         if (revealed.has(index)) {
@@ -175,6 +192,7 @@
 
     function toggleFlag(index) {
         if (state === 'won' || state === 'lost' || revealed.has(index)) return
+        if (tumorCells.has(index)) return toast('肿瘤干扰中，暂不能标记')
         if (flagged.has(index)) flagged.delete(index)
         else if (flagged.size < config.mines) flagged.add(index)
         else return toast('标记数量已达到本局异常信号上限')
@@ -218,10 +236,94 @@
             threatLines = threatLines.filter((line) => line.step > 0 ? line.offset < (line.horizontal ? horizontalLimit : verticalLimit) : line.offset + config.lineLength > 0)
             nextMoveAt = now + config.moveEvery
         }
+        const tumorsChanged = updateTumors(now)
         const activeCells = new Set(threatLines.flatMap(lineCells))
         if (activeCells.has(selected)) return lose('红色扫描线已覆盖当前扫描位置，任务失败')
-        renderThreats(activeCells)
+        if (tumorsChanged) render()
+        else renderThreats(activeCells)
         updateThreatMeter()
+    }
+
+    function tumorSlots() {
+        const fractions = [[.2,.2],[.5,.2],[.8,.2],[.2,.5],[.8,.5],[.2,.8],[.5,.8],[.8,.8],[.5,.5]]
+        return fractions.map(([row, column]) => indexOf(Math.round((config.rows - 1) * row), Math.round((config.columns - 1) * column)))
+    }
+
+    function tumorBlastCells(center) {
+        const { radius, chance: baseChance } = TUMOR_SPLASH[difficultyKey]
+        const [centerRow, centerColumn] = positionOf(center)
+        const cells = [{ index: center, center: true }]
+        for (let row = centerRow - radius; row <= centerRow + radius; row += 1) {
+            for (let column = centerColumn - radius; column <= centerColumn + radius; column += 1) {
+                if (row < 0 || row >= config.rows || column < 0 || column >= config.columns) continue
+                const index = indexOf(row, column)
+                if (index === center || tumorWarnings.has(index) || tumorCells.has(index) || revealed.has(index) || flagged.has(index) || mines.has(index)) continue
+                const distance = Math.max(Math.abs(row - centerRow), Math.abs(column - centerColumn))
+                const chance = Math.max(.16, baseChance - (distance - 1) * .18)
+                if (Math.random() < chance) cells.push({ index, center: false })
+            }
+        }
+        return cells
+    }
+
+    function updateTumors(now) {
+        let changed = false
+        for (const [cell, warning] of tumorWarnings) {
+            if (now < warning.landsAt) continue
+            tumorWarnings.delete(cell)
+            tumorCells.set(cell, now + config.tumorLife)
+            footerMessage.textContent = '肿瘤已落入区域，暂时避开红色格子'
+            tone(190, .14)
+            changed = true
+        }
+        for (const [cell, expiresAt] of tumorCells) {
+            if (now >= expiresAt) {
+                tumorCells.delete(cell)
+                changed = true
+            }
+        }
+        if (now < nextTumorAt || tumorWarnings.size || tumorCells.size >= config.maxTumors) return changed
+        const candidates = tumorSlots().filter((cell) => !tumorWarnings.has(cell) && !tumorCells.has(cell) && !revealed.has(cell) && !flagged.has(cell) && !mines.has(cell))
+        if (candidates.length) {
+            const cell = candidates[Math.floor(Math.random() * candidates.length)]
+            tumorBlastCells(cell).forEach((target) => tumorWarnings.set(target.index, { landsAt: now + config.tumorWarn, center: target.center }))
+            throwTumor(cell)
+            footerMessage.textContent = '肿瘤正在锁定目标，圆环收缩后生效'
+            tone(230, .12)
+            changed = true
+        }
+        nextTumorAt = now + config.tumorMin + Math.random() * (config.tumorMax - config.tumorMin)
+        return changed
+    }
+
+    function throwTumor(cell) {
+        const target = board.children[cell]
+        if (!target || !brainActors.length) return
+        const stageRect = boardStage.getBoundingClientRect()
+        const targetRect = target.getBoundingClientRect()
+        const targetX = targetRect.left - stageRect.left + targetRect.width / 2
+        const targetY = targetRect.top - stageRect.top + targetRect.height / 2
+        const actor = targetX < stageRect.width / 2 ? brainActors[0] : brainActors[brainActors.length - 1]
+        const actorRect = actor.getBoundingClientRect()
+        const sourceX = actorRect.left - stageRect.left + actorRect.width / 2
+        const sourceY = actorRect.top - stageRect.top + actorRect.height / 2
+        const projectile = document.createElement('i')
+        projectile.className = 'tumor-projectile'
+        projectile.style.setProperty('--tumor-flight', `${config.tumorWarn}ms`)
+        projectile.style.left = `${sourceX}px`
+        projectile.style.top = `${sourceY}px`
+        boardStage.appendChild(projectile)
+        actor.classList.remove('throwing')
+        void actor.offsetWidth
+        actor.classList.add('throwing')
+        window.setTimeout(() => actor.classList.remove('throwing'), 720)
+        window.requestAnimationFrame(() => {
+            projectile.style.left = `${targetX}px`
+            projectile.style.top = `${targetY}px`
+            projectile.style.transform = 'translate(-50%, -50%) scale(.25)'
+            projectile.style.opacity = '0'
+        })
+        window.setTimeout(() => projectile.remove(), config.tumorWarn + 80)
     }
 
     function renderThreats(activeCells = new Set(threatLines.flatMap(lineCells))) {
@@ -269,7 +371,15 @@
             cell.textContent = ''
             cell.tabIndex = index === selected ? 0 : -1
             if (index === selected) cell.classList.add('selected')
-            if (flagged.has(index)) {
+            const tumorWarning = tumorWarnings.get(index)
+            if (tumorWarning) {
+                cell.classList.add(tumorWarning.center ? 'tumor-target' : 'tumor-splash-target')
+                cell.style.setProperty('--tumor-lock-duration', `${config.tumorWarn}ms`)
+            }
+            if (tumorCells.has(index)) {
+                cell.classList.add('tumor-blocked')
+                cell.setAttribute('aria-label', `第 ${row + 1} 行，第 ${column + 1} 列，肿瘤干扰中`)
+            } else if (flagged.has(index)) {
                 cell.classList.add('flagged')
                 cell.setAttribute('aria-label', `第 ${row + 1} 行，第 ${column + 1} 列，已标记异常`)
             } else if (revealed.has(index)) {
@@ -283,6 +393,7 @@
                     cell.setAttribute('aria-label', `第 ${row + 1} 行，第 ${column + 1} 列，已扫描，周围 ${count} 个异常信号`)
                 }
             } else cell.setAttribute('aria-label', `第 ${row + 1} 行，第 ${column + 1} 列，未扫描`)
+            if (tumorWarning) cell.setAttribute('aria-label', `第 ${row + 1} 行，第 ${column + 1} 列，肿瘤${tumorWarning.center ? '即将落点' : '溅射预警'}`)
         })
         if (state === 'lost') {
             mines.forEach((index) => {
