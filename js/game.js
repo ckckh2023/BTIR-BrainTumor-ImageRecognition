@@ -8,6 +8,8 @@
     }
 
     const board = document.getElementById('gameBoard')
+    const boardStage = document.getElementById('boardStage')
+    const threatPreviewLayer = document.getElementById('threatPreviewLayer')
     const difficultyList = document.getElementById('difficultyList')
     const restartButton = document.getElementById('restartButton')
     const mineCounter = document.getElementById('mineCounter')
@@ -44,6 +46,7 @@
     let nextSpawnAt = 0
     let nextMoveAt = 0
     let threatLines = []
+    let inputMode = 'mouse'
     let muted = false
     let audioContext = null
 
@@ -105,6 +108,7 @@
         startedAt = null
         finalSeconds = 0
         threatLines = []
+        inputMode = 'mouse'
         nextSpawnAt = 0
         nextMoveAt = 0
         resultModal.hidden = true
@@ -184,7 +188,8 @@
         const fixedLimit = horizontal ? config.rows : config.columns
         const choices = Array.from({ length: fixedLimit }, (_, index) => index).filter((index) => index !== blocked)
         const step = Math.random() < .5 ? -1 : 1
-        return { horizontal, fixed: choices[Math.floor(Math.random() * choices.length)], step, offset: step > 0 ? -config.lineLength + 1 : (horizontal ? config.columns : config.rows) - 1 }
+        const limit = horizontal ? config.columns : config.rows
+        return { horizontal, fixed: choices[Math.floor(Math.random() * choices.length)], step, offset: step > 0 ? -config.lineLength - 2 : limit + 2 }
     }
 
     function lineCells(line) {
@@ -214,6 +219,7 @@
             nextMoveAt = now + config.moveEvery
         }
         const activeCells = new Set(threatLines.flatMap(lineCells))
+        if (activeCells.has(selected)) return lose('红色扫描线已覆盖当前扫描位置，任务失败')
         renderThreats(activeCells)
         updateThreatMeter()
     }
@@ -224,6 +230,34 @@
             cell.classList.remove('threat', 'horizontal', 'vertical')
             const line = threatLines.find((candidate) => lineCells(candidate).includes(index))
             if (activeCells.has(index) && line) cell.classList.add('threat', line.horizontal ? 'horizontal' : 'vertical')
+        })
+        renderThreatPreviews()
+    }
+
+    function renderThreatPreviews() {
+        threatPreviewLayer.replaceChildren()
+        const stageRect = boardStage.getBoundingClientRect()
+        const limit = (line) => line.horizontal ? config.columns : config.rows
+        threatLines.forEach((line) => {
+            const size = limit(line)
+            const outside = line.step > 0 ? line.offset + config.lineLength <= 0 : line.offset >= size
+            if (!outside) return
+            const anchor = board.children[line.horizontal
+                ? indexOf(line.fixed, line.step > 0 ? 0 : config.columns - 1)
+                : indexOf(line.step > 0 ? 0 : config.rows - 1, line.fixed)]
+            if (!anchor) return
+            const rect = anchor.getBoundingClientRect()
+            const preview = document.createElement('i')
+            preview.className = 'threat-preview'
+            preview.textContent = '!'
+            if (line.horizontal) {
+                preview.style.top = `${rect.top - stageRect.top + rect.height / 2}px`
+                preview.style.left = `${line.step > 0 ? rect.left - stageRect.left - 36 : rect.right - stageRect.left + 20}px`
+            } else {
+                preview.style.left = `${rect.left - stageRect.left + rect.width / 2}px`
+                preview.style.top = `${line.step > 0 ? rect.top - stageRect.top - 36 : rect.bottom - stageRect.top + 20}px`
+            }
+            threatPreviewLayer.appendChild(preview)
         })
     }
 
@@ -299,6 +333,7 @@
 
     function moveSelection(deltaRow, deltaColumn) {
         if (state === 'won' || state === 'lost') return
+        inputMode = 'keyboard'
         const [row, column] = positionOf(selected)
         const nextRow = Math.max(0, Math.min(config.rows - 1, row + deltaRow))
         const nextColumn = Math.max(0, Math.min(config.columns - 1, column + deltaColumn))
@@ -318,11 +353,11 @@
         } catch (e) { /* 音频不可用 */ }
     }
 
-    board.addEventListener('click', (event) => { const cell = event.target.closest('.game-cell'); if (!cell) return; selected = Number(cell.dataset.index); reveal(selected) })
-    board.addEventListener('contextmenu', (event) => { const cell = event.target.closest('.game-cell'); if (!cell) return; event.preventDefault(); selected = Number(cell.dataset.index); toggleFlag(selected) })
+    board.addEventListener('click', (event) => { const cell = event.target.closest('.game-cell'); if (!cell) return; inputMode = 'mouse'; selected = Number(cell.dataset.index); reveal(selected) })
+    board.addEventListener('contextmenu', (event) => { const cell = event.target.closest('.game-cell'); if (!cell) return; event.preventDefault(); inputMode = 'mouse'; selected = Number(cell.dataset.index); toggleFlag(selected) })
     board.addEventListener('pointermove', (event) => {
         const cell = event.target.closest('.game-cell')
-        if (!cell || state === 'won' || state === 'lost') return
+        if (!cell || inputMode !== 'mouse' || state === 'won' || state === 'lost') return
         const next = Number(cell.dataset.index)
         if (next === selected) return
         selected = next
