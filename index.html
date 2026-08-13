@@ -18,7 +18,7 @@
             <div class="brand-zone" id="brandZone">
                 <a class="easter-trigger" id="easterTrigger" href="game.html" aria-label="打开彩蛋小游戏">点击我</a>
                 <button class="draggable-logo" id="draggableLogo" type="button" aria-label="BTIR 项目 Logo，可拖动以发现彩蛋" title="这个 Logo 好像可以拖动……">
-                    <img class="logo-mark" src="./assets/icon_exp.png?v=2" alt="" aria-hidden="true">
+                    <span class="logo-mark" aria-hidden="true"></span>
                 </button>
                 <a class="brand-copy" href="#top" aria-label="返回页面顶部">
                     <strong>BTIR</strong>
@@ -106,13 +106,6 @@
             </div>
         </section>
 
-        <section class="signal-strip" aria-label="平台概览">
-            <div><strong>4</strong><span>种 MRI 模态</span></div>
-            <div><strong>2</strong><span>类本地模型</span></div>
-            <div><strong>3D</strong><span>分割与体渲染</span></div>
-            <div><strong>全流程</strong><span>任务追踪与随访</span></div>
-        </section>
-
         <section class="content-section section-shell" id="capabilities">
             <div class="section-heading reveal-item">
                 <div><span class="section-kicker">CORE CAPABILITIES</span><h2>从影像输入到可信结果</h2></div>
@@ -124,7 +117,7 @@
                     <h3>灵活的病例输入</h3><p>支持四模态 NIfTI、原始 DICOM 文件夹与 ZIP，自动匹配并转换 FLAIR、T1CE、T1、T2，异常时提供人工校正。</p>
                     <ul><li>拖拽上传</li><li>模态自动识别</li><li>输入完整性校验</li></ul>
                 </article>
-                <article class="capability-card featured-card reveal-item">
+                <article class="capability-card reveal-item">
                     <span class="card-index">02</span><div class="cap-icon model-icon"><i></i></div>
                     <h3>双模型协同分析</h3><p>本地 ViT 多切片分类与 SuperLightNet 三维分割相互补充，组合病例级判断、空间定位与体积证据。</p>
                     <ul><li>分类置信度</li><li>三维区域分割</li><li>综合一致性判断</li></ul>
@@ -191,9 +184,9 @@
                     <h2>开放代码，共同完善<br>医学影像分析体验</h2>
                     <p>BTIR 采用 MIT 许可证开源。欢迎查看源码、提交 Issue、完善文档或参与功能贡献。</p>
                     <div class="contributors" aria-label="项目贡献者">
-                        <a href="https://github.com/Songline-music" target="_blank" rel="noopener noreferrer"><span>S</span><b>Songline-music</b></a>
-                        <a href="https://github.com/ckckh2023" target="_blank" rel="noopener noreferrer"><span>C</span><b>ckckh2023</b></a>
-                        <a href="https://github.com/TangibleDreams913" target="_blank" rel="noopener noreferrer"><span>T</span><b>TangibleDreams913</b></a>
+                        <a href="https://github.com/Songline-music" target="_blank" rel="noopener noreferrer"><img src="https://blog.songline-blog.com/uploads/songline/snowMan.png?size=64" alt="Songline-music" loading="lazy"><b>Songline-music</b></a>
+                        <a href="https://github.com/ckckh2023" target="_blank" rel="noopener noreferrer"><img src="https://github.com/ckckh2023.png?size=64" alt="ckckh2023" loading="lazy"><b>ckckh2023</b></a>
+                        <a href="https://github.com/TangibleDreams913" target="_blank" rel="noopener noreferrer"><img src="https://github.com/TangibleDreams913.png?size=64" alt="TangibleDreams913" loading="lazy"><b>TangibleDreams913</b></a>
                     </div>
                     <div class="open-actions"><a class="button primary" href="https://github.com/ckckh2023/BTIR-BrainTumor-ImageRecognition" target="_blank" rel="noopener noreferrer">访问 GitHub 仓库 <span aria-hidden="true">↗</span></a><a class="button secondary docs-link" href="https://github.com/ckckh2023/BTIR-BrainTumor-ImageRecognition#readme" target="_blank" rel="noopener noreferrer">查看使用说明</a></div>
                 </div>
@@ -219,7 +212,7 @@
     </main>
 
     <footer class="site-footer">
-        <div class="section-shell"><div class="footer-brand"><span class="footer-logo"><img src="./assets/icon_exp.png?v=2" alt="" aria-hidden="true"></span><div><strong>BTIR</strong><span>脑肿瘤 MRI 图像分析平台</span></div></div><p>本项目仅用于研究与技术交流，分析结果不能替代专业医学诊断。</p><div class="footer-links"><a class="docs-link" href="https://github.com/ckckh2023/BTIR-BrainTumor-ImageRecognition#readme" target="_blank" rel="noopener noreferrer">使用说明</a><a href="https://github.com/ckckh2023/BTIR-BrainTumor-ImageRecognition" target="_blank" rel="noopener noreferrer">GitHub</a><a href="#top">返回顶部 ↑</a></div></div>
+        <div class="section-shell"><div class="footer-brand"><span class="footer-logo" aria-hidden="true"></span><div><strong>BTIR</strong><span>脑肿瘤 MRI 图像分析平台</span></div></div><p>本项目仅用于研究与技术交流，分析结果不能替代专业医学诊断。</p><div class="footer-links"><a class="docs-link" href="https://github.com/ckckh2023/BTIR-BrainTumor-ImageRecognition#readme" target="_blank" rel="noopener noreferrer">使用说明</a><a href="https://github.com/ckckh2023/BTIR-BrainTumor-ImageRecognition" target="_blank" rel="noopener noreferrer">GitHub</a><a class="scroll-top" href="#top">返回顶部 ↑</a></div></div>
     </footer>
     <div class="drag-hint" id="dragHint" role="status">拖动 Logo，看看下面藏了什么</div>
     <script src="./js/showcase.js"></script>
