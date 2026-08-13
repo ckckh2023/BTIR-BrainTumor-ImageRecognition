@@ -15,6 +15,9 @@
         extreme: { radius: 2, chance: .78 }
     }
 
+    DIFFICULTIES.escape = { name: '逃生模式', rows: 20, columns: 20, mines: 0, maxLines: 7, firstDelay: 900, spawnMin: 650, spawnMax: 1150, moveEvery: 115, lineLength: 6, tumorDelay: 1300, tumorMin: 1050, tumorMax: 1700, tumorWarn: 620, tumorLife: 2600, maxTumors: 6, splashRadius: 2, splashChance: .82 }
+    TUMOR_SPLASH.escape = { radius: 2, chance: .82 }
+
     const board = document.getElementById('gameBoard')
     const boardStage = document.getElementById('boardStage')
     const threatPreviewLayer = document.getElementById('threatPreviewLayer')
@@ -58,6 +61,9 @@
     let tumorWarnings = new Map()
     let tumorCells = new Map()
     let tumorWaves = []
+    let escapeHealth = 3
+    let escapeEndsAt = 0
+    let invincibleUntil = 0
     let nextTumorAt = 0
     let inputMode = 'mouse'
     let muted = false
@@ -113,7 +119,7 @@
         window.clearInterval(threatHandle)
         config = DIFFICULTIES[difficultyKey]
         Object.assign(config, TUMOR_SPLASH[difficultyKey])
-        mines = sampleMines()
+        mines = difficultyKey === 'escape' ? new Set() : sampleMines()
         revealed = new Set()
         flagged = new Set()
         firstScan = true
@@ -125,15 +131,18 @@
         tumorWarnings = new Map()
         tumorCells = new Map()
         tumorWaves = []
+        escapeHealth = 3
+        escapeEndsAt = 0
+        invincibleUntil = 0
         nextTumorAt = 0
         boardStage.querySelectorAll('.tumor-projectile').forEach((projectile) => projectile.remove())
         inputMode = 'mouse'
         nextSpawnAt = 0
         nextMoveAt = 0
         resultModal.hidden = true
-        status.textContent = '等待首次扫描'
+        status.textContent = difficultyKey === 'escape' ? '点击棋盘开始逃生' : '等待首次扫描'
         status.className = 'game-status idle'
-        footerMessage.textContent = '选择任意区域开始任务'
+        footerMessage.textContent = difficultyKey === 'escape' ? '坚持 60 秒；红线和肿瘤都会造成伤害' : '选择任意区域开始任务'
         createBoard()
         updateHud()
     }
@@ -142,12 +151,13 @@
         if (state !== 'idle') return
         state = 'running'
         startedAt = performance.now()
+        escapeEndsAt = difficultyKey === 'escape' ? startedAt + 60000 : 0
         nextSpawnAt = startedAt + config.firstDelay
         nextMoveAt = startedAt + config.moveEvery
         nextTumorAt = startedAt + config.tumorDelay
-        status.textContent = '扫描进行中'
+        status.textContent = difficultyKey === 'escape' ? '逃生倒计时已启动' : '扫描进行中'
         status.className = 'game-status running'
-        footerMessage.textContent = '红色扫描线即将进入区域'
+        footerMessage.textContent = difficultyKey === 'escape' ? '移动光标或方向键躲避；受伤后短暂无敌' : '红色扫描线即将进入区域'
         timerHandle = window.setInterval(updateHud, 250)
         threatHandle = window.setInterval(advanceThreats, 80)
     }
@@ -170,6 +180,7 @@
 
     function reveal(index) {
         if (state === 'won' || state === 'lost' || flagged.has(index)) return
+        if (difficultyKey === 'escape') { selected = index; beginIfNeeded(); render(); return }
         if (tumorCells.has(index)) return toast('肿瘤干扰中，请等待该区域恢复')
         beginIfNeeded()
         if (firstScan) { protectOpening(index); firstScan = false }
@@ -195,6 +206,7 @@
     }
 
     function toggleFlag(index) {
+        if (difficultyKey === 'escape') return
         if (state === 'won' || state === 'lost' || revealed.has(index)) return
         if (tumorCells.has(index)) return toast('肿瘤干扰中，暂不能标记')
         if (flagged.has(index)) flagged.delete(index)
@@ -229,7 +241,7 @@
         const now = performance.now()
         if (now >= nextSpawnAt && threatLines.length < config.maxLines) {
             threatLines.push(randomLine())
-            if (['hard', 'extreme'].includes(difficultyKey) && Math.random() < (difficultyKey === 'extreme' ? .8 : .45) && threatLines.length < config.maxLines) threatLines.push(randomLine())
+            if (['hard', 'extreme', 'escape'].includes(difficultyKey) && Math.random() < (difficultyKey === 'escape' ? 1 : difficultyKey === 'extreme' ? .8 : .45) && threatLines.length < config.maxLines) threatLines.push(randomLine())
             nextSpawnAt = now + config.spawnMin + Math.random() * (config.spawnMax - config.spawnMin)
             tone(175, .09)
         }
@@ -242,10 +254,27 @@
         }
         const tumorsChanged = updateTumors(now)
         const activeCells = new Set(threatLines.flatMap(lineCells))
-        if (activeCells.has(selected)) return lose('红色扫描线已覆盖当前扫描位置，任务失败')
+        if (difficultyKey === 'escape') {
+            if (now >= escapeEndsAt) return finish(true, '已成功坚持 60 秒，完成逃生')
+            if (activeCells.has(selected)) takeEscapeDamage('红色扫描线命中')
+            if (tumorCells.has(selected)) takeEscapeDamage('肿瘤球爆裂命中')
+        } else if (activeCells.has(selected)) return lose('红色扫描线已覆盖当前扫描位置，任务失败')
         if (tumorsChanged) render()
         else renderThreats(activeCells)
         updateThreatMeter()
+    }
+
+    function takeEscapeDamage(reason) {
+        const now = performance.now()
+        if (now < invincibleUntil || state !== 'running') return
+        escapeHealth -= 1
+        invincibleUntil = now + 900
+        boardStage.classList.add('damage-flash')
+        window.setTimeout(() => boardStage.classList.remove('damage-flash'), 300)
+        tone(95, .22)
+        if (escapeHealth <= 0) return lose(`${reason}，生命值耗尽`)
+        footerMessage.textContent = `${reason}，剩余 ${escapeHealth} 点生命；短暂无敌中`
+        render(); updateHud()
     }
 
     function tumorSlots() {
@@ -380,6 +409,7 @@
             cell.textContent = ''
             cell.tabIndex = index === selected ? 0 : -1
             if (index === selected) cell.classList.add('selected')
+            if (difficultyKey === 'escape') cell.classList.add('escape-cell')
             const tumorWarning = tumorWarnings.get(index)
             if (tumorWarning) {
                 cell.classList.add(tumorWarning.center ? 'tumor-target' : 'tumor-splash-target')
@@ -416,7 +446,18 @@
     function elapsedSeconds() { return startedAt ? (state === 'running' ? (performance.now() - startedAt) / 1000 : finalSeconds) : 0 }
     function formatTime(seconds) { const total = Math.floor(seconds); return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}` }
     function progress() { return Math.round(revealed.size / (config.rows * config.columns - config.mines) * 100) }
-    function updateHud() { mineCounter.textContent = String(Math.max(0, config.mines - flagged.size)); timerValue.textContent = formatTime(elapsedSeconds()); progressValue.textContent = `${Math.min(100, progress())}%`; updateThreatMeter() }
+    function updateHud() {
+        if (difficultyKey === 'escape') {
+            mineCounter.textContent = `♥ ${escapeHealth}`
+            timerValue.textContent = `${Math.max(0, Math.ceil((escapeEndsAt - performance.now()) / 1000)).toString().padStart(2, '0')}s`
+            progressValue.textContent = '逃生中'
+        } else {
+            mineCounter.textContent = String(Math.max(0, config.mines - flagged.size))
+            timerValue.textContent = formatTime(elapsedSeconds())
+            progressValue.textContent = `${Math.min(100, progress())}%`
+        }
+        updateThreatMeter()
+    }
     function updateThreatMeter() {
         const ratio = config.maxLines ? threatLines.length / config.maxLines : 0
         const label = ratio >= .8 ? '高' : ratio >= .4 ? '中' : '低'
@@ -497,8 +538,9 @@
         if (!button) return
         difficultyKey = button.dataset.difficulty
         difficultyList.querySelectorAll('button').forEach((item) => item.classList.toggle('active', item === button))
-        document.body.classList.toggle('extreme-mode', difficultyKey === 'extreme')
-        if (difficultyKey === 'extreme' && !document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {})
+        document.body.classList.toggle('extreme-mode', ['extreme', 'escape'].includes(difficultyKey))
+        document.body.classList.toggle('escape-mode', difficultyKey === 'escape')
+        if (['extreme', 'escape'].includes(difficultyKey) && !document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {})
         resetGame()
     })
     restartButton.addEventListener('click', resetGame)
