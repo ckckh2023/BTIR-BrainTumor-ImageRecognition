@@ -39,8 +39,8 @@ logs/
 .agents/
 .arts/
 arts/
-codeartsdoer/
+.codeartsdoer/
+.codex/
 
 # 前端工具链产物
 frontend/node_modules/
-.codeartsdoer
