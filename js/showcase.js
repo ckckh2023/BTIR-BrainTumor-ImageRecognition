@@ -8,6 +8,29 @@
     const logo = document.getElementById('draggableLogo')
     const brandZone = document.getElementById('brandZone')
     const dragHint = document.getElementById('dragHint')
+    const repoModal = document.getElementById('repoModal')
+    const repoTriggers = document.querySelectorAll('[data-repo-modal]')
+    let repoTrigger = null
+
+    function closeRepoModal() {
+        if (repoModal.hidden) return
+        repoModal.hidden = true
+        document.body.classList.remove('repo-modal-open')
+        repoTrigger?.focus({ preventScroll: true })
+    }
+
+    repoTriggers.forEach((trigger) => trigger.addEventListener('click', () => {
+        repoTrigger = trigger
+        repoModal.hidden = false
+        document.body.classList.add('repo-modal-open')
+        repoModal.querySelector('.repo-close').focus()
+    }))
+    repoModal.addEventListener('click', (event) => {
+        if (event.target.closest('[data-repo-close]')) closeRepoModal()
+    })
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !repoModal.hidden) closeRepoModal()
+    })
 
     themeToggle.addEventListener('click', () => {
         const theme = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'
