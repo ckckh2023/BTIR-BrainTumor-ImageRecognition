@@ -191,3 +191,65 @@ input:focus {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
 }
+
+@media (max-width: 560px) {
+    body {
+        align-items: flex-start;
+        min-height: 100vh;
+        min-height: 100dvh;
+        padding: 16px;
+    }
+
+    .auth-card {
+        width: 100%;
+        margin: auto 0;
+        padding: 38px 20px 24px;
+        border-radius: var(--btir-radius-md);
+    }
+
+    .auth-card .theme-toggle {
+        top: 10px;
+        right: 10px;
+    }
+
+    h1 {
+        margin-bottom: 20px;
+        padding-right: 36px;
+        padding-left: 36px;
+        font-size: 22px;
+        line-height: 1.35;
+    }
+
+    input {
+        min-height: 44px;
+        padding: 10px 12px;
+    }
+
+    .submit-btn {
+        min-height: 46px;
+    }
+
+    .theme-toggle {
+        width: 40px;
+        height: 40px;
+    }
+
+    .message {
+        padding: 10px 12px;
+    }
+}
+
+@media (max-width: 360px) {
+    body {
+        padding: 10px;
+    }
+
+    .auth-card {
+        padding-right: 16px;
+        padding-left: 16px;
+    }
+
+    h1 {
+        font-size: 20px;
+    }
+}

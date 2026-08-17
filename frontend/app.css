@@ -4407,3 +4407,328 @@ body {
                 min-height: calc(100vh - 160px);
             }
         }
+
+        /* Mobile interaction pass: preserve every workspace action without requiring
+           horizontal scrolling or hover-only controls. */
+        @media (max-width: 760px) {
+            body {
+                display: block;
+                min-width: 320px;
+                padding: 0;
+            }
+
+            .app-container {
+                width: 100%;
+                min-height: 100vh;
+                min-height: 100dvh;
+                max-height: none;
+                padding: 16px;
+                border: 0;
+                border-radius: 0;
+                box-shadow: none;
+            }
+
+            .app-topbar {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
+                gap: 10px;
+                align-items: center;
+            }
+
+            .app-title-group {
+                min-width: 0;
+                gap: 8px;
+            }
+
+            .app-title-text h1 {
+                font-size: 18px;
+                line-height: 1.25;
+            }
+
+            .app-logo {
+                width: 34px;
+                height: 34px;
+            }
+
+            .app-user-area {
+                min-width: 0;
+                gap: 6px;
+            }
+
+            .app-username {
+                max-width: 96px;
+            }
+
+            .theme-toggle,
+            .logout-btn {
+                width: 40px;
+                height: 40px;
+            }
+
+            .topbar-reupload-btn {
+                min-height: 40px;
+                padding: 8px 10px;
+            }
+
+            .app-main-nav {
+                grid-column: 1 / -1;
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 6px;
+                width: 100%;
+            }
+
+            .app-main-nav-btn {
+                min-height: 42px;
+                padding: 8px;
+            }
+
+            .app-content,
+            .left-panel,
+            .left-panel-scroll,
+            .right-panel,
+            .task-manager,
+            .task-list,
+            .result-workspace .right-content,
+            .result-workspace .case-data-column {
+                min-height: auto;
+                max-height: none;
+                overflow: visible;
+            }
+
+            .left-panel {
+                width: 100%;
+            }
+
+            .right-panel {
+                width: 100%;
+                min-height: auto;
+                padding-top: 16px;
+            }
+
+            .result-workspace .case-viewer-column {
+                height: min(58vh, 460px);
+                min-height: 320px;
+            }
+
+            .result-workspace .case-data-column {
+                padding: 16px 0 0;
+            }
+
+            .volume-input-row {
+                grid-template-columns: minmax(0, 1fr) auto;
+                gap: 7px;
+            }
+
+            .volume-modality {
+                grid-column: 1 / -1;
+            }
+
+            .browse-btn,
+            .browse-btn.compact,
+            .volume-source-menu button,
+            .volume-case-source-picker > button,
+            .volume-case-source-options button {
+                min-height: 40px;
+            }
+
+            .follow-up-upload-context,
+            .dicom-series-selection-panel,
+            .volume-correction-panel {
+                padding: 12px;
+            }
+
+            .result-region-row,
+            .follow-up-history-item {
+                grid-template-columns: minmax(0, 1fr) auto;
+            }
+
+            .result-region-row .region-bar,
+            .follow-up-history-item small {
+                grid-column: 1 / -1;
+            }
+
+            .case-viewer-tabs {
+                justify-content: flex-start;
+                max-width: 100%;
+                overflow-x: auto;
+                scrollbar-width: thin;
+            }
+
+            .case-viewer-tab {
+                flex: 1 0 104px;
+                min-height: 40px;
+            }
+
+            .file-downloads,
+            .case-preview-toolbar,
+            .case-preview-controls,
+            .task-card-actions {
+                gap: 8px;
+            }
+
+            .task-list-tabs {
+                gap: 14px;
+            }
+
+            .task-list-tab {
+                min-height: 40px;
+                padding: 8px 4px;
+            }
+
+            .task-query-row {
+                flex-wrap: wrap;
+            }
+
+            .task-query-row input {
+                flex: 1 1 100%;
+                min-height: 42px;
+            }
+
+            .task-query-row select {
+                flex: 1 1 132px;
+                width: auto;
+                min-height: 42px;
+            }
+
+            .task-small-btn {
+                min-height: 42px;
+                padding: 8px 13px;
+            }
+
+            .task-rename-btn {
+                width: 36px;
+                height: 36px;
+                opacity: 1;
+            }
+
+            .task-rename-confirm-btn,
+            .task-rename-cancel-btn {
+                width: 36px;
+                height: 36px;
+            }
+
+            .task-run-history-row {
+                grid-template-columns: 44px minmax(0, 1fr);
+                padding: 5px 0;
+            }
+
+            .task-run-history-row > :last-child {
+                grid-column: 2;
+            }
+
+            .task-pagination {
+                flex-wrap: wrap;
+                gap: 8px;
+                padding-bottom: 4px;
+            }
+
+            .volume-viewer-toolbar {
+                gap: 7px;
+                padding: 8px;
+            }
+
+            .volume-viewer-toolbar-row {
+                gap: 6px;
+            }
+
+            .volume-viewer-toolbar-group {
+                flex-wrap: wrap;
+                gap: 6px;
+            }
+
+            .volume-viewer-button,
+            .volume-viewer-error-panel button {
+                min-height: 36px;
+                padding: 7px 9px;
+            }
+
+            .volume-viewer-mask-control {
+                min-height: 36px;
+            }
+
+            .volume-viewer-mask-control input[type="range"] {
+                width: min(130px, 34vw);
+            }
+
+            .volume-viewer-stage canvas {
+                min-height: 280px;
+            }
+
+            .app-toast {
+                bottom: max(16px, env(safe-area-inset-bottom));
+                width: calc(100% - 28px);
+                max-width: 440px;
+                justify-content: center;
+                padding: 11px 14px;
+                text-align: center;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .app-container {
+                padding: 12px;
+            }
+
+            .app-title-text h1 {
+                font-size: 16px;
+            }
+
+            .app-logo {
+                width: 31px;
+                height: 31px;
+            }
+
+            .app-username {
+                display: none;
+            }
+
+            .topbar-reupload-btn {
+                max-width: 132px;
+                font-size: 11px;
+                line-height: 1.25;
+            }
+
+            .case-viewer-tab {
+                flex-basis: 96px;
+                font-size: 12px;
+            }
+
+            .task-card-header,
+            .task-case-group-heading {
+                align-items: flex-start;
+            }
+
+            .task-card-status-group {
+                max-width: 42%;
+            }
+
+            .task-card-actions > * {
+                flex: 1 1 118px;
+            }
+
+            .volume-viewer-stage canvas {
+                min-height: 240px;
+            }
+
+            .case-preview-mode {
+                width: 100%;
+            }
+
+            .case-preview-mode button {
+                flex: 1 1 0;
+                min-height: 38px;
+            }
+        }
+
+        @media (pointer: coarse) {
+            .volume-drop-zone,
+            .sample-download-link,
+            .file-download-link,
+            .case-preview-nav,
+            .result-details summary,
+            .analysis-observations summary,
+            .case-meta-summary {
+                min-height: 40px;
+            }
+        }
