@@ -188,9 +188,11 @@ class FrontendContractTests(unittest.TestCase):
         self.assertNotIn("right-header", self.html)
         self.assertIn('v-if="taskId && !loading"', self.html)
 
-    def test_brand_area_returns_to_the_upload_page(self) -> None:
+    def test_brand_area_uses_the_task_aware_home_action(self) -> None:
         self.assertIn("app-home-btn", self.html)
-        self.assertIn('@click.prevent="startNewUpload()"', self.html)
+        self.assertIn('@click.prevent="handleHomeClick()"', self.html)
+        self.assertIn("handleHomeClick()", self.app_js)
+        self.assertIn("this.startNewUpload()", self.app_js)
         self.assertIn(".app-home-btn", self.app_css)
 
     def test_refresh_restores_the_current_workspace(self) -> None:
@@ -372,6 +374,19 @@ class FrontendContractTests(unittest.TestCase):
         self.assertNotIn("多用户认证系统", self.login_html)
         self.assertIn(".auth-card .theme-toggle", self.auth_css)
         self.assertIn("./auth.css", self.login_html)
+
+    def test_mobile_layout_keeps_workspace_and_secondary_pages_usable(self) -> None:
+        self.assertIn("Mobile interaction pass", self.app_css)
+        self.assertIn("min-height: 100dvh", self.app_css)
+        self.assertIn(".task-query-row", self.app_css)
+        self.assertIn(".task-rename-btn", self.app_css)
+        self.assertIn(".volume-viewer-toolbar-group", self.app_css)
+        self.assertIn("@media (max-width: 560px)", self.auth_css)
+        self.assertIn("min-height: 44px", self.auth_css)
+        self.assertIn("@media (max-width: 600px)", self.about_html)
+        self.assertIn(".repository-picker-close", self.about_html)
+        self.assertIn("@media (max-width: 600px)", self.guide_html)
+        self.assertIn(".guide-sample-download", self.guide_html)
 
     def test_forced_password_change_page_is_wired(self) -> None:
         self.assertIn("当前密码", self.change_password_html)

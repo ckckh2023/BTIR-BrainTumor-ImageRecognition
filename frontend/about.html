@@ -691,6 +691,128 @@
             font-size: 12px;
         }
 
+        @media (max-width: 600px) {
+            .about-header {
+                gap: 6px;
+                padding: 8px 12px;
+            }
+
+            .about-back {
+                min-height: 40px;
+                padding: 8px 10px;
+            }
+
+            .about-title {
+                min-width: 0;
+                overflow: hidden;
+                font-size: 14px;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            .about-theme {
+                width: 40px;
+                height: 40px;
+            }
+
+            .about-main {
+                margin: 16px auto;
+                padding: 0 12px;
+            }
+
+            .about-card {
+                padding: 16px;
+                border-radius: var(--btir-radius-md);
+            }
+
+            .about-hero {
+                gap: 14px;
+                padding: 18px;
+                margin-bottom: 20px;
+            }
+
+            .about-hero-logo {
+                width: 58px;
+                height: 58px;
+            }
+
+            .about-hero-name {
+                font-size: 22px;
+                line-height: 1.25;
+            }
+
+            .about-section {
+                margin-bottom: 22px;
+            }
+
+            .about-stats {
+                gap: 8px;
+                margin-bottom: 22px;
+            }
+
+            .about-stat {
+                padding: 13px 8px;
+            }
+
+            .about-stat-value {
+                font-size: 21px;
+            }
+
+            .about-tech,
+            .about-feature,
+            .about-contributors {
+                padding: 14px;
+            }
+
+            .about-tech {
+                gap: 8px;
+            }
+
+            .about-tech-label {
+                min-width: 56px;
+            }
+
+            .about-actions {
+                display: grid;
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+
+            .about-btn {
+                justify-content: center;
+                min-height: 44px;
+            }
+
+            .about-contributor-list {
+                gap: 8px;
+            }
+
+            .about-contributor {
+                min-height: 40px;
+            }
+
+            .about-footer {
+                margin-top: 20px;
+                padding: 14px;
+                line-height: 1.7;
+            }
+
+            .repository-picker-close {
+                width: 40px;
+                height: 40px;
+            }
+
+            .repository-picker-description {
+                margin-bottom: 18px;
+                line-height: 1.55;
+            }
+
+            .repository-option {
+                min-height: 142px;
+                padding: 18px;
+            }
+        }
+
         @keyframes fade-in {
             from { opacity: 0; transform: translateY(4px); }
             to { opacity: 1; transform: translateY(0); }
