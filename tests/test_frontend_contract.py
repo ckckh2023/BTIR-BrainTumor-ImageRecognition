@@ -43,6 +43,9 @@ class FrontendContractTests(unittest.TestCase):
         cls.guide_html = (
             PROJECT_ROOT / "frontend" / "guide.html"
         ).read_text(encoding="utf-8")
+        cls.about_html = (
+            PROJECT_ROOT / "frontend" / "about.html"
+        ).read_text(encoding="utf-8")
 
     def test_3d_result_does_not_render_an_outdated_hint(self) -> None:
         self.assertNotIn("当前 3D 路线仅提供分割与定量统计", self.html)
@@ -260,10 +263,20 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("analysisActive: false", self.app_js)
         self.assertIn("this.analysisActive = true", self.app_js)
         self.assertIn("this.analysisActive = false", self.app_js)
-        self.assertIn("topbar-github-link", self.html)
-        self.assertIn("https://github.com/ckckh2023/BTIR-BrainTumor-ImageRecognition", self.html)
-        self.assertIn('M8 0C3.58 0 0 3.58 0 8', self.html)
-        self.assertIn(".topbar-github-link:hover", self.app_css)
+
+    def test_topbar_omits_the_repository_shortcut(self) -> None:
+        self.assertNotIn("topbar-github-link", self.html)
+        self.assertNotIn("topbar-github-link", self.app_css)
+
+    def test_about_page_uses_an_accessible_repository_picker(self) -> None:
+        self.assertIn('id="repositoryPicker"', self.about_html)
+        self.assertIn('aria-modal="true"', self.about_html)
+        self.assertIn("backdrop-filter: blur(14px)", self.about_html)
+        self.assertIn("https://gitcode.com/ckckh2023/BTIR-BrainTumor-ImageRecognition", self.about_html)
+        self.assertIn("https://github.com/ckckh2023/BTIR-BrainTumor-ImageRecognition", self.about_html)
+        self.assertIn("账号被标记，打开后暂时可能显示 404", self.about_html)
+        self.assertIn("https://xiao-blog.top/assets/icons/head.jpg", self.about_html)
+        self.assertIn("event.key === 'Escape'", self.about_html)
 
     def test_volume_upload_starts_with_drop_zone_and_recovers_from_ambiguity(self) -> None:
         self.assertIn("拖入 NIfTI 或 DICOM 病例文件夹，或 ZIP 压缩包", self.html)
