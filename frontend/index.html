@@ -100,7 +100,7 @@
                 }"
             >
                 <div class="left-panel">
-                <div class="left-panel-scroll">
+                <div class="left-panel-scroll" ref="leftPanelScroll">
 
                     <div class="input-group" v-if="!loading && !taskId">
                     <div class="follow-up-upload-context" v-if="caseId && !followUpContextDismissed">
@@ -1026,8 +1026,14 @@
                     <div class="json-placeholder" v-if="!selectedFileType">
                         {{ statusText.includes('等待') ? '等待识别...' : (fileList.length ? '选择文件查看' : '暂无数据') }}
                     </div>
-                    <div class="file-downloads" v-if="downloadFiles.length">
-                        <span class="file-downloads-title">下载文件：</span>
+                    <div class="file-downloads" v-if="taskId">
+                        <button
+                            type="button"
+                            class="export-report-btn"
+                            ref="exportReportBtn"
+                            :disabled="exportingReport"
+                            @click="exportReport"
+                        >{{ exportingReport ? '正在生成报告…' : '导出报告' }}</button>
                         <a
                             v-for="f in downloadFiles"
                             :key="f.path"

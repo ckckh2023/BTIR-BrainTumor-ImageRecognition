@@ -3185,6 +3185,36 @@ body {
             white-space: nowrap;
         }
 
+        .export-report-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 6px 16px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            background: var(--btir-primary);
+            color: #ffffff;
+            border: 1px solid var(--btir-primary);
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+
+        .export-report-btn:hover:not(:disabled) {
+            filter: brightness(1.08);
+        }
+
+        .export-report-btn:active:not(:disabled) {
+            transform: scale(0.97);
+        }
+
+        .export-report-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
         .file-download-link {
             display: inline-flex;
             align-items: center;
