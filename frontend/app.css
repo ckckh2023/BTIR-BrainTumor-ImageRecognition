@@ -263,12 +263,26 @@ body {
 
         .app-title-text {
             min-width: 0;
+            display: flex;
+            flex-direction: column;
+            line-height: 1.15;
         }
 
         .app-title-text h1 {
             margin: 0;
-            font-size: 22px;
+            font-size: 20px;
             line-height: 1.2;
+        }
+
+        .app-title-subtitle {
+            margin: 2px 0 0;
+            font-size: 11px;
+            line-height: 1.2;
+            color: var(--btir-text-secondary);
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .app-user-area {
@@ -4445,6 +4459,10 @@ body {
                 line-height: 1.25;
             }
 
+            .app-title-subtitle {
+                font-size: 10px;
+            }
+
             .app-logo {
                 width: 34px;
                 height: 34px;
@@ -4672,6 +4690,10 @@ body {
 
             .app-title-text h1 {
                 font-size: 16px;
+            }
+
+            .app-title-subtitle {
+                display: none;
             }
 
             .app-logo {
