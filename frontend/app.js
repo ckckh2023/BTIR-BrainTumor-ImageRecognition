@@ -67,6 +67,7 @@
                     supplementaryAnalysis: null,
                     fileList: [],
                     downloadFiles: [],
+                    exportingReport: false,
                     selectedFilePath: '',
                     selectedFileType: '',
                     integratedSources: [],
@@ -1932,6 +1933,37 @@
                         this.statusText = `<span class="status-error">✗ ${message}</span>`
                     } finally {
                         this.selectedFilePath = previousPath
+                    }
+                },
+                async exportReport() {
+                    if (this.exportingReport) return
+                    const dataCol = this.$refs.caseDataColumn
+                    const titleGroup = document.querySelector('.app-title-group')
+                    if (!dataCol || !titleGroup) {
+                        this.statusText = '<span class="status-error">✗ 未找到报告内容</span>'
+                        return
+                    }
+                    this.exportingReport = true
+                    try {
+                        const contentClone = dataCol.cloneNode(true)
+                        contentClone.querySelectorAll('button, .file-downloads, .task-manager, .no-print').forEach(n => n.remove())
+                        const titleHTML = titleGroup.outerHTML
+                        const contentHTML = contentClone.outerHTML
+                        const cssBase = new URL('./theme.css', document.baseURI).href
+                        const cssApp = new URL('./app.css', document.baseURI).href
+                        const caseName = this.escapeHtml(this.caseName || this.caseId || this.taskId || '')
+                        const win = window.open('', '_blank', 'width=900,height=720')
+                        if (!win) {
+                            this.statusText = '<span class="status-error">✗ 弹窗被拦截，请允许本站弹窗后重试</span>'
+                            return
+                        }
+                        win.document.write(`<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>智瞳医脑报告 - ${caseName}</title><link rel="stylesheet" href="${cssBase}"><link rel="stylesheet" href="${cssApp}"><style>@page{margin:0;size:A4}html,body{background:#ffffff}body{padding:12mm 14mm;color:#1f2937}.btir-report-title{display:flex;align-items:center;gap:12px;margin:0 0 20px;padding-bottom:16px;border-bottom:2px solid var(--btir-primary)}</style></head><body><div class="btir-report-title">${titleHTML}</div>${contentHTML}<script>window.addEventListener('load',function(){setTimeout(function(){window.print()},500)});window.onafterprint=function(){window.close()}<\/script></body></html>`)
+                        win.document.close()
+                    } catch (error) {
+                        const message = this.escapeHtml(`报告导出失败：${error.message}`)
+                        this.statusText = `<span class="status-error">✗ ${message}</span>`
+                    } finally {
+                        this.exportingReport = false
                     }
                 },
                 presentTaskResult(taskData) {
