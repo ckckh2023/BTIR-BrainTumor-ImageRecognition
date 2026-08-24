@@ -97,6 +97,43 @@ class FrontendContractTests(unittest.TestCase):
         self.assertNotIn("addDownload('frontend_result.json'", self.html)
         self.assertNotIn("output/${taskId}/frontend_result.json", self.html)
 
+    def test_report_export_uses_a_stable_preview_with_pdf_save_action(self) -> None:
+        self.assertIn("export-report-btn", self.html)
+        self.assertIn("exportReport", self.app_js)
+        self.assertIn("下载 / 保存 PDF", self.app_js)
+        self.assertIn("关闭预览", self.app_js)
+        self.assertIn("window.print()", self.app_js)
+        self.assertIn("case-preview-report-image", self.app_js)
+        self.assertIn("preview.replaceWith(reportPreview)", self.app_js)
+        self.assertIn("reportPreviewFrames", self.app_js)
+        self.assertIn("btir-report-preview-grid", self.app_js)
+        self.assertIn("details.replaceWith(section)", self.app_js)
+        self.assertIn("btir-report-expanded-section", self.app_js)
+        self.assertIn("btir-report-section-heading", self.app_js)
+        self.assertIn("btir-report-watermark", self.app_js)
+        self.assertIn("btir-report-actions button:hover", self.app_js)
+        self.assertIn("btir-report-watermark-logo-screen", self.app_js)
+        self.assertIn("btir-report-watermark-logo-print", self.app_js)
+        self.assertIn("print-color-adjust:exact", self.app_js)
+        self.assertIn("buildReportPrintLogo", self.app_js)
+        self.assertIn("position:static;justify-content:flex-end", self.app_js)
+        self.assertIn(".btir-report-content [data-reveal]{opacity:1!important", self.app_js)
+        self.assertNotIn("window.onafterprint=function(){window.close()}", self.app_js)
+        self.assertIn("min-height: 30px", self.app_css)
+        topbar = self.html.split('<div class="app-user-area">', 1)[1].split('<span v-if="currentUser"', 1)[0]
+        self.assertIn("topbar-export-report-btn", topbar)
+        self.assertLess(topbar.index("topbar-export-report-btn"), topbar.index("topbar-reupload-btn"))
+
+    def test_case_preview_uses_an_in_app_fullscreen_dialog(self) -> None:
+        self.assertIn("casePreviewFullscreen", self.app_js)
+        self.assertIn("openCasePreviewFullscreen", self.app_js)
+        self.assertIn("closeCasePreviewFullscreen", self.app_js)
+        self.assertIn("case-preview-fullscreen", self.html)
+        self.assertIn("退出全屏查看", self.html)
+        self.assertNotIn('target="_blank"', self.html)
+        self.assertIn("case-preview-fullscreen-stage", self.app_css)
+        self.assertIn("body.btir-preview-fullscreen-open", self.app_css)
+
     def test_running_analysis_exposes_cancel_button(self) -> None:
         self.assertIn("cancelCurrentAnalysis", self.html)
         self.assertIn("cancel-analysis-btn", self.html)
