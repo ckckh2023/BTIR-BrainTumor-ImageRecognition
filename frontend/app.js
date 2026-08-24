@@ -29,6 +29,7 @@
                     casePreviewActiveIndex: 0,
                     casePreviewDirection: 1,
                     casePreviewRequestId: 0,
+                    casePreviewFullscreen: false,
                     volumeModalities: [
                         { key: 'flair', label: 'FLAIR' },
                         { key: 't1ce', label: 'T1CE' },
@@ -1625,6 +1626,7 @@
                     }
                 },
                 clearCasePreview() {
+                    this.closeCasePreviewFullscreen()
                     this.casePreviewRequestId += 1
                     const previewUrls = new Set([
                         this.casePreviewUrl,
@@ -1726,6 +1728,21 @@
                     this.casePreviewDirection = index > this.casePreviewActiveIndex ? 1 : -1
                     this.casePreviewActiveIndex = index
                     void this.loadActiveCasePreview()
+                },
+                openCasePreviewFullscreen() {
+                    if (!this.casePreviewUrl) return
+                    this.casePreviewFullscreen = true
+                    document.body.classList.add('btir-preview-fullscreen-open')
+                    this.$nextTick(() => this.$refs.casePreviewFullscreenClose?.focus())
+                },
+                closeCasePreviewFullscreen() {
+                    this.casePreviewFullscreen = false
+                    document.body.classList.remove('btir-preview-fullscreen-open')
+                },
+                handleCasePreviewKeydown(event) {
+                    if (event.key === 'Escape' && this.casePreviewFullscreen) {
+                        this.closeCasePreviewFullscreen()
+                    }
                 },
                 playResultAnimations() {
                     this.ringRevealed = false
@@ -1935,30 +1952,145 @@
                         this.selectedFilePath = previousPath
                     }
                 },
+                async buildReportPrintLogo(sourceUrl) {
+                    try {
+                        const response = await fetch(sourceUrl)
+                        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+                        const sourceBlob = await response.blob()
+                        const objectUrl = URL.createObjectURL(sourceBlob)
+                        const image = await new Promise((resolve, reject) => {
+                            const element = new Image()
+                            element.onload = () => {
+                                URL.revokeObjectURL(objectUrl)
+                                resolve(element)
+                            }
+                            element.onerror = () => {
+                                URL.revokeObjectURL(objectUrl)
+                                reject(new Error('Logo 加载失败'))
+                            }
+                            element.src = objectUrl
+                        })
+                        const side = 96
+                        const canvas = document.createElement('canvas')
+                        canvas.width = side
+                        canvas.height = side
+                        const context = canvas.getContext('2d')
+                        context.drawImage(image, 0, 0, side, side)
+                        const imageData = context.getImageData(0, 0, side, side)
+                        for (let index = 0; index < imageData.data.length; index += 4) {
+                            const luminosity = 0.2126 * imageData.data[index]
+                                + 0.7152 * imageData.data[index + 1]
+                                + 0.0722 * imageData.data[index + 2]
+                            const foreground = Math.max(0, Math.min(1, (luminosity - 22) / 160))
+                            imageData.data[index] = 29
+                            imageData.data[index + 1] = 78
+                            imageData.data[index + 2] = 128
+                            imageData.data[index + 3] = Math.round(imageData.data[index + 3] * foreground)
+                        }
+                        context.putImageData(imageData, 0, 0)
+                        return canvas.toDataURL('image/png')
+                    } catch {
+                        return sourceUrl
+                    }
+                },
                 async exportReport() {
                     if (this.exportingReport) return
                     const dataCol = this.$refs.caseDataColumn
-                    const titleGroup = document.querySelector('.app-title-group')
-                    if (!dataCol || !titleGroup) {
+                    if (!dataCol) {
                         this.statusText = '<span class="status-error">✗ 未找到报告内容</span>'
                         return
                     }
                     this.exportingReport = true
                     try {
+                        const reportTaskId = this.taskId
+                        const reportPreviewPaths = this.casePreviewFrames
+                            .map(frame => this.casePreviewMode === 'raw' && frame.raw ? frame.raw : frame.overlay)
+                            .filter(Boolean)
+                        const missingPreviewPaths = [...new Set(reportPreviewPaths.filter(path => !this.casePreviewUrls[path]))]
+                        const loadedPreviewEntries = await Promise.all(missingPreviewPaths.map(async (path) => {
+                            try {
+                                const response = await fetch(this.taskFileUrl(path), { headers: this.authHeaders })
+                                if (!response.ok) return [path, '']
+                                return [path, URL.createObjectURL(await response.blob())]
+                            } catch {
+                                return [path, '']
+                            }
+                        }))
+                        if (reportTaskId !== this.taskId) {
+                            loadedPreviewEntries.forEach(([, url]) => url && URL.revokeObjectURL(url))
+                            return
+                        }
+                        const loadedPreviewUrls = Object.fromEntries(loadedPreviewEntries.filter(([, url]) => url))
+                        if (Object.keys(loadedPreviewUrls).length) {
+                            this.casePreviewUrls = { ...this.casePreviewUrls, ...loadedPreviewUrls }
+                        }
+                        const reportPreviewUrls = { ...this.casePreviewUrls, ...loadedPreviewUrls }
                         const contentClone = dataCol.cloneNode(true)
-                        contentClone.querySelectorAll('button, .file-downloads, .task-manager, .no-print').forEach(n => n.remove())
-                        const titleHTML = titleGroup.outerHTML
+                        contentClone.querySelectorAll('details').forEach((details) => {
+                            const section = document.createElement('section')
+                            section.className = `${details.className} btir-report-expanded-section`.trim()
+                            for (const child of [...details.children]) {
+                                if (child.tagName === 'SUMMARY') {
+                                    const heading = document.createElement('div')
+                                    heading.className = 'btir-report-section-heading'
+                                    heading.textContent = child.textContent.trim()
+                                    section.appendChild(heading)
+                                } else {
+                                    section.appendChild(child)
+                                }
+                            }
+                            details.replaceWith(section)
+                        })
+                        const reportPreviewFrames = this.casePreviewFrames.map((frame) => {
+                            const path = this.casePreviewMode === 'raw' && frame.raw ? frame.raw : frame.overlay
+                            return { ...frame, url: reportPreviewUrls[path] || '' }
+                        }).filter(frame => frame.url)
+                        contentClone.querySelectorAll('.case-preview-figure').forEach((previewFigure) => {
+                            if (!reportPreviewFrames.length) return
+                            const gallery = document.createElement('section')
+                            gallery.className = 'btir-report-preview-gallery'
+                            const sourceLabel = this.casePreviewMode === 'raw' ? '四模态原始切片' : '四模态切片与分割叠加'
+                            gallery.innerHTML = `<h2>扫描模态图 · ${sourceLabel}</h2><div class="btir-report-preview-grid"></div>`
+                            const grid = gallery.querySelector('.btir-report-preview-grid')
+                            reportPreviewFrames.forEach((frame) => {
+                                const position = frame.offset === 0
+                                    ? '最大病灶层'
+                                    : (frame.offset < 0 ? '最大病灶层前一层' : '最大病灶层后一层')
+                                const caption = Number.isInteger(frame.sliceIndex)
+                                    ? `${position} · 切片 ${frame.sliceIndex}`
+                                    : position
+                                const item = document.createElement('figure')
+                                item.innerHTML = `<img src="${frame.url}" alt="${caption}"><figcaption>${caption}</figcaption>`
+                                grid.appendChild(item)
+                            })
+                            previewFigure.replaceWith(gallery)
+                        })
+                        contentClone.querySelectorAll('.case-preview-open').forEach((preview) => {
+                            const image = preview.querySelector('img')
+                            if (!image) return
+                            const reportPreview = document.createElement('div')
+                            reportPreview.className = 'case-preview-open case-preview-report-image'
+                            reportPreview.appendChild(image.cloneNode(true))
+                            preview.replaceWith(reportPreview)
+                        })
+                        contentClone.querySelectorAll('button, .case-preview-dots, .file-downloads, .task-manager, .no-print').forEach(n => n.remove())
                         const contentHTML = contentClone.outerHTML
                         const cssBase = new URL('./theme.css', document.baseURI).href
                         const cssApp = new URL('./app.css', document.baseURI).href
+                        const logoSrc = new URL('/assets/icon_exp.png', document.baseURI).href
+                        const printLogoSrc = await this.buildReportPrintLogo(logoSrc)
                         const caseName = this.escapeHtml(this.caseName || this.caseId || this.taskId || '')
+                        const studyDate = this.escapeHtml(this.studyDate || '未登记')
                         const win = window.open('', '_blank', 'width=900,height=720')
                         if (!win) {
                             this.statusText = '<span class="status-error">✗ 弹窗被拦截，请允许本站弹窗后重试</span>'
                             return
                         }
-                        win.document.write(`<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>智瞳医脑报告 - ${caseName}</title><link rel="stylesheet" href="${cssBase}"><link rel="stylesheet" href="${cssApp}"><style>@page{margin:0;size:A4}html,body{background:#ffffff}body{padding:12mm 14mm;color:#1f2937}.btir-report-title{display:flex;align-items:center;gap:12px;margin:0 0 20px;padding-bottom:16px;border-bottom:2px solid var(--btir-primary)}</style></head><body><div class="btir-report-title">${titleHTML}</div>${contentHTML}<script>window.addEventListener('load',function(){setTimeout(function(){window.print()},500)});window.onafterprint=function(){window.close()}<\/script></body></html>`)
+                        win.document.write(`<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>智瞳医脑报告 - ${caseName}</title><link rel="stylesheet" href="${cssBase}"><link rel="stylesheet" href="${cssApp}"><style>@page{margin:12mm;size:A4}html,body{background:#ffffff}body{margin:0;padding:20px;color:#1f2937}.btir-report-page{max-width:210mm;margin:0 auto}.btir-report-actions{position:sticky;top:0;z-index:10;display:flex;justify-content:flex-end;gap:8px;margin:0 0 18px;padding:10px;background:rgba(255,255,255,.94);border-bottom:1px solid #d9e3ef}.btir-report-actions button{min-height:36px;padding:6px 14px;border:1px solid #2563a8;border-radius:6px;background:#ffffff;color:#1d4e80;font:600 13px system-ui,sans-serif;cursor:pointer}.btir-report-actions .btir-report-save{background:#2563a8;color:#ffffff}.btir-report-header{margin:0 0 20px;padding:0 0 16px;border-bottom:2px solid #2563a8}.btir-report-header h1{margin:0;color:#1d4e80;font-size:24px}.btir-report-header p{margin:6px 0 0;color:#475569;font-size:13px}.btir-report-content,.btir-report-content .case-data-column{width:auto!important;min-height:0!important;max-height:none!important;padding:0!important;overflow:visible!important}.btir-report-content .case-viewer-tabs,.btir-report-content .file-downloads{display:none!important}@media print{body{padding:0}.btir-report-actions{display:none!important}.btir-report-page{max-width:none}.btir-report-content [data-reveal]{opacity:1!important;transform:none!important}}</style></head><body><main class="btir-report-page"><div class="btir-report-actions"><button type="button" class="btir-report-save" onclick="window.print()">下载 / 保存 PDF</button><button type="button" onclick="window.close()">关闭预览</button></div><header class="btir-report-header"><h1>智瞳医脑 · 病例分析报告</h1><p>病例：${caseName}　检查日期：${studyDate}</p></header><section class="btir-report-content">${contentHTML}</section></main></body></html>`)
+                        win.document.head.insertAdjacentHTML('beforeend', `<style>@page{margin:12mm 12mm 20mm;size:A4}.btir-report-actions button:hover{color:#ffffff;background:#1d4e80;border-color:#1d4e80}.btir-report-actions .btir-report-save:hover{background:#123e6c;border-color:#123e6c}.btir-report-content [data-reveal]{opacity:1!important;transform:none!important}.btir-report-expanded-section{display:block!important}.btir-report-section-heading{margin:12px 0 8px;color:#1d4e80;font-size:13px;font-weight:700}.btir-report-preview-gallery{margin:18px 0 22px;padding:14px;border:1px solid #d9e3ef;border-radius:8px;background:#f8fbff;break-inside:avoid}.btir-report-preview-gallery h2{margin:0 0 12px;color:#1d4e80;font-size:15px}.btir-report-preview-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.btir-report-preview-grid figure{min-width:0;margin:0}.btir-report-preview-grid img{display:block;width:100%;aspect-ratio:1/1;object-fit:contain;background:#02060b;border-radius:5px}.btir-report-preview-grid figcaption{margin-top:6px;color:#475569;font-size:11px;text-align:center}.btir-report-watermark{position:fixed;left:0;bottom:0;z-index:2;display:flex;align-items:center;gap:6px;padding:5px 8px;color:#1d4e80;background:rgba(255,255,255,.88);font:600 10px system-ui,sans-serif;opacity:.82}.btir-report-watermark-logo-screen{display:inline-block;width:18px;height:18px;background:#1d4e80;-webkit-mask:url('${logoSrc}') center/contain no-repeat;mask:url('${logoSrc}') center/contain no-repeat}.btir-report-watermark-logo-print{display:none;width:18px;height:18px;object-fit:contain;-webkit-print-color-adjust:exact;print-color-adjust:exact}@media screen and (max-width:640px){.btir-report-preview-grid{grid-template-columns:1fr}}@media print{.btir-report-watermark{position:static;justify-content:flex-end;margin:12mm 0 0;padding:0;background:transparent;opacity:1}.btir-report-watermark-logo-screen{display:none}.btir-report-watermark-logo-print{display:block}.btir-report-preview-gallery{break-inside:avoid}}</style>`)
+                        win.document.body.insertAdjacentHTML('beforeend', `<footer class="btir-report-watermark"><span class="btir-report-watermark-logo-screen" aria-hidden="true"></span><img class="btir-report-watermark-logo-print" src="${printLogoSrc}" alt=""><span>智瞳医脑 · BTIR</span></footer>`)
                         win.document.close()
+                        win.focus()
                     } catch (error) {
                         const message = this.escapeHtml(`报告导出失败：${error.message}`)
                         this.statusText = `<span class="status-error">✗ ${message}</span>`
@@ -2766,6 +2898,7 @@
                 this.initScrollRevealFallback()
                 document.addEventListener('click', this.handleGlobalClick)
                 window.addEventListener('resize', this.updateResultSplitViewport)
+                window.addEventListener('keydown', this.handleCasePreviewKeydown)
                 this.$nextTick(() => this.updateResultSplitViewport())
 
                 const token = localStorage.getItem('btir_token')
@@ -2804,6 +2937,7 @@
                 document.removeEventListener('click', this.handleGlobalClick)
                 this.stopResultSplitResize()
                 window.removeEventListener('resize', this.updateResultSplitViewport)
+                window.removeEventListener('keydown', this.handleCasePreviewKeydown)
                 if (this.resultSplitDrawFrame !== null) {
                     cancelAnimationFrame(this.resultSplitDrawFrame)
                     this.resultSplitDrawFrame = null

@@ -63,6 +63,14 @@
                     <button
                         v-if="taskId && !loading"
                         type="button"
+                        class="topbar-export-report-btn"
+                        ref="exportReportBtn"
+                        :disabled="exportingReport"
+                        @click="exportReport"
+                    >{{ exportingReport ? '正在生成…' : '导出报告' }}</button>
+                    <button
+                        v-if="taskId && !loading"
+                        type="button"
                         class="topbar-reupload-btn"
                         @click="startNewUpload()"
                     >重新上传病例</button>
@@ -330,12 +338,6 @@
                 <div class="result-section" :class="{ 'analysis-pending': isAnalysisInProgress }" v-if="taskId || analysisActive">
                     <div class="result-header" v-if="!isAnalysisInProgress">
                         <div class="result-title">识别结果</div>
-                        <button
-                            type="button"
-                            class="browse-btn compact"
-                            v-if="taskId && !loading"
-                            @click="startNewUpload"
-                        >重新上传病例</button>
                     </div>
                     <div class="result-box">
                         <transition name="status-fade">
@@ -753,6 +755,12 @@
                                     >原始四模态</button>
                                 </div>
                                 <span class="case-preview-position">{{ casePreviewCaption }}</span>
+                                <button
+                                    type="button"
+                                    class="case-preview-expand"
+                                    :disabled="!casePreviewUrl"
+                                    @click="openCasePreviewFullscreen"
+                                >全屏查看</button>
                             </div>
                             <div class="case-preview-stage">
                                 <button
@@ -767,20 +775,20 @@
                                         :name="casePreviewDirection > 0 ? 'case-preview-slide-next' : 'case-preview-slide-prev'"
                                         mode="out-in"
                                     >
-                                        <a
+                                        <button
                                             v-if="casePreviewUrl"
                                             :key="`case-preview-image-${casePreviewPath}-${casePreviewMode}`"
-                                            :href="casePreviewUrl"
-                                            target="_blank"
-                                            rel="noopener"
-                                            title="打开原始尺寸预览"
+                                            type="button"
+                                            class="case-preview-open"
+                                            title="全屏查看扫描模态图"
+                                            @click="openCasePreviewFullscreen"
                                         >
                                             <img
                                                 class="case-preview-img"
                                                 :src="casePreviewUrl"
                                                 :alt="casePreviewCaption"
                                             />
-                                        </a>
+                                        </button>
                                         <div
                                             v-else
                                             :key="`case-preview-loading-${casePreviewPath}-${casePreviewMode}`"
@@ -1027,13 +1035,6 @@
                         {{ statusText.includes('等待') ? '等待识别...' : (fileList.length ? '选择文件查看' : '暂无数据') }}
                     </div>
                     <div class="file-downloads" v-if="taskId">
-                        <button
-                            type="button"
-                            class="export-report-btn"
-                            ref="exportReportBtn"
-                            :disabled="exportingReport"
-                            @click="exportReport"
-                        >{{ exportingReport ? '正在生成报告…' : '导出报告' }}</button>
                         <a
                             v-for="f in downloadFiles"
                             :key="f.path"
@@ -1360,9 +1361,52 @@
                 </div>
             </div>
             </div>
-        </div>
+                </div>
 
-        <btir-toast></btir-toast>
+                <div
+                    v-if="casePreviewFullscreen && casePreviewUrl"
+                    class="case-preview-fullscreen"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="扫描模态图全屏查看"
+                    @click.self="closeCasePreviewFullscreen"
+                >
+                    <section class="case-preview-fullscreen-panel">
+                        <header class="case-preview-fullscreen-header">
+                            <span>{{ casePreviewCaption }}</span>
+                            <button
+                                type="button"
+                                class="case-preview-fullscreen-close"
+                                ref="casePreviewFullscreenClose"
+                                aria-label="退出全屏查看"
+                                @click="closeCasePreviewFullscreen"
+                            >关闭</button>
+                        </header>
+                        <div class="case-preview-fullscreen-stage">
+                            <button
+                                type="button"
+                                class="case-preview-fullscreen-nav previous"
+                                aria-label="查看前一层"
+                                :disabled="casePreviewActiveIndex === 0"
+                                @click="selectCasePreviewFrame(casePreviewActiveIndex - 1)"
+                            >‹</button>
+                            <img
+                                class="case-preview-fullscreen-img"
+                                :src="casePreviewUrl"
+                                :alt="casePreviewCaption"
+                            />
+                            <button
+                                type="button"
+                                class="case-preview-fullscreen-nav next"
+                                aria-label="查看后一层"
+                                :disabled="casePreviewActiveIndex >= casePreviewFrames.length - 1"
+                                @click="selectCasePreviewFrame(casePreviewActiveIndex + 1)"
+                            >›</button>
+                        </div>
+                    </section>
+                </div>
+
+                <btir-toast></btir-toast>
     </div>
 
     <script src="./volume_viewer.js"></script>
