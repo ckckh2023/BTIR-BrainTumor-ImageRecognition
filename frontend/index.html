@@ -65,9 +65,9 @@
                         type="button"
                         class="topbar-export-report-btn"
                         ref="exportReportBtn"
-                        :disabled="exportingReport"
+                        :disabled="exportingReport || reportExportCoolingDown"
                         @click="exportReport"
-                    >{{ exportingReport ? '正在生成…' : '导出报告' }}</button>
+                    >{{ exportingReport ? '正在生成…' : (reportExportCoolingDown ? '请稍候…' : '导出报告') }}</button>
                     <button
                         v-if="taskId && !loading"
                         type="button"

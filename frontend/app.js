@@ -69,6 +69,9 @@
                     fileList: [],
                     downloadFiles: [],
                     exportingReport: false,
+                    reportExportCoolingDown: false,
+                    reportExportCooldownTimer: null,
+                    reportExportCooldownMs: 5000,
                     selectedFilePath: '',
                     selectedFileType: '',
                     integratedSources: [],
@@ -1995,6 +1998,10 @@
                 },
                 async exportReport() {
                     if (this.exportingReport) return
+                    if (this.reportExportCoolingDown) {
+                        this.showToastMessage('报告预览刚刚打开，请稍候再试', 'error')
+                        return
+                    }
                     const dataCol = this.$refs.caseDataColumn
                     if (!dataCol) {
                         this.statusText = '<span class="status-error">✗ 未找到报告内容</span>'
@@ -2091,6 +2098,7 @@
                         win.document.body.insertAdjacentHTML('beforeend', `<footer class="btir-report-watermark"><span class="btir-report-watermark-logo-screen" aria-hidden="true"></span><img class="btir-report-watermark-logo-print" src="${printLogoSrc}" alt=""><span>智瞳医脑 · BTIR</span></footer>`)
                         win.document.close()
                         win.focus()
+                        this.startReportExportCooldown()
                     } catch (error) {
                         const message = this.escapeHtml(`报告导出失败：${error.message}`)
                         this.statusText = `<span class="status-error">✗ ${message}</span>`
@@ -2784,6 +2792,30 @@
                         detail: { message, type },
                     }))
                 },
+                startReportExportCooldown() {
+                    if (this.reportExportCooldownMs <= 0) return
+                    this.reportExportCoolingDown = true
+                    if (this.reportExportCooldownTimer !== null) {
+                        clearTimeout(this.reportExportCooldownTimer)
+                    }
+                    this.reportExportCooldownTimer = window.setTimeout(() => {
+                        this.reportExportCoolingDown = false
+                        this.reportExportCooldownTimer = null
+                    }, this.reportExportCooldownMs)
+                },
+                async loadFrontendRuntimeConfig() {
+                    try {
+                        const response = await fetch(`${this.API_BASE}/frontend-config`)
+                        if (!response.ok) return
+                        const config = await response.json()
+                        const seconds = Number(config.report_export_cooldown_seconds)
+                        if (Number.isFinite(seconds) && seconds >= 0) {
+                            this.reportExportCooldownMs = Math.round(seconds * 1000)
+                        }
+                    } catch {
+                        // 静态预览或旧版服务未提供配置时，沿用默认的 5 秒冷却时间。
+                    }
+                },
                 applyTheme() {
                     document.documentElement.setAttribute('data-theme', this.theme)
                 },
@@ -2926,9 +2958,10 @@
                     const userStr = localStorage.getItem('btir_user')
                     this.currentUser = userStr ? JSON.parse(userStr) : null
                 }
+                await this.loadFrontendRuntimeConfig()
                 await this.restoreWorkspaceState()
             },
-            beforeUnmount() {
+                beforeUnmount() {
                 this._revealObserver?.disconnect()
                 if (this.progressAnimFrame) {
                     cancelAnimationFrame(this.progressAnimFrame)
@@ -2938,6 +2971,9 @@
                 this.stopResultSplitResize()
                 window.removeEventListener('resize', this.updateResultSplitViewport)
                 window.removeEventListener('keydown', this.handleCasePreviewKeydown)
+                if (this.reportExportCooldownTimer !== null) {
+                    clearTimeout(this.reportExportCooldownTimer)
+                }
                 if (this.resultSplitDrawFrame !== null) {
                     cancelAnimationFrame(this.resultSplitDrawFrame)
                     this.resultSplitDrawFrame = null

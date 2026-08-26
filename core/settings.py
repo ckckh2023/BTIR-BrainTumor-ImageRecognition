@@ -137,6 +137,7 @@ class Settings:
     project_root: Path
     output_dir: Path
     frontend_dir: Path
+    report_export_cooldown_seconds: int
     segmenter_3d_script: Path
     segmenter_3d_model: Path
     segmenter_3d_overlap: float
@@ -210,6 +211,10 @@ def _build_settings() -> Settings:
         project_root=PROJECT_ROOT,
         output_dir=_get_path("BTIR_OUTPUT_DIR", "output"),
         frontend_dir=_get_path("BTIR_FRONTEND_DIR", "frontend"),
+        report_export_cooldown_seconds=_get_nonnegative_int(
+            "BTIR_REPORT_EXPORT_COOLDOWN_SECONDS",
+            5,
+        ),
         segmenter_3d_script=_get_path(
             "BTIR_3D_SEGMENTER_SCRIPT",
             str(segmenter_3d_dir / "inference.py"),
