@@ -86,6 +86,14 @@ async def root():
     return RedirectResponse(url="/web/")
 
 
+@app.get("/frontend-config")
+async def frontend_config() -> dict[str, int]:
+    '''暴露不含敏感信息的前端运行配置'''
+    return {
+        "report_export_cooldown_seconds": SETTINGS.report_export_cooldown_seconds,
+    }
+
+
 app.mount(
     "/web",
     StaticFiles(directory=SETTINGS.frontend_dir, html=True),
