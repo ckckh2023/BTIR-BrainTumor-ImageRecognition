@@ -13,7 +13,7 @@ BTIR is a complete analysis system for four‑modality brain tumor MRI.
 
 Users can log in via a browser, run classification, segmentation, and AI-assisted analysis, then inspect key imaging features, slices, comparisons, and 3D imaging in the web page.
 
-Visit our deployed service (occasionally open): https://btir.online/<br>
+Visit our deployed service (occasionally open): https://btir-online.ai-premol.cn/<br>
 Also visit our about page: https://btir.xiao-blog.top/
 
 **Other languages:** [中文](README.md)
