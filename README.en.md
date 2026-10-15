@@ -1,4 +1,4 @@
-# Brain Tumor MRI Image Analysis
+# BTIR Brain Tumor MRI Image Analysis Platform
 
 [![License](https://img.shields.io/badge/License-MIT-red?logo=opensourceinitiative&logoColor=white)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python&logoColor=white)](https://www.python.org/)
@@ -9,11 +9,12 @@
 [![CUDA](https://img.shields.io/badge/CUDA-12.1-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com/cuda-toolkit)
 [![Redis](https://img.shields.io/badge/Redis-5.2-DC382D?logo=redis&logoColor=white)](https://redis.io/)
 
-BTIR is a complete analysis system for four‑modality brain tumor MRI.
+BTIR is a complete analysis system for four‑modality brain tumor MRI. Users can log in via a browser, run classification, segmentation, and AI-assisted analysis, then inspect key imaging features, slices, comparisons, and 3D imaging in the web page.
 
-Users can log in via a browser, run classification, segmentation, and AI-assisted analysis, then inspect key imaging features, slices, comparisons, and 3D imaging in the web page.
+You can self-host the server. The corresponding client project is: https://github.com/ckckh2023/BTIR-Client
 
-Visit our deployed service (occasionally open): https://btir-online.ai-premol.cn/<br>
+Visit our deployed service (occasionally open): https://btir-online.ai-premol.cn
+
 Also visit our about page: https://btir.xiao-blog.top/
 
 **Other languages:** [中文](README.md)
