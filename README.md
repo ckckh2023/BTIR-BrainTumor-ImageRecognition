@@ -1,4 +1,4 @@
-# 脑肿瘤 MRI 图像分析
+# BTIR 脑肿瘤 MRI 图像分析平台
 
 [![License](https://img.shields.io/badge/License-MIT-red?logo=opensourceinitiative&logoColor=white)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python&logoColor=white)](https://www.python.org/)
