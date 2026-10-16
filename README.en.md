@@ -87,21 +87,47 @@ models/segmentation3d/model/model_epoch_297.pth
 
 ### 2. Set Up Python Environment
 
-The project requires Python 3.11:
+The project requires Python 3.11. The following Linux / Bash commands run from the
+project root. For Windows activation commands, see [Installation & Deployment](docs/DEPLOYMENT.md).
+On Debian/Ubuntu, also install the matching venv package if your configured package
+repositories provide Python 3.11:
 
 ```bash
-python3.11 -m pip install -r requirements.txt
-cp .env.example .env
-python3.11 -c "import secrets; print(secrets.token_urlsafe(48))"
+sudo apt update
+sudo apt install python3.11-venv
 ```
 
-Write the randomly generated value from the last command into `BTIR_JWT_SECRET_KEY` in `.env`<br>
+If the package cannot be found or environment creation still fails, see the
+troubleshooting section in [Installation & Deployment](docs/DEPLOYMENT.md#虚拟环境创建失败).
+Install dependencies and start services with the same virtual environment.
+The `&&` operators stop the sequence if a step fails:
+
+```bash
+python3.11 -m venv .venv &&
+source .venv/bin/activate &&
+python --version &&
+python -m pip install --upgrade pip &&
+python -m pip install -r requirements.txt
+```
+
+After all steps succeed, configure `.env`:
+
+```bash
+if [ ! -e .env ]; then cp .env.example .env; fi
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+`python --version` must report Python 3.11. If `python3.11` is not found, install it first.
+The copy step preserves an existing `.env`. On first setup, write the generated value into
+`BTIR_JWT_SECRET_KEY` in `.env`; keep an existing valid secret unchanged.<br>
 
 For first‑time deployment, create an admin user:
 
 ```bash
-python3.11 Main.py user create <username> --admin
+python Main.py user create your_username --admin
 ```
+
+Replace `your_username` with the actual username and follow the password prompt.
 
 `requirements.txt` uses PyTorch CUDA 12.1 by default.<br>
 For CPU, CUDA, ROCm, and Linux deployment options, see [Installation & Deployment](docs/DEPLOYMENT.md).
@@ -112,17 +138,34 @@ For CPU, CUDA, ROCm, and Linux deployment options, see [Installation & Deploymen
 sudo systemctl start redis-server
 ```
 
-Start the API and Worker separately:
+Choose one of the following startup methods; do not run both simultaneously.
+
+Option 1: use two terminals, each in the project root with the same environment.
+Terminal 1 starts the API and remains occupied:
 
 ```bash
-python3.11 -m uvicorn api.app:app --reload
-python3.11 -m workers.run_worker
+source .venv/bin/activate
+python -m uvicorn api.app:app --reload
 ```
 
-Alternatively, you can host both the API and Worker simultaneously using the supervisor script:
+Terminal 2 starts the Worker:
+
 ```bash
-bash scripts/run-supervisor.sh /usr/bin/python3.11
+source .venv/bin/activate
+python -m workers.run_worker
 ```
+
+Option 2: host both processes with the supervisor script:
+
+```bash
+source .venv/bin/activate
+bash scripts/run-supervisor.sh
+```
+
+The script uses the activated environment. For a custom environment, pass its actual
+Python executable, rather than a system Python without the project dependencies.
+API and Worker errors are written to `logs/api.stderr.log` and
+`logs/worker.stderr.log`; a `starting` message only confirms a startup attempt.
 
 Then open the following addresses:
 

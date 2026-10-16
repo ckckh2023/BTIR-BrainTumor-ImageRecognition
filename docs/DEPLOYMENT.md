@@ -56,12 +56,29 @@ python -m pip install -r requirements.txt
 
 ## Linux 服务器环境
 
+Debian/Ubuntu 使用发行版提供的 Python 3.11 时，需要同时安装对应的虚拟环境组件：
+
 ```bash
-python3.11 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
+sudo apt update
+sudo apt install python3.11-venv
+```
+
+Python 3.11 来自第三方软件源时，组件也应来自同一来源；若系统软件源没有该包，
+不要直接改装其他 Python 版本的 venv 包，先核对 Python 的安装来源。
+
+创建环境和安装依赖使用 `&&` 串联，任一步失败后先处理报错，不继续启动：
+
+```bash
+python3.11 -m venv .venv &&
+source .venv/bin/activate &&
+python -m pip install --upgrade pip &&
 python -m pip install -r requirements.txt
-cp .env.example .env
+```
+
+全部成功后再复制配置模板，保留已有配置：
+
+```bash
+if [ ! -e .env ]; then cp .env.example .env; fi
 ```
 
 基础依赖默认安装 NVIDIA CUDA 12.1 版 PyTorch<br>
@@ -70,19 +87,38 @@ CPU 或 Linux AMD ROCm 服务器
 生产环境建议使用独立系统目录
 保存运行数据，例如 `/var/lib/btir/output`，不要将任务数据混入代码目录
 
+### 虚拟环境创建失败
+
+`venv` 默认通过 `ensurepip` 为新环境安装 pip。若报错包含
+`ensurepip ... returned non-zero exit status`，说明虚拟环境尚未创建完整；后续
+`activate` 不存在、找不到 `python` 都可能是连锁报错。
+
+先安装与解释器匹配的 `python3.11-venv`，然后重新执行
+`python3.11 -m venv .venv`，无需先删除已有目录。若仍失败，运行失败消息中所指的
+环境解释器，以显示底层错误：
+
+```bash
+.venv/bin/python3.11 -m ensurepip --upgrade --default-pip
+```
+
+请保留完整输出用于排查，而不只保留 `returned non-zero exit status 1` 这一行。
+`python-is-python3` 只提供系统命令别名，无法补齐失败环境中的 pip 或项目依赖。
+
 ## 配置文件
 
 本地开发可以复制配置模板：
 
 ```powershell
-Copy-Item .env.example .env
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
 Linux：
 
 ```bash
-cp .env.example .env
+cp -n .env.example .env
 ```
+
+已有 `.env` 时保留现有配置，不要重复复制模板覆盖密钥与服务地址。
 
 `.env.example` 提供常用配置、默认值和可选模型路径覆盖<br>
 未列出的高级配置以 `.env.example` 为准<br>
@@ -218,7 +254,11 @@ Linux 可以使用系统 Redis、容器 Redis 或独立 Redis 服务，但连接
 
 ## 开发环境启动
 
-终端 1 启动 API：
+以下命令应在项目根目录执行。两个终端都必须激活安装依赖的同一 Python 3.11
+虚拟环境（Linux：`source .venv/bin/activate`；Windows CMD：`.venv\Scripts\activate.bat`）。
+可先用 `python -c "import sys; print(sys.executable)"` 核对解释器路径。
+
+终端 1 启动 API，此命令会持续运行：
 
 ```powershell
 python -m uvicorn api.app:app --reload
@@ -372,6 +412,7 @@ Worker 名称包含主机名和进程号<br>
 ## Linux 进程守护
 
 `run-supervisor.sh` 是 Linux 的一键运行入口<br>
+此方式与前述手动启动 API、Worker 二选一，避免占用同一端口。
 项目根目录已经存在
 `.venv/bin/python` 时直接执行：
 
@@ -385,6 +426,9 @@ bash scripts/run-supervisor.sh
 ```bash
 bash scripts/run-supervisor.sh /opt/btir/.venv/bin/python
 ```
+
+传入的 Python 必须已经安装项目依赖；不要将虚拟环境的安装命令与
+`/usr/bin/python3.11` 等系统解释器混用。
 
 Python 查找顺序：
 
@@ -406,6 +450,8 @@ Python 查找顺序：
 
 - 同时启动并监控 API 与 3D Worker
 - 进程退出后按退避时间重新启动
+- API 每次启动或重启后有 30 秒启动宽限期；期间继续探测，但不累计健康检查失败。
+  首次返回 `200` 后立即结束宽限期并记录 `API is ready`
 - 连续健康检查失败后重启 API
 - Redis 正常但 Worker 未注册时，单独重启 Worker
 - 默认每 60 秒执行 `reconcile-tasks`
@@ -415,6 +461,18 @@ Python 查找顺序：
 按 `Ctrl+C` 可以停止 supervisor、API 和 Worker<br>
 该脚本不会执行任务归档或
 永久删除
+
+终端显示 `starting API` 或 `starting 3D inference worker` 只表示已尝试启动子进程。
+若随后反复显示 `exited`、`restarting`，应查看具体报错：
+
+```bash
+tail -n 60 logs/api.stderr.log
+tail -n 60 logs/worker.stderr.log
+```
+
+API 提示缺少 `BTIR_JWT_SECRET_KEY` 时先完善 `.env`；提示 `No module named ...`
+时先核对所选 Python 是否属于安装依赖的虚拟环境。API 启动成功后用 `/healthz`
+确认存活，再用 `/readyz` 检查 Redis、Worker 和模型是否全部就绪。
 
 项目根目录的 `.env` 可以由系统环境变量替代，但 API 必须获得
 `BTIR_JWT_SECRET_KEY`<br>
@@ -429,6 +487,7 @@ export BTIR_API_HOST=127.0.0.1
 export BTIR_API_PORT=8000
 export BTIR_SUPERVISOR_RESTART_DELAY_SECONDS=10
 export BTIR_SUPERVISOR_HEALTH_CHECK_SECONDS=15
+export BTIR_SUPERVISOR_API_STARTUP_GRACE_SECONDS=30
 export BTIR_SUPERVISOR_WORKER_STARTUP_GRACE_SECONDS=120
 export BTIR_SUPERVISOR_TASK_RECONCILE_SECONDS=60
 export BTIR_SUPERVISOR_RECONCILE_TIMEOUT_SECONDS=120

@@ -47,6 +47,7 @@ API_HOST="${BTIR_API_HOST:-0.0.0.0}"
 API_PORT="${BTIR_API_PORT:-8000}"
 RESTART_DELAY_SECONDS="${BTIR_SUPERVISOR_RESTART_DELAY_SECONDS:-10}"
 HEALTH_CHECK_SECONDS="${BTIR_SUPERVISOR_HEALTH_CHECK_SECONDS:-15}"
+API_STARTUP_GRACE_SECONDS="${BTIR_SUPERVISOR_API_STARTUP_GRACE_SECONDS:-30}"
 WORKER_STARTUP_GRACE_SECONDS="${BTIR_SUPERVISOR_WORKER_STARTUP_GRACE_SECONDS:-120}"
 TASK_RECONCILE_SECONDS="${BTIR_SUPERVISOR_TASK_RECONCILE_SECONDS:-60}"
 RECONCILE_TIMEOUT_SECONDS="${BTIR_SUPERVISOR_RECONCILE_TIMEOUT_SECONDS:-120}"
@@ -67,6 +68,7 @@ require_integer() {
 require_integer "BTIR_API_PORT" "$API_PORT" 1 65535
 require_integer "BTIR_SUPERVISOR_RESTART_DELAY_SECONDS" "$RESTART_DELAY_SECONDS" 1 300
 require_integer "BTIR_SUPERVISOR_HEALTH_CHECK_SECONDS" "$HEALTH_CHECK_SECONDS" 5 300
+require_integer "BTIR_SUPERVISOR_API_STARTUP_GRACE_SECONDS" "$API_STARTUP_GRACE_SECONDS" 1 600
 require_integer "BTIR_SUPERVISOR_WORKER_STARTUP_GRACE_SECONDS" "$WORKER_STARTUP_GRACE_SECONDS" 1 600
 require_integer "BTIR_SUPERVISOR_TASK_RECONCILE_SECONDS" "$TASK_RECONCILE_SECONDS" 10 3600
 require_integer "BTIR_SUPERVISOR_RECONCILE_TIMEOUT_SECONDS" "$RECONCILE_TIMEOUT_SECONDS" 10 3600
@@ -124,6 +126,8 @@ fi
 printf '%s\n' "$$" >"$PID_FILE"
 
 api_pid=0
+api_started_at=0
+api_startup_pending=true
 worker_pid=0
 worker_started_at=0
 api_health_failures=0
@@ -141,6 +145,9 @@ start_api() {
         exec "$PYTHON_EXE" -m uvicorn api.app:app --host "$API_HOST" --port "$API_PORT"
     ) >>"$LOG_DIRECTORY/api.stdout.log" 2>>"$LOG_DIRECTORY/api.stderr.log" &
     api_pid=$!
+    api_started_at="$(date +%s)"
+    api_startup_pending=true
+    api_health_failures=0
 }
 
 start_worker() {
@@ -179,7 +186,6 @@ restart_api() {
     stop_process "$api_pid" 'API'
     sleep "$RESTART_DELAY_SECONDS"
     start_api
-    api_health_failures=0
 }
 
 restart_worker() {
@@ -248,7 +254,6 @@ while true; do
         log "API exited with code $exit_code; restarting in ${RESTART_DELAY_SECONDS}s"
         sleep "$RESTART_DELAY_SECONDS"
         start_api
-        api_health_failures=0
     fi
 
     if ! process_is_running "$worker_pid"; then
@@ -264,6 +269,13 @@ while true; do
         next_health_check=$((now + HEALTH_CHECK_SECONDS))
         if [[ "$(http_status "$HEALTH_BASE_URL/healthz")" == '200' ]]; then
             api_health_failures=0
+            if [[ "$api_startup_pending" == true ]]; then
+                api_startup_pending=false
+                log 'API is ready'
+            fi
+        elif [[ "$api_startup_pending" == true ]] &&
+            (( now - api_started_at < API_STARTUP_GRACE_SECONDS )); then
+            : # 启动期间继续探测，但不累计失败；进程退出仍会立即触发重启。
         else
             api_health_failures=$((api_health_failures + 1))
             log "API health check failed (failures=$api_health_failures)"

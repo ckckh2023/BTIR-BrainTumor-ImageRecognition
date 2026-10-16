@@ -87,21 +87,45 @@ models/segmentation3d/model/model_epoch_297.pth
 
 ### 2. 配置 Python 环境
 
-项目要求 Python 3.11：
+项目要求 Python 3.11。以下为 Linux / Bash 示例，所有命令在项目根目录执行；
+Windows 的虚拟环境创建与激活方式见[安装与部署](docs/DEPLOYMENT.md#windows-开发环境)。
+Debian/Ubuntu 上，Python 3.11 还需要对应的 `python3.11-venv` 组件；若当前软件源提供该包：
 
 ```bash
-python3.11 -m pip install -r requirements.txt
-cp .env.example .env
-python3.11 -c "import secrets; print(secrets.token_urlsafe(48))"
+sudo apt update
+sudo apt install python3.11-venv
 ```
 
-将最后一条命令生成的随机值写入 `.env` 的 `BTIR_JWT_SECRET_KEY`<br>
+若提示找不到该包，或安装后创建虚拟环境仍失败，见[虚拟环境创建失败](docs/DEPLOYMENT.md#虚拟环境创建失败)。
+先创建并激活虚拟环境，安装依赖与启动服务都使用其中的同一个 Python。
+下面的 `&&` 确保任一步失败时停止，不继续执行后续步骤：
+
+```bash
+python3.11 -m venv .venv &&
+source .venv/bin/activate &&
+python --version &&
+python -m pip install --upgrade pip &&
+python -m pip install -r requirements.txt
+```
+
+以上步骤全部成功后，再配置 `.env`：
+
+```bash
+if [ ! -e .env ]; then cp .env.example .env; fi
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+`python --version` 应显示 Python 3.11；若提示 `python3.11: command not found`，需先安装 Python 3.11。
+上述复制步骤会保留已有 `.env`。首次配置时，将最后一条命令生成的随机值写入 `.env` 的
+`BTIR_JWT_SECRET_KEY`；已有有效密钥时无需更换。<br>
 
 首次部署可创建管理员：
 
 ```bash
-python3.11 Main.py user create <username> --admin
+python Main.py user create your_username --admin
 ```
+
+将 `your_username` 换成实际用户名，按终端提示设置密码。
 
 `requirements.txt` 默认使用 CUDA 12.1 版 PyTorch<br>
 CPU、CUDA、ROCm 与 Linux 部署方案见[安装与部署](docs/DEPLOYMENT.md)
@@ -112,17 +136,33 @@ CPU、CUDA、ROCm 与 Linux 部署方案见[安装与部署](docs/DEPLOYMENT.md)
 sudo systemctl start redis-server
 ```
 
-分别启动 API 与 Worker：
+以下两种启动方式选择一种，不要重复启动。
+
+方式一：打开两个终端，均进入项目根目录并激活同一虚拟环境。
+终端 1 启动 API（此命令会持续占用当前终端）：
 
 ```bash
-python3.11 -m uvicorn api.app:app --reload
-python3.11 -m workers.run_worker
+source .venv/bin/activate
+python -m uvicorn api.app:app --reload
 ```
 
-或者可以同时托管 API 与 Worker
+终端 2 启动 Worker：
+
 ```bash
-bash scripts/run-supervisor.sh /usr/bin/python3.11
+source .venv/bin/activate
+python -m workers.run_worker
 ```
+
+方式二：由守护脚本同时托管 API 与 Worker：
+
+```bash
+source .venv/bin/activate
+bash scripts/run-supervisor.sh
+```
+
+脚本会优先使用已激活的虚拟环境。使用其他环境时可传入该环境中 Python 的实际路径，
+不要指定未安装项目依赖的系统 Python。守护方式的 API 与 Worker 详细错误分别写入
+`logs/api.stderr.log`、`logs/worker.stderr.log`；终端显示的 `starting` 只表示已尝试启动。
 
 随后便可打开以下地址：
 
