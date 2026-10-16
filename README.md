@@ -11,7 +11,7 @@
 
 BTIR 是一个面向四模态脑肿瘤 MRI 的完整分析系统，用户可在浏览器中登录、完成分类、分割与 AI 辅助分析，并在网页内查看关键影像特征、切片、对比和 3D 影像。
 
-你可以自部署服务端，与之对其的客户端项目：https://github.com/ckckh2023/BTIR-Client
+你可以自部署服务端，并使用与之对齐的客户端项目：https://github.com/ckckh2023/BTIR-Client
 
 访问我们已经部署好的服务（不定期开放）: https://btir-online.ai-premol.cn
 
