@@ -3,7 +3,7 @@
         const btirRootOptions = {
             data() {
                 return {
-                    API_BASE: '',
+                    API_BASE: window.btirEnv?.apiBase ?? '',
                     loading: false,
                     analysisCancelled: false,
                     analysisPolling: false,
@@ -2919,7 +2919,7 @@
                     localStorage.removeItem('btir_token')
                     localStorage.removeItem('btir_user')
                     this.clearWorkspaceState()
-                    window.location.href = '/login/login.html'
+                    window.location.href = './login.html'
                 },
             },
             async mounted() {
@@ -2935,7 +2935,7 @@
 
                 const token = localStorage.getItem('btir_token')
                 if (!token) {
-                    window.location.href = '/login/login.html'
+                    window.location.href = './login.html'
                     return
                 }
                 try {
@@ -2950,7 +2950,7 @@
                         this.currentUser = await response.json()
                         localStorage.setItem('btir_user', JSON.stringify(this.currentUser))
                         if (this.currentUser.must_change_password) {
-                            window.location.href = '/web/change-password.html'
+                            window.location.href = './change-password.html'
                             return
                         }
                     }

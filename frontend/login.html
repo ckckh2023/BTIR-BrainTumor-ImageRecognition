@@ -123,7 +123,7 @@
         createApp({
             data() {
                 return {
-                    API_BASE: '',
+                    API_BASE: window.btirEnv?.apiBase ?? '',
                     mode: 'login',
                     username: '',
                     password: '',
@@ -234,10 +234,10 @@
                         username: data.username,
                     }))
                     if (data.must_change_password) {
-                        window.location.href = '/web/change-password.html'
+                        window.location.href = './change-password.html'
                         return
                     }
-                    window.location.href = '/web/'
+                    window.location.href = './index.html'
                 },
             },
             async mounted() {
@@ -252,7 +252,7 @@
                         headers: { 'Authorization': `Bearer ${token}` },
                     })
                     if (response.ok) {
-                        window.location.href = '/web/'
+                        window.location.href = './index.html'
                         return
                     }
                 } catch {

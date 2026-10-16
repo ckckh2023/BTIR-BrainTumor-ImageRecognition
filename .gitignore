@@ -45,3 +45,6 @@ arts/
 # 前端工具链产物
 frontend/node_modules/
 .wrangler/
+
+# 桌面版环境整理
+desktop/
