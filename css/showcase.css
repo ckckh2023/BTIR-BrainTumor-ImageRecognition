@@ -161,14 +161,14 @@ a:focus-visible, button:focus-visible { outline: 3px solid var(--btir-accent); o
 .contributor-avatar { position: relative; display: grid; place-items: center; width: 42px; height: 42px; flex: 0 0 42px; border-radius: 50%; color: var(--btir-primary); background: var(--btir-primary-soft); font-size: 18px; font-weight: 700; overflow: hidden; }
 .contributor-avatar img { position: absolute; inset: 0; }
 .contributor-avatar img[hidden] { display: none; }
-[data-theme="dark"] @media (max-width: 1080px) {
+@media (max-width: 1080px) {
 .hero { gap: 32px; }
     .capability-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .brand-zone { min-width: 210px; }
     .open-card { gap: 36px; padding: 40px; }
     .hero-visual { min-width: 0; }
         .mri-stage .brain-slice { transform: scale(.85); }
-        .floating-chip}
+}
 @media (max-width: 780px) {
 .section-shell { width: calc(100% - 40px); }
     .site-header { height: 64px; }
@@ -230,7 +230,7 @@ a:focus-visible, button:focus-visible { outline: 3px solid var(--btir-accent); o
 .capability-card { min-height: 230px; }
 .step-number { font: 700 18px var(--btir-mono); }
 .clients-section { padding-block: 72px 0; }
-.download-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 24px; }
+.download-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 24px; }
 .download-card { display: flex; flex-direction: column; padding: 32px; border: 1px solid var(--btir-border); border-radius: 18px; background: var(--btir-bg); }
 .download-card-heading { display: flex; gap: 16px; align-items: center; }
 .download-device { display: grid; place-items: center; width: 56px; height: 56px; color: var(--btir-primary); background: var(--btir-primary-soft); border-radius: 12px; }
@@ -274,3 +274,8 @@ a:focus-visible, button:focus-visible { outline: 3px solid var(--btir-accent); o
 
 /* Client downloads use the same navigation treatment as every section. */
 @media (max-width: 780px) { .site-nav.open { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; } .site-nav a { text-align: center; } }
+
+@media (min-width: 541px) and (max-width: 1080px) {
+    .download-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .download-card:last-child { grid-column: 1 / -1; }
+}
