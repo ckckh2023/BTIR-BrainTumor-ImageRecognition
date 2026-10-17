@@ -117,7 +117,7 @@ function fits(r, width, label) {
                                 assert.equal(await page.locator('.volume-modal-files-panel .volume-input-row').count(), 4);
                             }
                             if (view === 'result') {
-                                await page.getByRole('link', { name: '查看三维影像 ↓' }).click();
+                                await page.getByRole('link', { name: '查看三维影像', exact: true }).click();
                                 await page.getByRole('button', { name: '放大查看', exact: true }).click();
                                 await page.locator('.volume-viewer-expanded').waitFor();
                                 await page.waitForFunction(() => {

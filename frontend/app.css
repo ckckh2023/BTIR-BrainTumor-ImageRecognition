@@ -3088,23 +3088,34 @@ body {
         .result-item-status-row {
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 12px;
+        }
+
+        .result-item-status-row .result-value {
+            flex: 1;
+            min-width: 0;
+            overflow-wrap: anywhere;
         }
 
         .cancel-analysis-btn {
             flex-shrink: 0;
-            padding: 3px 10px;
-            background: #e53e3e;
-            color: #ffffff;
-            border: 1px solid #c53030;
-            border-radius: 6px;
-            font-size: 12px;
+            min-width: 64px;
+            min-height: 44px;
+            padding: 8px 12px;
+            color: var(--btir-text-secondary);
+            background: var(--btir-surface-muted);
+            border: 1px solid var(--btir-border);
+            border-radius: var(--btir-radius-sm);
+            font-size: 13px;
+            line-height: 1.4;
             cursor: pointer;
             transition: all 0.2s;
         }
 
         .cancel-analysis-btn:hover {
-            background: #c53030;
+            color: var(--btir-primary);
+            background: var(--btir-primary-soft);
+            border-color: var(--btir-accent);
         }
 
         .cancel-analysis-btn:active {
@@ -4835,7 +4846,6 @@ body {
             }
 
             .volume-source-clear,
-            .cancel-analysis-btn,
             .follow-up-upload-context button,
             .case-preview-fullscreen-close,
             .browse-btn,
