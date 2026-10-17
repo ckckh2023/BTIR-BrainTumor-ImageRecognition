@@ -240,7 +240,6 @@ a:focus-visible, button:focus-visible { outline: 3px solid var(--btir-accent); o
 .download-card-note { color: var(--btir-text-secondary); font-size: 16px; margin-bottom: 24px; }
 .download-action { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 48px; margin-top: auto; padding: 12px 18px; color: #fff; background: var(--btir-primary); border-radius: 10px; text-decoration: none; font-size: 17px; font-weight: 650; transition: background .2s; }
 .download-action:hover { background: var(--btir-primary-hover); }
-.download-release-status { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 @media (max-width: 1080px) and (min-width: 781px) {
     .header-inner { gap: 16px; grid-template-columns: auto 1fr auto; }
     .site-nav { justify-content: center; gap: 18px; }
