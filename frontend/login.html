@@ -176,6 +176,9 @@
                     return ''
                 },
                 async responseErrorMessage(response, fallback) {
+                    if (response.status === 405) {
+                        return '当前网页服务不支持账号请求（HTTP 405），请从守护脚本显示的网页入口打开后登录或注册。'
+                    }
                     const data = await response.json().catch(() => ({}))
                     if (typeof data.detail === 'string' && data.detail) {
                         return data.detail

@@ -159,11 +159,18 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("progressPhaseCeiling", self.app_js)
         self.assertIn("progressMotionActive: false", self.app_js)
         self.assertIn("displayProgress: 0", self.app_js)
-        self.assertIn("mapped = 30 + ((raw - 36) / 8) * 25", self.app_js)
-        self.assertIn("mapped = 55 + ((raw - 44) / 54) * 35", self.app_js)
-        self.assertIn("mapped = 90 + ((raw - 98) / 2) * 10", self.app_js)
+        self.assertIn('src="./analysis-progress.js"', self.html)
+        self.assertIn('style="left: 10%"', self.html)
+        self.assertIn('style="left: 20%"', self.html)
+        self.assertIn('style="left: 90%"', self.html)
+        self.assertIn("this.progressModel.advance", self.app_js)
+        self.assertIn("handleProgressVisibilityChange", self.app_js)
         self.assertIn("analysis-progress-seg", self.html)
         self.assertIn("analysis-progress-shimmer", self.app_css)
+
+    def test_about_page_offers_a_client_download_link(self) -> None:
+        self.assertIn('class="about-btn secondary" href="./download.html"', self.about_html)
+        self.assertIn("客户端下载", self.about_html)
 
     def test_result_settle_animates_to_100_then_fades(self) -> None:
         self.assertIn("settleAndPresentResult", self.app_js)

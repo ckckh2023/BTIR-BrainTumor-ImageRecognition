@@ -128,6 +128,8 @@ python Main.py user create your_username --admin
 将 `your_username` 换成实际用户名，按终端提示设置密码。
 
 `requirements.txt` 默认使用 CUDA 12.1 版 PyTorch<br>
+RTX 50 / Blackwell 显卡（例如 RTX 5070）需在安装依赖后执行
+`python -m accelerator.install --backend auto`，自动切换到兼容的 CUDA 12.8 版 PyTorch。<br>
 CPU、CUDA、ROCm 与 Linux 部署方案见[安装与部署](docs/DEPLOYMENT.md)
 
 ### 3. 启动 Redis、API 与 Worker

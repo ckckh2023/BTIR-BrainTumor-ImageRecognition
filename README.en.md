@@ -130,6 +130,8 @@ python Main.py user create your_username --admin
 Replace `your_username` with the actual username and follow the password prompt.
 
 `requirements.txt` uses PyTorch CUDA 12.1 by default.<br>
+For RTX 50 / Blackwell GPUs, run `python -m accelerator.install --backend auto`
+after installing dependencies to select the compatible CUDA 12.8 build.<br>
 For CPU, CUDA, ROCm, and Linux deployment options, see [Installation & Deployment](docs/DEPLOYMENT.md).
 
 ### 3. Start Redis, API, and Worker

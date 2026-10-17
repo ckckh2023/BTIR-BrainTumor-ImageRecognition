@@ -26,5 +26,6 @@ transformers>=4.53,<5.0
 safetensors>=0.5,<1.0
 
 # 团队服务器默认使用 NVIDIA CUDA 12.1；其他后端通过 accelerator.install 显式切换
+# RTX 50 / Blackwell 必须在安装后执行 python -m accelerator.install --backend auto，切换到 CUDA 12.8
 --extra-index-url https://download.pytorch.org/whl/cu121
 torch==2.5.1+cu121

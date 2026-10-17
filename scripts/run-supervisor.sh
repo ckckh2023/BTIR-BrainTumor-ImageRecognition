@@ -53,7 +53,16 @@ TASK_RECONCILE_SECONDS="${BTIR_SUPERVISOR_TASK_RECONCILE_SECONDS:-60}"
 RECONCILE_TIMEOUT_SECONDS="${BTIR_SUPERVISOR_RECONCILE_TIMEOUT_SECONDS:-120}"
 SHUTDOWN_GRACE_SECONDS="${BTIR_SUPERVISOR_SHUTDOWN_GRACE_SECONDS:-300}"
 API_FAILURE_THRESHOLD="${BTIR_SUPERVISOR_API_FAILURE_THRESHOLD:-3}"
-HEALTH_BASE_URL="http://127.0.0.1:$API_PORT"
+HEALTH_HOST="$API_HOST"
+case "$API_HOST" in
+    0.0.0.0) HEALTH_HOST=127.0.0.1 ;;
+    ::) HEALTH_HOST=::1 ;;
+esac
+if [[ "$HEALTH_HOST" == *:* && "$HEALTH_HOST" != \[*\] ]]; then
+    HEALTH_BASE_URL="http://[$HEALTH_HOST]:$API_PORT"
+else
+    HEALTH_BASE_URL="http://$HEALTH_HOST:$API_PORT"
+fi
 
 require_integer() {
     local name="$1"
@@ -82,6 +91,48 @@ log() {
         tee -a "$LOG_DIRECTORY/supervisor.log"
 }
 
+show_access_urls() {
+    log "网页入口: $HEALTH_BASE_URL/web/"
+    log "登录 / 注册: $HEALTH_BASE_URL/web/login.html"
+    if [[ "$API_HOST" == '0.0.0.0' || "$API_HOST" == '::' ]]; then
+        local address
+        for address in $(hostname -I 2>/dev/null || true); do
+            if [[ "$address" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ && "$address" != 127.* ]]; then
+                log "网络地址: http://$address:$API_PORT/web/"
+            fi
+        done
+    fi
+    log "API 文档: $HEALTH_BASE_URL/docs"
+    log '请通过以上网页入口登录 / 注册，5500 等静态网页服务无法处理账号请求。'
+}
+
+component_label() {
+    local key="$1"
+    local body="$2"
+    if grep -qE "\"$key\"[[:space:]]*:[[:space:]]*\"ok\"" <<<"$body"; then
+        printf '就绪'
+    elif grep -qE "\"$key\"[[:space:]]*:[[:space:]]*\"unavailable\"" <<<"$body"; then
+        printf '等待'
+    else
+        printf '未知'
+    fi
+}
+
+report_readiness() {
+    local body="$1"
+    local message
+    if [[ -z "$body" ]]; then return; fi
+    if grep -qE '"status"[[:space:]]*:[[:space:]]*"ready"' <<<"$body"; then
+        message='[4/4] 服务全部就绪，可以打开网页并上传病例进行分析。'
+    else
+        message="[4/4] 正在准备: 数据库 $(component_label task_database "$body") | Redis $(component_label redis "$body") | Worker $(component_label inference_worker "$body") | 模型文件 $(component_label models "$body")"
+    fi
+    if [[ "$message" != "$last_readiness_message" ]]; then
+        log "$message"
+        last_readiness_message="$message"
+    fi
+}
+
 if command -v flock >/dev/null 2>&1; then
     exec 9>"$LOCK_FILE"
     if ! flock -n 9; then
@@ -93,6 +144,11 @@ elif [[ -f "$PID_FILE" ]]; then
         fail "another BTIR supervisor is already running (pid=$existing_pid)"
     fi
 fi
+
+log "project root: $PROJECT_ROOT"
+log "Python: $PYTHON_EXE"
+log "logs: $LOG_DIRECTORY"
+log '[1/4] 检查 Python 版本与项目依赖...'
 
 if ! "$PYTHON_EXE" -c \
     'import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 11) else 1)'; then
@@ -107,18 +163,26 @@ if ! (
     fail "project dependencies are incomplete; run: $PYTHON_EXE -m pip install -r requirements.txt"
 fi
 
+log '[1/4] Python 环境检查通过'
+
 if "$PYTHON_EXE" -c \
-    'import socket, sys; s=socket.socket(); s.settimeout(1); code=s.connect_ex(("127.0.0.1", int(sys.argv[1]))); s.close(); raise SystemExit(0 if code == 0 else 1)' \
-    "$API_PORT"; then
+    'import socket, sys
+try:
+    with socket.create_connection((sys.argv[1], int(sys.argv[2])), timeout=1):
+        pass
+except OSError:
+    raise SystemExit(1)' \
+    "$HEALTH_HOST" "$API_PORT"; then
     fail "API port $API_PORT is already in use"
 fi
 
+log '[2/4] 检查 Redis 连接...'
 if (
     cd "$PROJECT_ROOT"
     "$PYTHON_EXE" -c \
         'from core.settings import SETTINGS; from redis import Redis; Redis.from_url(SETTINGS.redis_url, socket_connect_timeout=2, socket_timeout=2).ping()'
 ); then
-    log 'Redis connection is ready'
+    log '[2/4] Redis connection is ready — 连接正常'
 else
     log 'Redis is unavailable at startup; API will report not ready and the supervisor will keep restarting the worker'
 fi
@@ -131,6 +195,7 @@ api_startup_pending=true
 worker_pid=0
 worker_started_at=0
 api_health_failures=0
+last_readiness_message=''
 
 process_is_running() {
     local pid="$1"
@@ -138,7 +203,7 @@ process_is_running() {
 }
 
 start_api() {
-    log "starting API on $API_HOST:$API_PORT"
+    log "[3/4] starting API on $API_HOST:$API_PORT — 正在初始化..."
     (
         cd "$PROJECT_ROOT"
         exec 9>&-
@@ -148,10 +213,12 @@ start_api() {
     api_started_at="$(date +%s)"
     api_startup_pending=true
     api_health_failures=0
+    last_readiness_message=''
+    show_access_urls
 }
 
 start_worker() {
-    log "starting 3D inference worker"
+    log '[3/4] starting 3D inference worker — 模型预加载可能需要一些时间'
     (
         cd "$PROJECT_ROOT"
         exec 9>&-
@@ -160,6 +227,7 @@ start_worker() {
       2>>"$LOG_DIRECTORY/worker.stderr.log" &
     worker_pid=$!
     worker_started_at="$(date +%s)"
+    last_readiness_message=''
 }
 
 stop_process() {
@@ -236,12 +304,10 @@ if ! command -v curl >/dev/null 2>&1; then
     log 'curl is unavailable; process-exit monitoring remains enabled'
 fi
 
-log "project root: $PROJECT_ROOT"
-log "Python: $PYTHON_EXE"
-log "logs: $LOG_DIRECTORY"
-
 start_api
 start_worker
+log "启动错误详情: $LOG_DIRECTORY/api.stderr.log / $LOG_DIRECTORY/worker.stderr.log"
+log '按 Ctrl+C 可停止服务。'
 
 now="$(date +%s)"
 next_health_check="$now"
@@ -271,11 +337,11 @@ while true; do
             api_health_failures=0
             if [[ "$api_startup_pending" == true ]]; then
                 api_startup_pending=false
-                log 'API is ready'
+                log 'API is ready — 网页已可访问'
             fi
         elif [[ "$api_startup_pending" == true ]] &&
             (( now - api_started_at < API_STARTUP_GRACE_SECONDS )); then
-            : # 启动期间继续探测，但不累计失败；进程退出仍会立即触发重启。
+            log "API 初始化中，已等待 $((now - api_started_at)) 秒（启动宽限 ${API_STARTUP_GRACE_SECONDS} 秒）"
         else
             api_health_failures=$((api_health_failures + 1))
             log "API health check failed (failures=$api_health_failures)"
@@ -285,6 +351,7 @@ while true; do
         fi
 
         readiness_body="$(http_body "$HEALTH_BASE_URL/readyz")"
+        report_readiness "$readiness_body"
         if
             grep -qE '"redis"[[:space:]]*:[[:space:]]*"ok"' <<<"$readiness_body" &&
             grep -qE '"inference_worker"[[:space:]]*:[[:space:]]*"unavailable"' <<<"$readiness_body" &&

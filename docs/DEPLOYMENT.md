@@ -327,7 +327,7 @@ python -m accelerator.install --backend auto
 
 后端切换命令应当最后执行<br>
 再次运行 `pip install -r requirements.txt` 会恢复
-默认 CUDA 12.1 版 PyTorch；CPU 或 ROCm 环境需要重新执行对应的后端安装命令
+默认 CUDA 12.1 版 PyTorch；CPU、ROCm 或 CUDA 12.8 环境需要重新执行对应的后端安装命令
 安装器会同时保持项目锁定的 NumPy 与 Pillow 版本，避免重装 Torch 时升级公共
 二进制依赖
 
@@ -343,6 +343,9 @@ python -m accelerator.install --backend auto --dry-run
 # NVIDIA CUDA 12.1（团队服务器默认）
 python -m accelerator.install --backend cuda
 
+# NVIDIA RTX 50 / Blackwell（例如 RTX 5070 Laptop，sm_120）
+python -m accelerator.install --backend cuda128
+
 # Linux AMD ROCm
 python -m accelerator.install --backend rocm
 
@@ -352,7 +355,8 @@ python -m accelerator.install --backend cpu
 
 说明：
 
-- 默认 NVIDIA 后端为 CUDA 12.1；`auto` 检测到 `nvidia-smi` 时选择该后端
+- `auto` 查询 NVIDIA 计算能力：Blackwell（主版本 10 及以上）使用 PyTorch 2.7.1 / CUDA 12.8；较旧设备保留 CUDA 12.1
+- `cuda128` 使用官方 CUDA 12.8 wheel，适用于 RTX 50 系列。驱动也必须支持该显卡与 CUDA 12.8
 - AMD ROCm 仅支持 Linux；AMD Windows 使用 CPU
 - `BTIR_DEVICE=auto` 会在已正确安装后端时自动选择 GPU
 - 多张 GPU 可通过 `BTIR_DEVICE=cuda:0` 指定设备
@@ -378,6 +382,16 @@ python -c "import torch; print(torch.__version__); print(torch.cuda.is_available
 
 更换 PyTorch 后端后需重启 API 和 Worker，再通过 `/runtime` 核对实际
 `backend`
+
+若日志提示 `no kernel image is available for execution on the device`，并显示
+显卡为 `sm_120` 而 PyTorch 仅支持到 `sm_90`，说明安装的 wheel 不支持当前显卡架构。
+先停止守护脚本，再在同一虚拟环境执行 `python -m accelerator.install --backend cuda128`，
+完成后重新启动。只检查 `torch.cuda.is_available()` 返回 `True` 不足以证明算子可执行，
+可用小规模卷积确认：
+
+```bash
+python -c "import torch; x=torch.zeros(1,1,8,8,device='cuda'); m=torch.nn.Conv2d(1,1,3).cuda(); m(x); torch.cuda.synchronize(); print(torch.__version__, torch.version.cuda, 'CUDA convolution OK')"
+```
 
 ## Worker 预热模式
 
@@ -456,6 +470,7 @@ Python 查找顺序：
 - Redis 正常但 Worker 未注册时，单独重启 Worker
 - 默认每 60 秒执行 `reconcile-tasks`
 - 将标准输出、错误和巡检结果写入 `logs/`
+- 终端显示 Python、Redis、API / Worker、整体就绪四个启动阶段，并打印网页、登录 / 注册和可用网络地址；就绪状态变化时更新组件提示
 - 收到 `SIGINT` 或 `SIGTERM` 时先请求子进程正常退出，超过宽限期才强制停止
 
 按 `Ctrl+C` 可以停止 supervisor、API 和 Worker<br>
@@ -473,6 +488,11 @@ tail -n 60 logs/worker.stderr.log
 API 提示缺少 `BTIR_JWT_SECRET_KEY` 时先完善 `.env`；提示 `No module named ...`
 时先核对所选 Python 是否属于安装依赖的虚拟环境。API 启动成功后用 `/healthz`
 确认存活，再用 `/readyz` 检查 Redis、Worker 和模型是否全部就绪。
+
+登录与注册请使用守护脚本输出的地址，例如 `http://127.0.0.1:8000/web/login.html`。
+`http://127.0.0.1:5500/frontend/login.html` 等 Live Server 静态预览页面不提供
+`POST /auth/register` 或 `POST /auth/login`，提交账号请求可能返回 HTTP 405。
+修改 `.env` 中的 `BTIR_REGISTRATION_ENABLED` 后，需要重启 API 才会生效。
 
 项目根目录的 `.env` 可以由系统环境变量替代，但 API 必须获得
 `BTIR_JWT_SECRET_KEY`<br>
