@@ -54,8 +54,7 @@
             border-color: #6b5522;
         }
 
-        [data-theme="dark"] .volume-source-menu,
-        [data-theme="dark"] .volume-case-source-options {
+        [data-theme="dark"] .volume-source-menu {
             border-color: #3c4f73;
         }
 
@@ -763,6 +762,22 @@ body {
             border-color: var(--btir-accent);
         }
 
+        .volume-drop-trigger {
+            display: grid;
+            width: 100%;
+            padding: 0;
+            border: 0;
+            color: inherit;
+            background: transparent;
+            font: inherit;
+            cursor: pointer;
+        }
+
+        .mobile-upload-heading,
+        .mobile-result-links {
+            display: none;
+        }
+
         .volume-drop-title {
             color: var(--btir-primary);
             font-size: 15px;
@@ -814,7 +829,7 @@ body {
         .volume-source-menu {
             position: absolute;
             z-index: 2;
-            display: flex;
+            display: none;
             gap: 6px;
             bottom: 10px;
             padding: 6px;
@@ -822,6 +837,10 @@ body {
             border: 1px solid #bfdbfe;
             border-radius: 7px;
             box-shadow: 0 4px 12px rgba(30, 60, 114, 0.16);
+        }
+
+        .volume-source-menu.source-menu-open {
+            display: flex;
         }
 
         .volume-source-menu button {
@@ -843,24 +862,6 @@ body {
 
         .volume-source-menu button:active {
             transform: translateY(0);
-        }
-
-        .volume-case-source-picker {
-            position: relative;
-        }
-
-        .volume-case-source-options {
-            position: absolute;
-            left: 0;
-            bottom: calc(100% + 6px);
-            display: flex;
-            gap: 6px;
-            padding: 6px;
-            white-space: nowrap;
-            background: var(--btir-surface);
-            border: 1px solid #bfdbfe;
-            border-radius: 7px;
-            box-shadow: 0 4px 12px rgba(30, 60, 114, 0.16);
         }
 
         .dicom-series-selection-panel {
@@ -4571,107 +4572,13 @@ body {
             flex-shrink: 0;
         }
 
-        @media (max-width: 760px) {
-            body {
-                align-items: flex-start;
-                padding: 10px;
-            }
-
-            .app-container {
-                flex-direction: column;
-                height: auto;
-                min-height: calc(100vh - 20px);
-                padding: 22px;
-            }
-
-            .app-content {
-                flex-direction: column;
-            }
-
-            .result-workspace .right-content {
-                grid-template-columns: 1fr;
-            }
-
-            .result-workspace .result-column-resizer {
-                display: none;
-            }
-
-            .result-workspace .case-viewer-column {
-                order: 1;
-                height: min(62vh, 520px);
-            }
-
-            .result-workspace .case-data-column {
-                order: 2;
-            }
-
-            .app-topbar {
-                display: flex;
-                flex-wrap: wrap;
-            }
-
-            .app-main-nav {
-                order: 3;
-                width: 100%;
-            }
-
-            .app-main-nav-btn {
-                flex: 1;
-            }
-
-            .left-panel {
-                max-height: calc(100vh - 120px);
-            }
-
-            .single-pane-workspace .left-panel {
-                height: auto;
-                justify-content: flex-start;
-            }
-
-            .single-pane-workspace .left-panel-scroll {
-                width: 100%;
-            }
-
-            .right-panel {
-                min-height: 520px;
-                border-left: none;
-                border-top: 2px solid #e8f0f8;
-                padding-left: 0;
-                padding-top: 20px;
-            }
-
-            .result-workspace .right-panel {
-                min-height: 0;
-                padding-top: 0;
-            }
-
-            .result-workspace .case-overview {
-                grid-template-columns: 1fr;
-            }
-
-            .result-workspace .case-overview-title {
-                grid-column: auto;
-            }
-
-            .result-workspace .case-overview-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .case-evidence-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .result-workspace .volume-viewer {
-                min-height: calc(100vh - 160px);
-            }
-        }
-
         /* Mobile interaction pass: preserve every workspace action without requiring
            horizontal scrolling or hover-only controls. */
         @media (max-width: 760px) {
+            html { scroll-padding-bottom: calc(90px + env(safe-area-inset-bottom)); }
             body {
                 display: block;
-                min-width: 320px;
+                min-width: 0;
                 padding: 0;
             }
 
@@ -4680,7 +4587,8 @@ body {
                 min-height: 100vh;
                 min-height: 100dvh;
                 max-height: none;
-                padding: 16px;
+                padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) calc(90px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+                height: auto;
                 border: 0;
                 border-radius: 0;
                 box-shadow: none;
@@ -4688,8 +4596,8 @@ body {
 
             .app-topbar {
                 display: grid;
-                grid-template-columns: minmax(0, 1fr) auto;
-                gap: 10px;
+                grid-template-columns: minmax(0, 1fr) repeat(3, 44px);
+                gap: 8px;
                 align-items: center;
             }
 
@@ -4712,28 +4620,61 @@ body {
                 height: 34px;
             }
 
-            .app-user-area {
-                min-width: 0;
-                gap: 6px;
+            .app-title-group {
+                grid-column: 1;
+                grid-row: 1;
             }
 
-            .app-username {
-                max-width: 96px;
+            .app-title-text h1 {
+                white-space: nowrap;
             }
+
+            .app-user-area {
+                display: contents;
+            }
+
+            .app-username,
+            .app-title-subtitle {
+                display: none;
+            }
+
+            .app-user-area > .theme-toggle { grid-column: 2; grid-row: 1; }
+            .app-user-area > .client-download-link { grid-column: 3; grid-row: 1; }
+            .app-user-area > .logout-btn { grid-column: 4; grid-row: 1; }
+
+            .topbar-export-report-btn,
+            .topbar-reupload-btn {
+                grid-column: 1 / -1;
+                grid-row: 2;
+                width: calc(50% - 4px);
+            }
+            .topbar-export-report-btn { justify-self: start; }
+            .topbar-reupload-btn { justify-self: end; }
 
             .theme-toggle,
+            .app-user-area .client-download-link,
             .logout-btn {
-                width: 40px;
-                height: 40px;
+                width: 44px;
+                height: 44px;
             }
 
             .topbar-export-report-btn,
             .topbar-reupload-btn {
-                min-height: 40px;
+                min-height: 44px;
+                max-width: none;
                 padding: 8px 10px;
+                font-size: 13px;
             }
 
             .app-main-nav {
+                position: fixed;
+                z-index: 50;
+                inset: auto 0 0;
+                padding: 8px max(12px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+                background: var(--btir-surface);
+                border-top: 1px solid var(--btir-border);
+                border-radius: 0;
+                box-shadow: 0 -4px 18px rgba(30, 41, 59, 0.08);
                 grid-column: 1 / -1;
                 display: grid;
                 grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4742,9 +4683,21 @@ body {
             }
 
             .app-main-nav-btn {
-                min-height: 42px;
+                min-height: 48px;
                 padding: 8px;
+                font-size: 14px;
             }
+
+            .app-content {
+                flex-direction: column;
+            }
+
+            .result-workspace .right-content {
+                grid-template-columns: minmax(0, 1fr);
+                padding: 0;
+            }
+
+            .result-column-resizer { display: none; }
 
             .app-content,
             .left-panel,
@@ -4759,23 +4712,117 @@ body {
                 overflow: visible;
             }
 
-            .left-panel {
+            .left-panel,
+            .single-pane-workspace .left-panel {
                 width: 100%;
+                height: auto;
+                justify-content: flex-start;
+            }
+
+            .single-pane-workspace .left-panel-scroll {
+                width: 100%;
+            }
+
+            .left-panel-scroll {
+                padding-right: 0;
             }
 
             .right-panel {
                 width: 100%;
                 min-height: auto;
-                padding-top: 16px;
+                border: 0;
+                padding: 0;
+            }
+
+            .mobile-result-links {
+                display: flex;
+                gap: 8px;
+                margin-bottom: 12px;
+            }
+
+            .mobile-result-links a {
+                display: grid;
+                place-items: center;
+                flex: 1;
+                min-height: 44px;
+                color: var(--btir-primary);
+                background: var(--btir-primary-soft);
+                border: 1px solid var(--btir-border);
+                border-radius: var(--btir-radius-sm);
+                text-decoration: none;
+                font-size: 13px;
+            }
+
+            #caseData, #caseViewer {
+                scroll-margin-top: 12px;
             }
 
             .result-workspace .case-viewer-column {
-                height: min(58vh, 460px);
-                min-height: 320px;
+                order: 2;
+                height: auto;
+                min-height: 0;
+                margin-top: 16px;
+            }
+
+            .result-workspace .volume-viewer {
+                flex: none;
+                height: 620px;
+                height: clamp(480px, 82dvh, 680px);
+                min-height: 0;
+            }
+
+            .result-workspace .volume-viewer-expanded {
+                height: 100%;
+                height: 100dvh;
+                padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
             }
 
             .result-workspace .case-data-column {
-                padding: 16px 0 0;
+                order: 1;
+                padding: 0;
+            }
+
+            .result-workspace .case-overview-grid,
+            .case-evidence-grid {
+                grid-template-columns: minmax(0, 1fr);
+            }
+
+            .mobile-upload-heading { display: block; }
+            .mobile-upload-heading:not(p) { font-weight: 600; }
+            .volume-drop-trigger { display: none; }
+            .volume-drop-zone { padding: 16px 12px; cursor: default; }
+            .volume-source-menu,
+            .volume-source-menu.source-menu-open {
+                position: static;
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                width: 100%;
+                margin-top: 14px;
+                padding: 0;
+                border: 0;
+                box-shadow: none;
+                background: transparent;
+            }
+            .volume-source-menu button:last-child { grid-column: 1 / -1; }
+            .volume-source-menu button:first-child {
+                color: #fff;
+                background: var(--btir-primary);
+                border-color: var(--btir-primary);
+            }
+
+            input:not([type="checkbox"]):not([type="range"]):not([type="file"]),
+            select, textarea,
+            .task-query-row select,
+            .volume-candidate-picker,
+            .task-card .task-card-name-input,
+            .follow-up-upload-context label.follow-up-date input {
+                min-width: 0;
+                min-height: 44px;
+                font-size: 16px;
+            }
+
+            button, .file-download-link, summary {
+                touch-action: manipulation;
             }
 
             .volume-input-row {
@@ -4787,15 +4834,26 @@ body {
                 grid-column: 1 / -1;
             }
 
+            .volume-source-clear,
+            .cancel-analysis-btn,
+            .follow-up-upload-context button,
+            .case-preview-fullscreen-close,
             .browse-btn,
             .browse-btn.compact,
-            .volume-source-menu button,
-            .volume-case-source-picker > button,
-            .volume-case-source-options button {
-                min-height: 40px;
+            .volume-source-menu button {
+                min-height: 44px;
             }
 
-            .follow-up-upload-context,
+            .volume-source-clear,
+            .follow-up-upload-context .follow-up-close-btn {
+                width: 44px;
+                height: 44px;
+            }
+
+            .follow-up-upload-context {
+                padding: 56px 12px 12px;
+            }
+
             .dicom-series-selection-panel,
             .volume-correction-panel {
                 padding: 12px;
@@ -4820,7 +4878,7 @@ body {
 
             .case-viewer-tab {
                 flex: 1 0 104px;
-                min-height: 40px;
+                min-height: 44px;
             }
 
             .file-downloads,
@@ -4835,7 +4893,7 @@ body {
             }
 
             .task-list-tab {
-                min-height: 40px;
+                min-height: 44px;
                 padding: 8px 4px;
             }
 
@@ -4845,30 +4903,30 @@ body {
 
             .task-query-row input {
                 flex: 1 1 100%;
-                min-height: 42px;
+                min-height: 44px;
             }
 
             .task-query-row select {
                 flex: 1 1 132px;
                 width: auto;
-                min-height: 42px;
+                min-height: 44px;
             }
 
             .task-small-btn {
-                min-height: 42px;
+                min-height: 44px;
                 padding: 8px 13px;
             }
 
             .task-rename-btn {
-                width: 36px;
-                height: 36px;
+                width: 44px;
+                height: 44px;
                 opacity: 1;
             }
 
             .task-rename-confirm-btn,
             .task-rename-cancel-btn {
-                width: 36px;
-                height: 36px;
+                width: 44px;
+                height: 44px;
             }
 
             .task-run-history-row {
@@ -4902,12 +4960,12 @@ body {
 
             .volume-viewer-button,
             .volume-viewer-error-panel button {
-                min-height: 36px;
+                min-height: 44px;
                 padding: 7px 9px;
             }
 
             .volume-viewer-mask-control {
-                min-height: 36px;
+                min-height: 44px;
             }
 
             .volume-viewer-mask-control input[type="range"] {
@@ -4915,11 +4973,15 @@ body {
             }
 
             .volume-viewer-stage canvas {
-                min-height: 280px;
+                min-height: 0;
+                touch-action: none;
             }
 
+            .volume-viewer-toolbar,
+            .volume-viewer-legend { flex-shrink: 0; }
+
             .app-toast {
-                bottom: max(16px, env(safe-area-inset-bottom));
+                bottom: calc(84px + env(safe-area-inset-bottom));
                 width: calc(100% - 28px);
                 max-width: 440px;
                 justify-content: center;
@@ -4930,7 +4992,7 @@ body {
 
         @media (max-width: 480px) {
             .app-container {
-                padding: 12px;
+                padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) calc(90px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
             }
 
             .app-title-text h1 {
@@ -4948,13 +5010,6 @@ body {
 
             .app-username {
                 display: none;
-            }
-
-            .topbar-export-report-btn,
-            .topbar-reupload-btn {
-                max-width: 132px;
-                font-size: 11px;
-                line-height: 1.25;
             }
 
             .case-viewer-tab {
@@ -4976,7 +5031,7 @@ body {
             }
 
             .volume-viewer-stage canvas {
-                min-height: 240px;
+                min-height: 0;
             }
 
             .case-preview-mode {
@@ -4985,7 +5040,7 @@ body {
 
             .case-preview-mode button {
                 flex: 1 1 0;
-                min-height: 38px;
+                min-height: 44px;
             }
         }
 
@@ -4999,6 +5054,18 @@ body {
             .result-details summary,
             .analysis-observations summary,
             .case-meta-summary {
-                min-height: 40px;
+                min-height: 44px;
             }
+        }
+
+        /* Small tablets cannot fit the desktop result columns (360px each). */
+        @media (min-width: 761px) and (max-width: 1000px) {
+            .app-topbar { grid-template-columns: minmax(0, 1fr) auto; }
+            .app-main-nav { grid-row: 2; grid-column: 1 / -1; }
+            .app-user-area { flex-wrap: wrap; min-width: 0; max-width: 400px; }
+            .app-username { display: none; }
+            .result-workspace .right-content { display: flex; flex-direction: column; overflow-y: auto; }
+            .result-workspace .case-data-column { flex: none; overflow: visible; }
+            .result-column-resizer { display: none; }
+            .result-workspace .case-viewer-column { flex: none; height: 620px; margin-top: 16px; }
         }

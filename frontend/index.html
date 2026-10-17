@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>智瞳医脑 - 脑肿瘤MRI影像智能辅助诊断系统</title>
     <link rel="icon" type="image/png" href="/assets/icon_exp.png">
     <!-- Vue 3.5.41 本地化（源：unpkg 官方包，避免内网依赖外网） -->
@@ -50,11 +50,13 @@
                     <button
                         type="button"
                         :class="['app-main-nav-btn', { active: activeRightView === 'results' }]"
+                        :aria-current="activeRightView === 'results' ? 'page' : null"
                         @click="switchRightView('results')"
                     >病例分析</button>
                     <button
                         type="button"
                         :class="['app-main-nav-btn', { active: activeRightView === 'tasks' }]"
+                        :aria-current="activeRightView === 'tasks' ? 'page' : null"
                         data-testid="task-manager-tab"
                         @click="switchRightView('tasks')"
                     >任务管理</button>
@@ -142,24 +144,20 @@
                         :class="['volume-drop-zone', { dragging: volumeDropActive }]"
                         ref="volumeDropZone"
                         data-testid="volume-drop-zone"
-                            @click="toggleVolumeSourceMenu"
                             @dragenter.prevent="volumeDropActive = true"
                             @dragover.prevent="volumeDropActive = true"
                             @dragleave.prevent="volumeDropActive = false"
                             @drop.prevent="onVolumeDrop"
                         >
-                            <div>
-                                <div class="volume-drop-title">拖入 NIfTI 或 DICOM 病例文件夹，或 ZIP 压缩包</div>
-                                <div class="volume-drop-hint">DICOM 请选包含四组序列的病例根目录</div>
-                            </div>
-                            <div class="volume-source-menu" v-if="volumeSourceMenuVisible" @click.stop>
-                                <div class="volume-case-source-picker">
-                                    <button type="button" @click="toggleVolumeCaseSourceMenu">选择病例数据</button>
-                                    <div class="volume-case-source-options" v-if="volumeCaseSourceMenuVisible">
-                                        <button type="button" @click="triggerVolumeCaseFolderPicker">病例文件夹</button>
-                                        <button type="button" @click="triggerVolumeArchivePicker">ZIP 压缩包</button>
-                                    </div>
-                                </div>
+                            <button type="button" class="volume-drop-trigger" @click="toggleVolumeSourceMenu" :aria-expanded="volumeSourceMenuVisible" aria-controls="volumeSourceMenu">
+                                <span class="volume-drop-title">拖入 NIfTI 或 DICOM 病例文件夹，或 ZIP 压缩包</span>
+                                <span class="volume-drop-hint">DICOM 请选包含四组序列的病例根目录</span>
+                            </button>
+                            <div class="mobile-upload-heading">选择病例影像</div>
+                            <p class="mobile-upload-heading volume-drop-hint">手机推荐上传 ZIP，也可分别选择四个 NIfTI 文件</p>
+                            <div id="volumeSourceMenu" :class="['volume-source-menu', { 'source-menu-open': volumeSourceMenuVisible }]" @click.stop>
+                                <button type="button" @click="triggerVolumeArchivePicker">上传 ZIP 压缩包</button>
+                                <button type="button" @click="triggerVolumeCaseFolderPicker">选择病例文件夹</button>
                                 <button type="button" @click="triggerVolumeManualPicker">手动上传四个 NIfTI 文件</button>
                             </div>
                         </div>
@@ -391,13 +389,17 @@
             </div>
 
             <div class="right-panel" v-if="hasRightPanel">
+                <nav class="mobile-result-links" v-if="isResultWorkspace && activeRightView === 'results'" aria-label="结果页快捷导航">
+                    <a href="#caseData">分析结论</a>
+                    <a href="#caseViewer">查看三维影像 ↓</a>
+                </nav>
                 <div
                     class="right-content"
                     ref="rightContent"
                     :style="resultSplitStyle"
                     v-show="activeRightView === 'results'"
                 >
-                    <div class="case-viewer-column" :class="{ 'viewer-column-dark': viewerPane === '3d' }">
+                    <div id="caseViewer" class="case-viewer-column" :class="{ 'viewer-column-dark': viewerPane === '3d' }">
                     <div class="case-viewer-tabs" v-if="fileList.length">
                         <button
                             type="button"
@@ -538,7 +540,7 @@
                         @keydown.home.prevent="setResultSplitRatio(0.4)"
                         @keydown.end.prevent="setResultSplitRatio(0.68)"
                     ><span></span></div>
-                    <div class="case-data-column" ref="caseDataColumn">
+                    <div id="caseData" class="case-data-column" ref="caseDataColumn">
                     <section
                         class="case-summary-card"
                         :class="`case-summary-${consensusCard.tone}`"
@@ -1067,11 +1069,12 @@
                     <div class="task-query-row">
                         <input
                             type="search"
+                            aria-label="搜索任务名称"
                             v-model.trim="taskQuery"
                             placeholder="搜索任务名称"
                             @keyup.enter="searchTasks"
                         />
-                        <select v-model="taskStatusFilter">
+                        <select v-model="taskStatusFilter" aria-label="筛选任务状态">
                             <option value="">全部状态</option>
                             <option value="created">待运行</option>
                             <option value="queued">排队中</option>

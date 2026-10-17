@@ -53,7 +53,6 @@
                     studyDate: new Date().toISOString().slice(0, 10),
                     volumeDropActive: false,
                     volumeSourceMenuVisible: false,
-                    volumeCaseSourceMenuVisible: false,
                     volumeManualMode: false,
                     volumeSelectionIssues: {},
                     volumeSelectionCandidates: {},
@@ -778,7 +777,11 @@
                     this.progressAnimFrame = requestAnimationFrame(step)
                 },
                 switchRightView(view) {
+                    const viewChanged = this.activeRightView !== view
                     this.activeRightView = view
+                    if (viewChanged && window.matchMedia('(max-width: 760px)').matches) {
+                        this.$nextTick(() => window.scrollTo({ top: 0, behavior: 'instant' }))
+                    }
                     this.persistWorkspaceState()
                     if (view === 'tasks') {
                         this.volumeViewerExpanded = false
@@ -1463,7 +1466,6 @@
                     this.volumeManualMode = false
                     this.volumeDropActive = false
                     this.volumeSourceMenuVisible = false
-                    this.volumeCaseSourceMenuVisible = false
                     this.dicomSeriesCandidates = {}
                     this.dicomSeriesSelections = {}
                     this.clearVolumeSelectionState()
@@ -2341,33 +2343,23 @@
                 },
                 toggleVolumeSourceMenu() {
                     this.volumeSourceMenuVisible = !this.volumeSourceMenuVisible
-                    if (!this.volumeSourceMenuVisible) {
-                        this.volumeCaseSourceMenuVisible = false
-                    }
                 },
                 handleGlobalClick(event) {
                     const zone = this.$refs.volumeDropZone
                     if (zone && !zone.contains(event.target)) {
                         this.volumeSourceMenuVisible = false
-                        this.volumeCaseSourceMenuVisible = false
                     }
-                },
-                toggleVolumeCaseSourceMenu() {
-                    this.volumeCaseSourceMenuVisible = !this.volumeCaseSourceMenuVisible
                 },
                 triggerVolumeCaseFolderPicker() {
                     this.volumeSourceMenuVisible = false
-                    this.volumeCaseSourceMenuVisible = false
                     document.getElementById('volume-folder-picker')?.click()
                 },
                 triggerVolumeArchivePicker() {
                     this.volumeSourceMenuVisible = false
-                    this.volumeCaseSourceMenuVisible = false
                     document.getElementById('volume-archive-picker')?.click()
                 },
                 triggerVolumeManualPicker() {
                     this.volumeSourceMenuVisible = false
-                    this.volumeCaseSourceMenuVisible = false
                     this.volumeArchiveFile = null
                     this.volumeDicomFiles = []
                     this.volumeFolderLabel = ''
@@ -2401,7 +2393,6 @@
                 },
                 selectVolumeFiles(files, sourceLabel) {
                     this.volumeSourceMenuVisible = false
-                    this.volumeCaseSourceMenuVisible = false
                     const selectedFiles = Array.from(files)
                     const candidates = { flair: [], t1ce: [], t1: [], t2: [] }
                     for (const file of selectedFiles) {
@@ -2447,7 +2438,6 @@
                 selectDicomFiles(files, sourceLabel) {
                     if (!files.length) return false
                     this.volumeSourceMenuVisible = false
-                    this.volumeCaseSourceMenuVisible = false
                     this.volumeFiles = { flair: null, t1ce: null, t1: null, t2: null }
                     this.volumeArchiveFile = null
                     this.volumeDicomFiles = files
@@ -2494,7 +2484,6 @@
                 async onVolumeDrop(event) {
                     this.volumeDropActive = false
                     this.volumeSourceMenuVisible = false
-                    this.volumeCaseSourceMenuVisible = false
                     try {
                         const droppedFiles = Array.from(event.dataTransfer?.files || [])
                         if (droppedFiles.length === 1 && /\.zip$/i.test(droppedFiles[0].name)) {
@@ -2519,7 +2508,6 @@
                 },
                 setVolumeArchive(file) {
                     this.volumeSourceMenuVisible = false
-                    this.volumeCaseSourceMenuVisible = false
                     this.volumeArchiveFile = file
                     this.volumeFiles = { flair: null, t1ce: null, t1: null, t2: null }
                     this.volumeDicomFiles = []
@@ -2542,7 +2530,6 @@
                     this.volumeFolderLabel = ''
                     this.volumeManualMode = false
                     this.volumeSourceMenuVisible = false
-                    this.volumeCaseSourceMenuVisible = false
                     this.dicomSeriesCandidates = {}
                     this.dicomSeriesSelections = {}
                     this.clearVolumeSelectionState()
@@ -2562,7 +2549,6 @@
                 },
                 onVolumeFileSelected(event, modality) {
                     this.volumeSourceMenuVisible = false
-                    this.volumeCaseSourceMenuVisible = false
                     const file = event.target.files[0]
                     if (!file) return
                     if (!file.name.match(/\.nii(?:\.gz)?$/i)) {
