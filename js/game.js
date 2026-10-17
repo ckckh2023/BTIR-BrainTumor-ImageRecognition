@@ -99,7 +99,7 @@
         board.innerHTML = ''
         board.style.setProperty('--board-size', config.columns)
         const cellSize = config.columns === 8 ? 48 : config.columns === 12 ? 37 : config.columns === 16 ? 29 : 34
-        board.style.setProperty('--cell-size', `${cellSize}px`)
+        board.style.setProperty('--cell-limit', `${cellSize}px`)
         for (let index = 0; index < config.rows * config.columns; index += 1) {
             const cell = document.createElement('button')
             const [row, column] = positionOf(index)
@@ -140,6 +140,13 @@
         nextSpawnAt = 0
         nextMoveAt = 0
         resultModal.hidden = true
+        const escaping = difficultyKey === 'escape'
+        document.getElementById('counterLabel').textContent = escaping ? '剩余生命' : '剩余异常'
+        document.getElementById('timerLabel').textContent = escaping ? '剩余时间' : '任务用时'
+        document.getElementById('progressLabel').textContent = escaping ? '当前模式' : '扫描进度'
+        document.getElementById('gameInstructions').textContent = escaping
+            ? '坚持 60 秒，移动光标或用方向键躲避危险，共有 3 次机会。'
+            : '点击扫描，右键标记。也可用方向键移动，按 F 键标记。'
         status.textContent = difficultyKey === 'escape' ? '点击棋盘开始逃生' : '等待首次扫描'
         status.className = 'game-status idle'
         footerMessage.textContent = difficultyKey === 'escape' ? '坚持 60 秒；红线和肿瘤都会造成伤害' : '选择任意区域开始任务'
@@ -449,8 +456,8 @@
     function updateHud() {
         if (difficultyKey === 'escape') {
             mineCounter.textContent = `♥ ${escapeHealth}`
-            timerValue.textContent = `${Math.max(0, Math.ceil((escapeEndsAt - performance.now()) / 1000)).toString().padStart(2, '0')}s`
-            progressValue.textContent = '逃生中'
+            timerValue.textContent = `${(state === 'idle' ? 60 : Math.max(0, Math.ceil((escapeEndsAt - performance.now()) / 1000))).toString().padStart(2, '0')} 秒`
+            progressValue.textContent = '逃生'
         } else {
             mineCounter.textContent = String(Math.max(0, config.mines - flagged.size))
             timerValue.textContent = formatTime(elapsedSeconds())
@@ -484,7 +491,7 @@
         resultCard.classList.toggle('failed', !won)
         resultSymbol.textContent = won ? '✓' : '×'
         resultTitle.textContent = won ? '扫描任务完成' : '扫描任务失败'
-        resultText.textContent = won ? '你成功完成了本次影像排查。所有安全区域均已确认。' : message
+        resultText.textContent = won ? '所有安全区域均已确认。' : message
         resultTime.textContent = formatTime(finalSeconds)
         resultProgress.textContent = `${Math.min(100, progress())}%`
         resultDifficulty.textContent = config.name
@@ -537,7 +544,10 @@
         const button = event.target.closest('[data-difficulty]')
         if (!button) return
         difficultyKey = button.dataset.difficulty
-        difficultyList.querySelectorAll('button').forEach((item) => item.classList.toggle('active', item === button))
+        difficultyList.querySelectorAll('button').forEach((item) => {
+            item.classList.toggle('active', item === button)
+            item.setAttribute('aria-pressed', String(item === button))
+        })
         document.body.classList.toggle('extreme-mode', ['extreme', 'escape'].includes(difficultyKey))
         document.body.classList.toggle('escape-mode', difficultyKey === 'escape')
         if (['extreme', 'escape'].includes(difficultyKey) && !document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {})
