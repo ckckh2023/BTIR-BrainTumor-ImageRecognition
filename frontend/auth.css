@@ -221,7 +221,7 @@ input:focus {
         align-items: flex-start;
         min-height: 100vh;
         min-height: 100dvh;
-        padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+        padding: 16px;
     }
 
     .auth-card {
@@ -243,8 +243,8 @@ input:focus {
     .auth-card .client-download-link {
         top: 10px;
         right: 56px;
-        width: 44px;
-        height: 44px;
+        width: 40px;
+        height: 40px;
     }
 
     h1 {
@@ -258,18 +258,15 @@ input:focus {
     input {
         min-height: 44px;
         padding: 10px 12px;
-        font-size: 16px;
     }
-
-    .tab { min-height: 44px; }
 
     .submit-btn {
         min-height: 46px;
     }
 
     .theme-toggle {
-        width: 44px;
-        height: 44px;
+        width: 40px;
+        height: 40px;
     }
 
     .message {
