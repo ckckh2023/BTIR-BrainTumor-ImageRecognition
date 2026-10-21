@@ -113,25 +113,12 @@ class RqIntegrationTests(unittest.TestCase):
                 nib.save(nib.Nifti1Image(np.ones((2, 2, 2)), np.eye(4)), path)
                 nifti_uploads[modality] = path.read_bytes()
 
-            progress_snapshots = []
-
             def fake_run_models(
                 task_dir: Path,
                 *,
                 should_cancel=None,
                 progress_callback=None,
             ) -> SimpleNamespace:
-                # 真 RQ 元数据经 HTTP 返回给 1.0.0，模型计算使用合成替身。
-                if progress_callback is not None:
-                    for stage, percentage in (("加载分类模型", 36),
-                                              ("3D 分类推理中", 40),
-                                              ("分割影像预处理", 44),
-                                              ("3D 分割推理中", 71),
-                                              ("正在生成影像预览", 99)):
-                        progress_callback(stage, percentage)
-                        response = client.get(f"/tasks/{task_dir.name}")
-                        self.assertEqual(response.status_code, 200)
-                        progress_snapshots.append(response.json())
                 (task_dir / "frontend_result.json").write_text(
                     json.dumps(
                         {
@@ -186,15 +173,6 @@ class RqIntegrationTests(unittest.TestCase):
                 self._work_once()
                 completed = client.get(f"/tasks/{task_id}")
 
-        observed = [p["progress"] for p in progress_snapshots]
-        self.assertEqual(observed, sorted(observed))
-        self.assertTrue(0 <= observed[0] <= 36)
-        self.assertTrue(0 <= observed[1] <= 40)
-        self.assertEqual(observed[2], 44)
-        self.assertTrue(44 <= observed[3] <= 71)
-        self.assertEqual(observed[4], 99)
-        self.assertTrue(all(p["status"] == "running" for p in progress_snapshots))
-        self.assertEqual("3D 分割推理中", progress_snapshots[3]["progress_stage"])
         self.assertEqual(completed.status_code, 200)
         payload = completed.json()
         self.assertEqual(payload["status"], "succeeded")

@@ -3298,8 +3298,7 @@ body {
             margin-right: 0;
         }
 
-        .theme-toggle,
-        .app-user-area .client-download-link {
+        .theme-toggle {
             flex-shrink: 0;
             display: inline-flex;
             align-items: center;
@@ -3315,14 +3314,12 @@ body {
             transition: background-color 0.2s, color 0.2s, transform 0.2s;
         }
 
-        .theme-toggle:hover,
-        .app-user-area .client-download-link:hover {
+        .theme-toggle:hover {
             color: var(--btir-primary);
             background: var(--btir-primary-soft);
         }
 
-        .theme-toggle:active,
-        .app-user-area .client-download-link:active {
+        .theme-toggle:active {
             transform: scale(0.92);
         }
 

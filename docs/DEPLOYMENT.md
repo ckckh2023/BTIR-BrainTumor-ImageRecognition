@@ -56,29 +56,12 @@ python -m pip install -r requirements.txt
 
 ## Linux 服务器环境
 
-Debian/Ubuntu 使用发行版提供的 Python 3.11 时，需要同时安装对应的虚拟环境组件：
-
 ```bash
-sudo apt update
-sudo apt install python3.11-venv
-```
-
-Python 3.11 来自第三方软件源时，组件也应来自同一来源；若系统软件源没有该包，
-不要直接改装其他 Python 版本的 venv 包，先核对 Python 的安装来源。
-
-创建环境和安装依赖使用 `&&` 串联，任一步失败后先处理报错，不继续启动：
-
-```bash
-python3.11 -m venv .venv &&
-source .venv/bin/activate &&
-python -m pip install --upgrade pip &&
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-```
-
-全部成功后再复制配置模板，保留已有配置：
-
-```bash
-if [ ! -e .env ]; then cp .env.example .env; fi
+cp .env.example .env
 ```
 
 基础依赖默认安装 NVIDIA CUDA 12.1 版 PyTorch<br>
@@ -87,38 +70,19 @@ CPU 或 Linux AMD ROCm 服务器
 生产环境建议使用独立系统目录
 保存运行数据，例如 `/var/lib/btir/output`，不要将任务数据混入代码目录
 
-### 虚拟环境创建失败
-
-`venv` 默认通过 `ensurepip` 为新环境安装 pip。若报错包含
-`ensurepip ... returned non-zero exit status`，说明虚拟环境尚未创建完整；后续
-`activate` 不存在、找不到 `python` 都可能是连锁报错。
-
-先安装与解释器匹配的 `python3.11-venv`，然后重新执行
-`python3.11 -m venv .venv`，无需先删除已有目录。若仍失败，运行失败消息中所指的
-环境解释器，以显示底层错误：
-
-```bash
-.venv/bin/python3.11 -m ensurepip --upgrade --default-pip
-```
-
-请保留完整输出用于排查，而不只保留 `returned non-zero exit status 1` 这一行。
-`python-is-python3` 只提供系统命令别名，无法补齐失败环境中的 pip 或项目依赖。
-
 ## 配置文件
 
 本地开发可以复制配置模板：
 
 ```powershell
-if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+Copy-Item .env.example .env
 ```
 
 Linux：
 
 ```bash
-cp -n .env.example .env
+cp .env.example .env
 ```
-
-已有 `.env` 时保留现有配置，不要重复复制模板覆盖密钥与服务地址。
 
 `.env.example` 提供常用配置、默认值和可选模型路径覆盖<br>
 未列出的高级配置以 `.env.example` 为准<br>
@@ -254,11 +218,7 @@ Linux 可以使用系统 Redis、容器 Redis 或独立 Redis 服务，但连接
 
 ## 开发环境启动
 
-以下命令应在项目根目录执行。两个终端都必须激活安装依赖的同一 Python 3.11
-虚拟环境（Linux：`source .venv/bin/activate`；Windows CMD：`.venv\Scripts\activate.bat`）。
-可先用 `python -c "import sys; print(sys.executable)"` 核对解释器路径。
-
-终端 1 启动 API，此命令会持续运行：
+终端 1 启动 API：
 
 ```powershell
 python -m uvicorn api.app:app --reload
@@ -327,7 +287,7 @@ python -m accelerator.install --backend auto
 
 后端切换命令应当最后执行<br>
 再次运行 `pip install -r requirements.txt` 会恢复
-默认 CUDA 12.1 版 PyTorch；CPU、ROCm 或 CUDA 12.8 环境需要重新执行对应的后端安装命令
+默认 CUDA 12.1 版 PyTorch；CPU 或 ROCm 环境需要重新执行对应的后端安装命令
 安装器会同时保持项目锁定的 NumPy 与 Pillow 版本，避免重装 Torch 时升级公共
 二进制依赖
 
@@ -343,9 +303,6 @@ python -m accelerator.install --backend auto --dry-run
 # NVIDIA CUDA 12.1（团队服务器默认）
 python -m accelerator.install --backend cuda
 
-# NVIDIA RTX 50 / Blackwell（例如 RTX 5070 Laptop，sm_120）
-python -m accelerator.install --backend cuda128
-
 # Linux AMD ROCm
 python -m accelerator.install --backend rocm
 
@@ -355,8 +312,7 @@ python -m accelerator.install --backend cpu
 
 说明：
 
-- `auto` 查询 NVIDIA 计算能力：Blackwell（主版本 10 及以上）使用 PyTorch 2.7.1 / CUDA 12.8；较旧设备保留 CUDA 12.1
-- `cuda128` 使用官方 CUDA 12.8 wheel，适用于 RTX 50 系列。驱动也必须支持该显卡与 CUDA 12.8
+- 默认 NVIDIA 后端为 CUDA 12.1；`auto` 检测到 `nvidia-smi` 时选择该后端
 - AMD ROCm 仅支持 Linux；AMD Windows 使用 CPU
 - `BTIR_DEVICE=auto` 会在已正确安装后端时自动选择 GPU
 - 多张 GPU 可通过 `BTIR_DEVICE=cuda:0` 指定设备
@@ -382,16 +338,6 @@ python -c "import torch; print(torch.__version__); print(torch.cuda.is_available
 
 更换 PyTorch 后端后需重启 API 和 Worker，再通过 `/runtime` 核对实际
 `backend`
-
-若日志提示 `no kernel image is available for execution on the device`，并显示
-显卡为 `sm_120` 而 PyTorch 仅支持到 `sm_90`，说明安装的 wheel 不支持当前显卡架构。
-先停止守护脚本，再在同一虚拟环境执行 `python -m accelerator.install --backend cuda128`，
-完成后重新启动。只检查 `torch.cuda.is_available()` 返回 `True` 不足以证明算子可执行，
-可用小规模卷积确认：
-
-```bash
-python -c "import torch; x=torch.zeros(1,1,8,8,device='cuda'); m=torch.nn.Conv2d(1,1,3).cuda(); m(x); torch.cuda.synchronize(); print(torch.__version__, torch.version.cuda, 'CUDA convolution OK')"
-```
 
 ## Worker 预热模式
 
@@ -426,7 +372,6 @@ Worker 名称包含主机名和进程号<br>
 ## Linux 进程守护
 
 `run-supervisor.sh` 是 Linux 的一键运行入口<br>
-此方式与前述手动启动 API、Worker 二选一，避免占用同一端口。
 项目根目录已经存在
 `.venv/bin/python` 时直接执行：
 
@@ -440,9 +385,6 @@ bash scripts/run-supervisor.sh
 ```bash
 bash scripts/run-supervisor.sh /opt/btir/.venv/bin/python
 ```
-
-传入的 Python 必须已经安装项目依赖；不要将虚拟环境的安装命令与
-`/usr/bin/python3.11` 等系统解释器混用。
 
 Python 查找顺序：
 
@@ -464,35 +406,15 @@ Python 查找顺序：
 
 - 同时启动并监控 API 与 3D Worker
 - 进程退出后按退避时间重新启动
-- API 每次启动或重启后有 30 秒启动宽限期；期间继续探测，但不累计健康检查失败。
-  首次返回 `200` 后立即结束宽限期并记录 `API is ready`
 - 连续健康检查失败后重启 API
 - Redis 正常但 Worker 未注册时，单独重启 Worker
 - 默认每 60 秒执行 `reconcile-tasks`
 - 将标准输出、错误和巡检结果写入 `logs/`
-- 终端显示 Python、Redis、API / Worker、整体就绪四个启动阶段，并打印网页、登录 / 注册和可用网络地址；就绪状态变化时更新组件提示
 - 收到 `SIGINT` 或 `SIGTERM` 时先请求子进程正常退出，超过宽限期才强制停止
 
 按 `Ctrl+C` 可以停止 supervisor、API 和 Worker<br>
 该脚本不会执行任务归档或
 永久删除
-
-终端显示 `starting API` 或 `starting 3D inference worker` 只表示已尝试启动子进程。
-若随后反复显示 `exited`、`restarting`，应查看具体报错：
-
-```bash
-tail -n 60 logs/api.stderr.log
-tail -n 60 logs/worker.stderr.log
-```
-
-API 提示缺少 `BTIR_JWT_SECRET_KEY` 时先完善 `.env`；提示 `No module named ...`
-时先核对所选 Python 是否属于安装依赖的虚拟环境。API 启动成功后用 `/healthz`
-确认存活，再用 `/readyz` 检查 Redis、Worker 和模型是否全部就绪。
-
-登录与注册请使用守护脚本输出的地址，例如 `http://127.0.0.1:8000/web/login.html`。
-`http://127.0.0.1:5500/frontend/login.html` 等 Live Server 静态预览页面不提供
-`POST /auth/register` 或 `POST /auth/login`，提交账号请求可能返回 HTTP 405。
-修改 `.env` 中的 `BTIR_REGISTRATION_ENABLED` 后，需要重启 API 才会生效。
 
 项目根目录的 `.env` 可以由系统环境变量替代，但 API 必须获得
 `BTIR_JWT_SECRET_KEY`<br>
@@ -507,7 +429,6 @@ export BTIR_API_HOST=127.0.0.1
 export BTIR_API_PORT=8000
 export BTIR_SUPERVISOR_RESTART_DELAY_SECONDS=10
 export BTIR_SUPERVISOR_HEALTH_CHECK_SECONDS=15
-export BTIR_SUPERVISOR_API_STARTUP_GRACE_SECONDS=30
 export BTIR_SUPERVISOR_WORKER_STARTUP_GRACE_SECONDS=120
 export BTIR_SUPERVISOR_TASK_RECONCILE_SECONDS=60
 export BTIR_SUPERVISOR_RECONCILE_TIMEOUT_SECONDS=120

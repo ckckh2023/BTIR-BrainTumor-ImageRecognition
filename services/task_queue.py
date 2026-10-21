@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
-import math
 from pathlib import Path
 from redis.exceptions import RedisError
 from rq import Queue, Retry, Worker
@@ -24,7 +23,6 @@ from core.task_records import TaskRecord
 from repositories.task_repository import task_repository
 from repositories.task_repository_contracts import TaskNotFoundError
 from services.redis_client import get_redis_client
-from services.inference_progress import displayed_progress, stage_with_elapsed
 from services.task_lock import TaskLockBusyError, task_write_lock
 from services.task_state import mark_task_queued, update_task_execution_status
 
@@ -432,14 +430,6 @@ def get_task_job_progress(record: TaskRecord) -> dict[str, object] | None:
     '''读取 RQ 作业元数据中的推理进度；无作业或读取失败时返回 None'''
     if record.job is None:
         return None
-    if record.status == TaskStatus.QUEUED:
-        return {
-            "progress": 0,
-            "progress_stage": stage_with_elapsed(
-                "排队中，等待推理服务",
-                record.job.queued_at.timestamp() if record.job.queued_at else None,
-            ),
-        }
     try:
         job = Job.fetch(record.job.id, connection=get_redis_client())
         metadata = getattr(job, "meta", None) or {}
@@ -447,14 +437,9 @@ def get_task_job_progress(record: TaskRecord) -> dict[str, object] | None:
         return None
     progress = metadata.get("progress")
     progress_stage = metadata.get("progress_stage")
-    if isinstance(progress, bool) or not isinstance(progress, (int, float)) or not math.isfinite(progress):
-        progress = 0 if progress is None else 36
-    if not isinstance(progress_stage, str) or not progress_stage.strip():
-        progress_stage = "正在准备模型推理"
-    started_at = metadata.get("progress_stage_started_at")
-    if started_at is None and record.job.started_at is not None:
-        started_at = record.job.started_at.timestamp()
+    if not isinstance(progress, (int, float)) or not isinstance(progress_stage, str):
+        return None
     return {
-        "progress": displayed_progress(metadata, max(0, min(99, int(progress)))),
-        "progress_stage": stage_with_elapsed(progress_stage, started_at),
+        "progress": int(progress),
+        "progress_stage": progress_stage,
     }

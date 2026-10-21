@@ -13,13 +13,11 @@ from pathlib import Path
 PYTORCH_INDEXES = {
     "cpu": "https://download.pytorch.org/whl/cpu",
     "cuda": "https://download.pytorch.org/whl/cu121",
-    "cuda128": "https://download.pytorch.org/whl/cu128",
     "rocm": "https://download.pytorch.org/whl/rocm6.3",
 }
 PYTORCH_PACKAGES = {
     "cpu": ["torch==2.7.1+cpu"],
     "cuda": ["torch==2.5.1+cu121"],
-    "cuda128": ["torch==2.7.1+cu128"],
     "rocm": ["torch==2.7.1+rocm6.3"],
 }
 PROJECT_BINARY_DEPENDENCIES = [
@@ -31,36 +29,12 @@ PROJECT_BINARY_DEPENDENCIES = [
 def detect_backend() -> str:
     '''根据驱动工具检测本机可使用的加速后端'''
     if shutil.which("nvidia-smi"):
-        return "cuda128" if _needs_blackwell_backend() else "cuda"
+        return "cuda"
     if platform.system() == "Linux" and (
         shutil.which("rocminfo") or Path("/opt/rocm").exists()
     ):
         return "rocm"
     return "cpu"
-
-
-def _needs_blackwell_backend() -> bool:
-    '''Blackwell（包括 RTX 50 系列）需要支持该架构的 CUDA 12.8 wheel。'''
-    try:
-        result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=compute_cap", "--format=csv,noheader"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    if result.returncode != 0:
-        return False
-    for line in result.stdout.splitlines():
-        try:
-            major = int(line.strip().split(".", 1)[0])
-        except ValueError:
-            continue
-        if major >= 10:
-            return True
-    return False
 
 
 def validate_backend(backend: str) -> None:
@@ -71,7 +45,7 @@ def validate_backend(backend: str) -> None:
         raise ValueError("当前安装器仅支持 x86_64 / AMD64 平台")
     if backend == "rocm" and system != "Linux":
         raise ValueError("ROCm 仅支持 Linux AMD GPU 服务器，Windows 请使用 CPU 或 CUDA")
-    if backend in {"cuda", "cuda128"} and system not in {"Windows", "Linux"}:
+    if backend == "cuda" and system not in {"Windows", "Linux"}:
         raise ValueError("CUDA 安装器仅支持 Windows 或 Linux")
 
 
@@ -99,7 +73,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--backend",
-        choices=["auto", "cpu", "cuda", "cuda128", "rocm"],
+        choices=["auto", "cpu", "cuda", "rocm"],
         default="auto",
         help="auto 根据本机驱动检测；默认 auto",
     )

@@ -59,12 +59,7 @@
 </head>
 <body>
     <div id="app" v-cloak>
-        <div class="auth-card auth-card-with-download">
-            <a class="client-download-link" href="./download.html" title="客户端下载" aria-label="客户端下载">
-                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M12 3v12m-5-5 5 5 5-5M4 16v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"></path>
-                </svg>
-            </a>
+        <div class="auth-card">
             <button
                 type="button"
                 class="theme-toggle"
@@ -176,9 +171,6 @@
                     return ''
                 },
                 async responseErrorMessage(response, fallback) {
-                    if (response.status === 405) {
-                        return '当前网页服务不支持账号请求（HTTP 405），请从守护脚本显示的网页入口打开后登录或注册。'
-                    }
                     const data = await response.json().catch(() => ({}))
                     if (typeof data.detail === 'string' && data.detail) {
                         return data.detail

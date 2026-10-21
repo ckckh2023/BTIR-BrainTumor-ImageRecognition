@@ -601,7 +601,6 @@ class TaskRunnerTests(unittest.TestCase):
             output_dir,
             progress_callback=None,
             cancel_callback=None,
-            stage_callback=None,
         ):
             progress_callback(0.5)
             return {"mask_path": run_dir / "prediction.nii.gz"}

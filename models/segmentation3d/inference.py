@@ -680,7 +680,6 @@ def predict(
     progress: bool = False,
     progress_callback: Callable[[float], None] | None = None,
     cancel_callback: Callable[[], None] | None = None,
-    stage_callback: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """Run full-volume segmentation for one BraTS subject.
 
@@ -692,14 +691,10 @@ def predict(
     resolved_device = _resolve_device(device)
     _configure_inference_runtime(seed, fast_inference=fast_inference)
 
-    if stage_callback is not None:
-        stage_callback("读取四模态影像")
     started_at = time.perf_counter()
     images, reference, paths = _load_and_validate_subject(subject)
     load_validate_ms = (time.perf_counter() - started_at) * 1000
 
-    if stage_callback is not None:
-        stage_callback("分割影像归一化")
     started_at = time.perf_counter()
     normalized = _zscore_normalize(images)
     normalize_ms = (time.perf_counter() - started_at) * 1000
@@ -708,8 +703,6 @@ def predict(
     model = model or load_model(resolved_device, weights_path)
     model_setup_ms = (time.perf_counter() - started_at) * 1000
 
-    if stage_callback is not None:
-        stage_callback("3D 分割推理中")
     started_at = time.perf_counter()
     internal_labels = _run_full_volume_inference(
         normalized,
@@ -724,8 +717,6 @@ def predict(
     )
     model_inference_ms = (time.perf_counter() - started_at) * 1000
 
-    if stage_callback is not None:
-        stage_callback("分割结果后处理")
     started_at = time.perf_counter()
     segmentation = _to_brats_labels(internal_labels)
     regions = _region_statistics(segmentation, reference)
@@ -768,8 +759,6 @@ def predict(
 
     save_ms = 0.0
     if save_nifti is not None:
-        if stage_callback is not None:
-            stage_callback("保存分割结果")
         started_at = time.perf_counter()
         result["saved_path"] = str(
             _save_segmentation(segmentation, reference, save_nifti)

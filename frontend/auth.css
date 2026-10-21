@@ -9,8 +9,7 @@ body {
     padding: 20px;
 }
 
-.theme-toggle,
-.client-download-link {
+.theme-toggle {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -26,21 +25,18 @@ body {
     transition: all var(--btir-transition);
 }
 
-.theme-toggle:hover,
-.client-download-link:hover {
+.theme-toggle:hover {
     color: #ffffff;
     background: var(--btir-primary);
     border-color: var(--btir-primary);
     transform: translateY(-1px);
 }
 
-.theme-toggle:active,
-.client-download-link:active {
+.theme-toggle:active {
     transform: scale(0.95);
 }
 
-.theme-toggle svg,
-.client-download-link svg {
+.theme-toggle svg {
     vertical-align: middle;
 }
 
@@ -56,8 +52,7 @@ body {
     animation: slide-up 0.3s ease;
 }
 
-.auth-card .theme-toggle,
-.auth-card .client-download-link {
+.auth-card .theme-toggle {
     position: absolute;
     top: 14px;
     right: 14px;
@@ -66,19 +61,9 @@ body {
     border-color: transparent;
 }
 
-.auth-card .theme-toggle:hover,
-.auth-card .client-download-link:hover {
-    color: var(--btir-primary);
+.auth-card .theme-toggle:hover {
     background: var(--btir-primary-soft);
     border-color: transparent;
-}
-
-.auth-card .client-download-link {
-    position: absolute;
-    top: 14px;
-    right: 54px;
-    width: 34px;
-    height: 32px;
 }
 
 h1 {
@@ -234,17 +219,6 @@ input:focus {
     .auth-card .theme-toggle {
         top: 10px;
         right: 10px;
-    }
-
-    .auth-card-with-download {
-        padding-top: 60px;
-    }
-
-    .auth-card .client-download-link {
-        top: 10px;
-        right: 56px;
-        width: 40px;
-        height: 40px;
     }
 
     h1 {
