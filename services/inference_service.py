@@ -69,7 +69,12 @@ def _load_3d_segmentation_model(device_name: str):
     )
 
 
-def classify_volume(modality_paths: dict[str, Path]) -> dict[str, Any]:
+def classify_volume(
+    modality_paths: dict[str, Path],
+    *,
+    progress_callback: Callable[[float], None] | None = None,
+    stage_callback: Callable[[str], None] | None = None,
+) -> dict[str, Any]:
     '''仅使用本地 ViT 执行患者级分类；异常交由任务重试机制处理'''
 
     modality = SETTINGS.volume_classifier_modality
@@ -78,6 +83,8 @@ def classify_volume(modality_paths: dict[str, Path]) -> dict[str, Any]:
     except KeyError as exc:
         raise ValueError(f"3D 分类缺少 {modality} 模态") from exc
 
+    if stage_callback is not None:
+        stage_callback("分类影像预处理")
     started_at = perf_counter()
     prepared = prepare_volume_slices(
         volume_path,
@@ -88,18 +95,26 @@ def classify_volume(modality_paths: dict[str, Path]) -> dict[str, Any]:
     torch = namespace["torch"]
     device = resolve_device(torch, SETTINGS.device)
 
+    if stage_callback is not None:
+        stage_callback("加载分类模型")
     started_at = perf_counter()
     loaded = _load_vit_classifier_model(str(device))
     model_setup_ms = (perf_counter() - started_at) * 1000
 
+    if stage_callback is not None:
+        stage_callback("3D 分类推理中")
     started_at = perf_counter()
+    progress_options = {"progress_callback": progress_callback} if progress_callback is not None else {}
     predictions = namespace["predict_images"](
         loaded,
         prepared.images,
         batch_size=SETTINGS.vit_classifier_batch_size,
+        **progress_options,
     )
     model_inference_ms = (perf_counter() - started_at) * 1000
 
+    if stage_callback is not None:
+        stage_callback("汇总分类结果")
     started_at = perf_counter()
     classification = aggregate_mean_slice_predictions(
         prepared.indices,
@@ -135,16 +150,22 @@ def segment_volume(
     *,
     progress_callback: Callable[[float], None] | None = None,
     cancel_callback: Callable[[], None] | None = None,
+    stage_callback: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     '''执行四模态完整体积 SuperLightNet 分割'''
 
     namespace = _load_3d_segmentation_namespace()
     torch = namespace["torch"]
     device = resolve_device(torch, SETTINGS.device)
+    if stage_callback is not None:
+        stage_callback("加载分割模型")
     model = _load_3d_segmentation_model(str(device))
 
     output_dir.mkdir(parents=True, exist_ok=True)
     mask_path = output_dir / TaskArtifact.SEGMENTATION_MASK
+    stage_options = {
+        "stage_callback": stage_callback
+    } if stage_callback is not None else {}
     prediction = namespace["predict"](
         {
             modality: str(path)
@@ -161,6 +182,7 @@ def segment_volume(
         ),
         progress_callback=progress_callback,
         cancel_callback=cancel_callback,
+        **stage_options,
     )
     return {
         "model": "models/segmentation3d/superlightnet",

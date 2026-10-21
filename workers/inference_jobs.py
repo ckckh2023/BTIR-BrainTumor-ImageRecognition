@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from time import monotonic, perf_counter
+from time import monotonic, perf_counter, time
 from typing import Any, Callable
 
 from rq import get_current_job
@@ -12,6 +12,7 @@ from rq import get_current_job
 from core.settings import SETTINGS
 from core.task_definitions import JobStatus, TaskStatus
 from repositories.task_repository import task_repository
+from services.inference_progress import update_progress_transition
 from services.task_runner import TaskCancellationRequested, run_task_models
 from services.task_files import get_task_dir
 from services.task_state import update_task_execution_status
@@ -36,6 +37,7 @@ def run_task_job(task_id: str) -> dict[str, Any]:
         status_kwargs["attempt"] = attempt
     if should_cancel():
         return _finish_canceled_task(task_dir, job, attempt, execution_ms=0.0)
+    _reset_job_progress(job)
     update_task_execution_status(
         task_dir,
         JobStatus.RUNNING,
@@ -159,6 +161,23 @@ def _build_cancellation_checker(job: Any, task_dir: Path) -> Callable[[], bool]:
     return should_cancel
 
 
+def _reset_job_progress(job: Any) -> None:
+    '''同一 RQ 作业重试时丢弃上一轮进度，同时保留取消等无关标记。'''
+    refresh = getattr(job, "refresh", None)
+    if callable(refresh):
+        refresh()
+    metadata = getattr(job, "meta", None)
+    if isinstance(metadata, dict):
+        for key in (
+            "progress", "progress_stage", "progress_stage_started_at", "progress_updated_at",
+            "progress_display_from", "progress_display_started_at", "progress_display_duration",
+        ):
+            metadata.pop(key, None)
+        save_meta = getattr(job, "save_meta", None)
+        if callable(save_meta):
+            save_meta()
+
+
 def _record_job_progress(
     job: Any,
     task_id: str,
@@ -178,6 +197,10 @@ def _record_job_progress(
         refresh()
     metadata = getattr(job, "meta", None)
     if isinstance(metadata, dict):
+        now = time()
+        update_progress_transition(metadata, percentage, now=now)
+        if metadata.get("progress_stage") != stage or "progress_stage_started_at" not in metadata:
+            metadata["progress_stage_started_at"] = now
         metadata["progress"] = percentage
         metadata["progress_stage"] = stage
         save_meta = getattr(job, "save_meta", None)

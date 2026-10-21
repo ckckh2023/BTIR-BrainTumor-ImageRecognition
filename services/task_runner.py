@@ -56,23 +56,32 @@ def _run_volume_segmentation(
 
     run_dir = create_run_dir(task_dir, ModelName.SEGMENTATION)
     started_at = perf_counter()
+    stage = "3D 分割推理中"
+    percentage = 44
+
+    def report_stage(value: str) -> None:
+        nonlocal stage
+        stage = value
+        if progress_callback is not None:
+            progress_callback(stage, percentage)
 
     def check_cancellation() -> None:
         if should_cancel is not None and should_cancel():
             raise TaskCancellationRequested("任务已在 3D 分割窗口之间取消")
 
     def report_progress(fraction: float) -> None:
+        nonlocal percentage
+        percentage = max(percentage, min(98, 44 + int(fraction * 54)))
         if progress_callback is not None:
-            progress_callback(
-                "3D 分割推理中",
-                min(98, 44 + int(fraction * 54)),
-            )
+            progress_callback(stage, percentage)
 
+    stage_options = {"stage_callback": report_stage} if progress_callback is not None else {}
     result = segment_volume(
         modality_paths=modality_paths,
         output_dir=run_dir,
         progress_callback=report_progress if progress_callback is not None else None,
         cancel_callback=check_cancellation if should_cancel is not None else None,
+        **stage_options,
     )
     result.setdefault("timing", {})["inference_ms"] = _elapsed_ms(started_at)
     return persist_model_result(
@@ -86,10 +95,30 @@ def _run_volume_segmentation(
 def _run_volume_classification(
     task_dir: Path,
     modality_paths: dict[str, Path],
+    progress_callback: Callable[[str, int], None] | None = None,
 ) -> dict[str, Any]:
     '''执行并持久化本地 ViT 患者级分类'''
     started_at = perf_counter()
-    result = classify_volume(modality_paths)
+    stage = "3D 分类推理中"
+    percentage = 36
+
+    def report_stage(value: str) -> None:
+        nonlocal stage
+        stage = value
+        if progress_callback is not None:
+            progress_callback(stage, percentage)
+
+    def report_progress(fraction: float) -> None:
+        nonlocal percentage
+        percentage = max(percentage, min(43, 36 + int(fraction * 8)))
+        if progress_callback is not None:
+            progress_callback(stage, percentage)
+
+    progress_options = {
+        "progress_callback": report_progress,
+        "stage_callback": report_stage,
+    } if progress_callback is not None else {}
+    result = classify_volume(modality_paths, **progress_options)
     result.setdefault("timing", {})["inference_ms"] = _elapsed_ms(started_at)
     return persist_model_result(
         task_dir=task_dir,
@@ -111,7 +140,7 @@ def run_task_models(
         progress_callback("3D 分类推理中", 36)
     if should_cancel is not None and should_cancel():
         raise TaskCancellationRequested("任务已在 3D 分类开始前取消")
-    classification_result = _run_volume_classification(task_dir, modality_paths)
+    classification_result = _run_volume_classification(task_dir, modality_paths, progress_callback)
     if progress_callback is not None:
         progress_callback("3D 分类完成，开始 3D 分割", 44)
     if should_cancel is not None and should_cancel():
@@ -145,11 +174,13 @@ def run_task_models(
         supplementary_analysis.get("duration_ms"),
         supplementary_analysis.get("usage"),
     )
+    if progress_callback is not None:
+        progress_callback("正在生成影像预览", 99)
     _render_case_preview(task_dir, modality_paths, segmentation_result)
     if should_cancel is not None and should_cancel():
         raise TaskCancellationRequested("任务已在综合分析完成后取消")
     if progress_callback is not None:
-        progress_callback("3D 分割与综合分析完成", 100)
+        progress_callback("推理完成，正在保存任务结果", 99)
     return TaskRunResult(
         classification_result=classification_result,
         segmentation_result=segmentation_result,
