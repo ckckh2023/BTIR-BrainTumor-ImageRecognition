@@ -1,0 +1,35 @@
+.tabs {
+    display: flex;
+    gap: 4px;
+    padding: 3px;
+    background: var(--btir-bg);
+    border-radius: var(--btir-radius-md);
+    margin-bottom: 24px;
+}
+
+.tab {
+    flex: 1;
+    padding: 8px 16px;
+    color: var(--btir-text-secondary);
+    background: transparent;
+    border: none;
+    border-radius: var(--btir-radius-sm);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--btir-transition);
+}
+
+.tab:hover:not(.active) {
+    color: var(--btir-primary);
+    background: var(--btir-surface);
+}
+
+.tab:active {
+    transform: scale(0.98);
+}
+
+.tab.active {
+    color: white;
+    background: var(--btir-primary);
+}

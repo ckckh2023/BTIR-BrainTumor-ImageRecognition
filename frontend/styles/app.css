@@ -3298,36 +3298,7 @@ body {
             margin-right: 0;
         }
 
-        .theme-toggle {
-            flex-shrink: 0;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 40px;
-            height: 40px;
-            padding: 0;
-            color: var(--btir-text-secondary);
-            background: transparent;
-            border: none;
-            border-radius: 50%;
-            cursor: pointer;
-            transition: background-color 0.2s, color 0.2s, transform 0.2s;
-        }
-
-        .theme-toggle:hover {
-            color: var(--btir-primary);
-            background: var(--btir-primary-soft);
-        }
-
-        .theme-toggle:active {
-            transform: scale(0.92);
-        }
-
-        .theme-toggle svg {
-            vertical-align: middle;
-        }
-
-        .right-content {
+.right-content {
             flex: 1;
             display: flex;
             flex-direction: column;

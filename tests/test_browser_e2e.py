@@ -115,7 +115,7 @@ class _BrowserE2EHandler(SimpleHTTPRequestHandler):
             self._count("task_status")
             self._send_json(self._task_result(path.rsplit("/", 1)[-1]))
             return
-        if path == "/web/volume_viewer.js":
+        if path == "/web/scripts/volume_viewer.js":
             body = (
                 "window.BtirVolumeViewer=class{"
                 "constructor(canvas){this.canvas=canvas}"

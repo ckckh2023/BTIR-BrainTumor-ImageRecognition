@@ -9,37 +9,6 @@ body {
     padding: 20px;
 }
 
-.theme-toggle {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 34px;
-    height: 32px;
-    padding: 0;
-    color: var(--btir-text-secondary);
-    background: var(--btir-surface);
-    border: 1px solid var(--btir-border-strong);
-    border-radius: var(--btir-radius-sm);
-    cursor: pointer;
-    box-shadow: var(--btir-shadow-sm);
-    transition: all var(--btir-transition);
-}
-
-.theme-toggle:hover {
-    color: #ffffff;
-    background: var(--btir-primary);
-    border-color: var(--btir-primary);
-    transform: translateY(-1px);
-}
-
-.theme-toggle:active {
-    transform: scale(0.95);
-}
-
-.theme-toggle svg {
-    vertical-align: middle;
-}
-
 .auth-card {
     position: relative;
     background: var(--btir-surface);
@@ -56,14 +25,12 @@ body {
     position: absolute;
     top: 14px;
     right: 14px;
-    box-shadow: none;
-    background: transparent;
-    border-color: transparent;
 }
 
-.auth-card .theme-toggle:hover {
-    background: var(--btir-primary-soft);
-    border-color: transparent;
+.auth-card .client-download-entry {
+    position: absolute;
+    top: 14px;
+    right: 60px;
 }
 
 h1 {
@@ -221,6 +188,10 @@ input:focus {
         right: 10px;
     }
 
+    .auth-card-with-download-entry { padding-top: 60px; }
+
+    .auth-card .client-download-entry { top: 10px; right: 56px; }
+
     h1 {
         margin-bottom: 20px;
         padding-right: 36px;
@@ -238,12 +209,7 @@ input:focus {
         min-height: 46px;
     }
 
-    .theme-toggle {
-        width: 40px;
-        height: 40px;
-    }
-
-    .message {
+.message {
         padding: 10px 12px;
     }
 }

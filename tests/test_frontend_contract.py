@@ -9,18 +9,29 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 FRONTEND_HTML = PROJECT_ROOT / "frontend" / "index.html"
 
 
+def _page_source(name: str) -> str:
+    """按页面关联读取分离后的模板、样式和交互源码。"""
+    root = PROJECT_ROOT / "frontend"
+    sources = [(root / f"{name}.html").read_text(encoding="utf-8")]
+    for directory, suffix in (("styles", "css"), ("scripts", "js")):
+        path = root / directory / f"{name}.{suffix}"
+        if path.is_file():
+            sources.append(path.read_text(encoding="utf-8"))
+    return "\n".join(sources)
+
+
 class FrontendContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.html = FRONTEND_HTML.read_text(encoding="utf-8")
         cls.theme_css = (
-            PROJECT_ROOT / "frontend" / "theme.css"
+            PROJECT_ROOT / "frontend" / "styles" / "theme.css"
         ).read_text(encoding="utf-8")
         cls.app_css = (
-            PROJECT_ROOT / "frontend" / "app.css"
+            PROJECT_ROOT / "frontend" / "styles" / "app.css"
         ).read_text(encoding="utf-8")
         cls.app_js = (
-            PROJECT_ROOT / "frontend" / "app.js"
+            PROJECT_ROOT / "frontend" / "scripts" / "app.js"
         ).read_text(encoding="utf-8")
         cls.detail_html = (
             PROJECT_ROOT / "frontend" / "components" / "btir-detail-table.js"
@@ -28,24 +39,16 @@ class FrontendContractTests(unittest.TestCase):
         cls.toast_html = (
             PROJECT_ROOT / "frontend" / "components" / "btir-toast.js"
         ).read_text(encoding="utf-8")
-        cls.login_html = (
-            PROJECT_ROOT / "frontend" / "login.html"
-        ).read_text(encoding="utf-8")
+        cls.login_html = _page_source("login")
         cls.auth_css = (
-            PROJECT_ROOT / "frontend" / "auth.css"
+            PROJECT_ROOT / "frontend" / "styles" / "auth.css"
         ).read_text(encoding="utf-8")
-        cls.change_password_html = (
-            PROJECT_ROOT / "frontend" / "change-password.html"
-        ).read_text(encoding="utf-8")
+        cls.change_password_html = _page_source("change-password")
         cls.viewer_html = (
-            PROJECT_ROOT / "frontend" / "volume_viewer.js"
+            PROJECT_ROOT / "frontend" / "scripts" / "volume_viewer.js"
         ).read_text(encoding="utf-8")
-        cls.guide_html = (
-            PROJECT_ROOT / "frontend" / "guide.html"
-        ).read_text(encoding="utf-8")
-        cls.about_html = (
-            PROJECT_ROOT / "frontend" / "about.html"
-        ).read_text(encoding="utf-8")
+        cls.guide_html = _page_source("guide")
+        cls.about_html = _page_source("about")
 
     def test_3d_result_does_not_render_an_outdated_hint(self) -> None:
         self.assertNotIn("当前 3D 路线仅提供分割与定量统计", self.html)
@@ -416,7 +419,7 @@ class FrontendContractTests(unittest.TestCase):
         self.assertNotIn("linear-gradient(180deg, #1a3a6b", self.login_html)
         self.assertNotIn("多用户认证系统", self.login_html)
         self.assertIn(".auth-card .theme-toggle", self.auth_css)
-        self.assertIn("./auth.css", self.login_html)
+        self.assertIn("./styles/auth.css", self.login_html)
 
     def test_mobile_layout_keeps_workspace_and_secondary_pages_usable(self) -> None:
         self.assertIn("Mobile interaction pass", self.app_css)
@@ -439,7 +442,7 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("theme-toggle", self.change_password_html)
         self.assertIn("返回登录", self.change_password_html)
         self.assertIn("window.location.href = '/web/'", self.change_password_html)
-        self.assertIn("./auth.css", self.change_password_html)
+        self.assertIn("./styles/auth.css", self.change_password_html)
         self.assertIn("data.must_change_password", self.login_html)
         self.assertIn("window.location.href = '/web/change-password.html'", self.login_html)
         self.assertIn("must_change_password", self.app_js)

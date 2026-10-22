@@ -8,7 +8,7 @@
     'use strict'
 
     const adapterUrl = document.currentScript?.src || document.baseURI
-    const niivueUrl = new URL('./vendor/niivue.umd.js', adapterUrl).href
+    const niivueUrl = new URL('../vendor/niivue.umd.js', adapterUrl).href
     let niivueLoadPromise = null
 
     const MASK_COLORMAP = {

@@ -1,0 +1,32 @@
+/* 公共图标按钮：页面样式仅负责定位。 */
+.btir-icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    color: var(--btir-text-secondary);
+    background: transparent;
+    border: 0;
+    border-radius: 50%;
+    font: inherit;
+    text-decoration: none;
+    cursor: pointer;
+    transition: color var(--btir-transition), background-color var(--btir-transition), transform var(--btir-transition);
+}
+
+.btir-icon-button:hover {
+    color: var(--btir-primary);
+    background: var(--btir-primary-soft);
+}
+
+.btir-icon-button:active { transform: scale(0.92); }
+
+.btir-icon-button:focus-visible {
+    outline: 2px solid var(--btir-accent);
+    outline-offset: 3px;
+}
+
+.btir-icon-button svg { vertical-align: middle; }

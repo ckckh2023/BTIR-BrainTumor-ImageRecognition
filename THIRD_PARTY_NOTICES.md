@@ -25,7 +25,7 @@
 - 许可证：BSD-2-Clause
 
 BTIR 自己的任务、鉴权、文件请求、模态切换和界面控制逻辑位于
-`frontend/volume_viewer.js`；NiiVue 仅作为体数据渲染与交互内核使用。
+`frontend/scripts/volume_viewer.js`；NiiVue 仅作为体数据渲染与交互内核使用。
 
 ### NiiVue BSD-2-Clause License
 
