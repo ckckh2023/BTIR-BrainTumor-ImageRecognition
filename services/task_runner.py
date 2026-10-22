@@ -136,7 +136,7 @@ def run_task_models(
             supplementary_analysis,
         )
     logger.info(
-        "supplementary analysis completed task_id=%s status=%s provider=%s model=%s prompt_version=%s duration_ms=%s usage=%s",
+        "综合分析处理完成 任务=%s 状态=%s 提供方=%s 模型=%s 提示词版本=%s 耗时毫秒=%s 用量=%s",
         task_dir.name,
         supplementary_analysis.get("status"),
         supplementary_analysis.get("provider"),
@@ -197,7 +197,7 @@ def _render_case_preview(
             encoding="utf-8",
         )
     except Exception:
-        logger.exception("preview generation failed task_id=%s", task_dir.name)
+        logger.exception("预览图生成失败 任务=%s", task_dir.name)
 
 
 def _elapsed_ms(started_at: float) -> float:

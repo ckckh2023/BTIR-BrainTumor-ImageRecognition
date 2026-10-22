@@ -402,12 +402,15 @@ class AsyncQueueTests(unittest.TestCase):
         job.refresh = Mock(side_effect=refresh)
         job.save_meta = Mock()
 
-        _record_job_progress(job, "task-progress-cancel", "3D 分割推理中", 50)
+        with self.assertLogs("workers.inference_jobs", level="INFO") as captured:
+            _record_job_progress(job, "task-progress-cancel", "3D 分割推理中", 50)
 
         self.assertTrue(job.meta["cancel_requested"])
         self.assertEqual(job.meta["progress"], 50)
         job.refresh.assert_called_once_with()
         job.save_meta.assert_called_once_with()
+        self.assertIn("任务=task-progress-cancel", captured.output[0])
+        self.assertIn("进度=50% 阶段=3D 分割推理中", captured.output[0])
 
     def test_progress_update_skips_identical_value(self) -> None:
         job = SimpleNamespace(

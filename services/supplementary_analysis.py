@@ -147,7 +147,7 @@ def run_supplementary_analysis(
     if response.usage:
         result["usage"] = response.usage
     logger.info(
-        "AI analysis succeeded provider=ai model=%s prompt_version=%s duration_ms=%s usage=%s request_id=%s",
+        "AI 分析完成 提供方=ai 模型=%s 提示词版本=%s 耗时毫秒=%s 用量=%s 请求=%s",
         response.model,
         ANALYSIS_PROMPT_VERSION,
         result["duration_ms"],

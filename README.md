@@ -90,7 +90,9 @@ models/segmentation3d/model/model_epoch_297.pth
 项目要求 Python 3.11：
 
 ```bash
-python3.11 -m pip install -r requirements.txt
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
 cp .env.example .env
 python3.11 -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
@@ -119,9 +121,11 @@ python3.11 -m uvicorn api.app:app --reload
 python3.11 -m workers.run_worker
 ```
 
-或者可以同时托管 API 与 Worker
+或者在项目根目录使用守护脚本同时托管 API 与 Worker：
+
 ```bash
-bash scripts/run-supervisor.sh /usr/bin/python3.11
+source .venv/bin/activate
+bash scripts/run-supervisor.sh
 ```
 
 随后便可打开以下地址：

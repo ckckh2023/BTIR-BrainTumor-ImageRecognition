@@ -71,7 +71,7 @@ def run_task_job(task_id: str) -> dict[str, Any]:
             execution_ms=execution_ms,
         )
         logger.error(
-            "task inference failed task_id=%s job_id=%s attempt=%s execution_ms=%s retry_pending=%s",
+            "任务推理失败 任务=%s 作业=%s 执行次数=%s 耗时毫秒=%s 等待重试=%s",
             task_id, job.id, attempt, execution_ms, retry_pending,
         )
         raise
@@ -84,7 +84,7 @@ def run_task_job(task_id: str) -> dict[str, Any]:
         execution_ms=execution_ms,
     )
     logger.info(
-        "task inference succeeded task_id=%s job_id=%s attempt=%s execution_ms=%s model_inference_ms=%s",
+        "任务推理完成 任务=%s 作业=%s 执行次数=%s 耗时毫秒=%s 模型推理耗时毫秒=%s",
         task_id,
         job.id,
         attempt,
@@ -184,7 +184,7 @@ def _record_job_progress(
         if callable(save_meta):
             save_meta()
     logger.info(
-        "task inference progress task_id=%s job_id=%s progress=%s stage=%s",
+        "任务推理进度 任务=%s 作业=%s 进度=%s%% 阶段=%s",
         task_id,
         job.id,
         percentage,
@@ -208,7 +208,7 @@ def _finish_canceled_task(
         execution_ms=execution_ms,
     )
     logger.info(
-        "task inference canceled task_id=%s job_id=%s attempt=%s execution_ms=%s",
+        "任务推理已取消 任务=%s 作业=%s 执行次数=%s 耗时毫秒=%s",
         task_dir.name,
         job.id,
         attempt,

@@ -35,7 +35,7 @@ def _load_volume(path: Path) -> np.ndarray | None:
     try:
         img = nib.load(str(path))
     except Exception as exc:
-        logger.warning("preview volume load failed %s: %s", path, exc)
+        logger.warning("预览影像加载失败 %s：%s", path, exc)
         return None
     data = np.asanyarray(img.get_fdata())
     if data.ndim == 4:

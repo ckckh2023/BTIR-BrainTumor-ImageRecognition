@@ -90,7 +90,9 @@ models/segmentation3d/model/model_epoch_297.pth
 The project requires Python 3.11:
 
 ```bash
-python3.11 -m pip install -r requirements.txt
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
 cp .env.example .env
 python3.11 -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
@@ -119,9 +121,11 @@ python3.11 -m uvicorn api.app:app --reload
 python3.11 -m workers.run_worker
 ```
 
-Alternatively, you can host both the API and Worker simultaneously using the supervisor script:
+Alternatively, activate the virtual environment from the project root, then start both the API and Worker with the supervisor script:
+
 ```bash
-bash scripts/run-supervisor.sh /usr/bin/python3.11
+source .venv/bin/activate
+bash scripts/run-supervisor.sh
 ```
 
 Then open the following addresses:

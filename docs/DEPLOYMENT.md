@@ -372,15 +372,17 @@ Worker 名称包含主机名和进程号<br>
 ## Linux 进程守护
 
 `run-supervisor.sh` 是 Linux 的一键运行入口<br>
-项目根目录已经存在
-`.venv/bin/python` 时直接执行：
+项目根目录已经创建 `.venv` 并安装依赖后，建议先激活虚拟环境，
+再启动守护脚本（将 `/opt/btir` 替换为实际项目路径）：
 
 ```bash
 cd /opt/btir
+source .venv/bin/activate
 bash scripts/run-supervisor.sh
 ```
 
-也可以显式传入 Python：
+激活后，脚本会使用当前虚拟环境中的 Python。也可以显式传入解释器路径，
+此时无需先激活虚拟环境：
 
 ```bash
 bash scripts/run-supervisor.sh /opt/btir/.venv/bin/python
@@ -402,6 +404,12 @@ Python 查找顺序：
 - Redis 是否可访问；Redis 暂时不可用不会阻止 API 启动，supervisor 会持续
   重启退出的 Worker，直到 Redis 恢复
 
+检查期间，交互终端用 `- \ | /` 旋转提示当前启动阶段与等待时长，在同一行更新。
+API 可访问后会显示前端与 API 文档地址；只有 `/readyz` 确认所有依赖就绪，
+才会显示“服务已就绪”。等待期间会指出尚未就绪的组件。
+默认给 API 60 秒启动宽限期，避免将正常加载误报为健康检查失败。
+输出重定向或由 systemd 托管时，自动改用普通文本，不输出动画控制字符。
+
 运行期间会：
 
 - 同时启动并监控 API 与 3D Worker
@@ -409,7 +417,11 @@ Python 查找顺序：
 - 连续健康检查失败后重启 API
 - Redis 正常但 Worker 未注册时，单独重启 Worker
 - 默认每 60 秒执行 `reconcile-tasks`
-- 将标准输出、错误和巡检结果写入 `logs/`
+- 终端只显示状态、访问地址、任务进度与结果、异常及重启摘要，常规请求与 RQ 日志不刷屏
+- 在同一状态行显示 Worker 当前任务的 ID、真实推理百分比和阶段
+- API 与 Worker 的完整输出仍追加到 `logs/api.*.log` 与 `logs/worker.*.log`
+- 启动检查的详细异常写入 `logs/startup.log`
+- 将任务状态巡检结果写入 `logs/reconcile.log`
 - 收到 `SIGINT` 或 `SIGTERM` 时先请求子进程正常退出，超过宽限期才强制停止
 
 按 `Ctrl+C` 可以停止 supervisor、API 和 Worker<br>
@@ -429,6 +441,7 @@ export BTIR_API_HOST=127.0.0.1
 export BTIR_API_PORT=8000
 export BTIR_SUPERVISOR_RESTART_DELAY_SECONDS=10
 export BTIR_SUPERVISOR_HEALTH_CHECK_SECONDS=15
+export BTIR_SUPERVISOR_API_STARTUP_GRACE_SECONDS=60
 export BTIR_SUPERVISOR_WORKER_STARTUP_GRACE_SECONDS=120
 export BTIR_SUPERVISOR_TASK_RECONCILE_SECONDS=60
 export BTIR_SUPERVISOR_RECONCILE_TIMEOUT_SECONDS=120
