@@ -3200,6 +3200,20 @@ body {
             border-radius: 999px;
             overflow: hidden;
             box-shadow: 0 0 8px var(--btir-progress-glow);
+            transition: width 0.2s ease-out;
+        }
+
+        .analysis-progress-bar.analysis-progress-tracking {
+            transition: none;
+        }
+
+        .analysis-progress-indeterminate {
+            animation: analysis-progress-wait 1.4s ease-in-out infinite;
+        }
+
+        @keyframes analysis-progress-wait {
+            from { transform: translateX(-110%); }
+            to { transform: translateX(340%); }
         }
 
         .analysis-progress-bar::after {
@@ -3214,6 +3228,15 @@ body {
             );
             transform: translateX(-100%);
             animation: analysis-progress-shimmer 1.9s ease-in-out infinite;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .analysis-progress-bar,
+            .analysis-progress-bar.analysis-progress-tracking,
+            .analysis-progress-bar::after {
+                animation: none;
+                transition: none;
+            }
         }
 
         .analysis-progress-seg {
@@ -3236,8 +3259,19 @@ body {
         }
 
         .analysis-progress-label {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
             color: var(--btir-text-secondary);
             font-size: 12px;
+        }
+
+        .analysis-progress-percent {
+            flex-shrink: 0;
+            color: var(--btir-text);
+            font-size: 14px;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
         }
 
         .status-fade-enter-active,

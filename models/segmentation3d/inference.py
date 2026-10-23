@@ -17,7 +17,7 @@ import time
 import uuid
 from collections.abc import Callable
 from collections.abc import Mapping
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -250,6 +250,7 @@ def _validate_single_image(
 
 def _load_and_validate_subject(
     subject: str | Path | Mapping[str, str | Path],
+    progress_callback: Callable[[float], None] | None = None,
 ) -> tuple[np.ndarray, nib.spatialimages.SpatialImage, dict[str, Path]]:
     paths = _resolve_modality_files(subject)
     images: dict[str, nib.spatialimages.SpatialImage] = {}
@@ -311,13 +312,22 @@ def _load_and_validate_subject(
         return data
 
     with ThreadPoolExecutor(max_workers=len(MODALITIES)) as executor:
-        arrays = list(executor.map(load_array, MODALITIES))
+        pending = {executor.submit(load_array, modality): modality for modality in MODALITIES}
+        loaded_arrays = {}
+        for future in as_completed(pending):
+            loaded_arrays[pending[future]] = future.result()
+            if progress_callback is not None:
+                progress_callback(len(loaded_arrays) / len(MODALITIES))
+        arrays = [loaded_arrays[modality] for modality in MODALITIES]
 
     stacked = np.stack(arrays, axis=-1)
     return stacked, reference, paths
 
 
-def _zscore_normalize(images: np.ndarray) -> np.ndarray:
+def _zscore_normalize(
+    images: np.ndarray,
+    progress_callback: Callable[[float], None] | None = None,
+) -> np.ndarray:
     foreground = np.any(images != 0, axis=-1)
     if not np.any(foreground):
         raise InputValidationError("四模态均为空，无法推理")
@@ -334,6 +344,8 @@ def _zscore_normalize(images: np.ndarray) -> np.ndarray:
         mean = float(values.mean(dtype=np.float64))
         normalized_channel = normalized[..., index]
         normalized_channel[foreground] = (values - mean) / standard_deviation
+        if progress_callback is not None:
+            progress_callback((index + 1) / len(MODALITIES))
     return normalized
 
 
@@ -680,6 +692,7 @@ def predict(
     progress: bool = False,
     progress_callback: Callable[[float], None] | None = None,
     cancel_callback: Callable[[], None] | None = None,
+    stage_callback: Callable[[str, float], None] | None = None,
 ) -> dict[str, Any]:
     """Run full-volume segmentation for one BraTS subject.
 
@@ -691,18 +704,35 @@ def predict(
     resolved_device = _resolve_device(device)
     _configure_inference_runtime(seed, fast_inference=fast_inference)
 
+    def report(stage: str, fraction: float) -> None:
+        if stage_callback is not None:
+            stage_callback(stage, fraction)
+
+    report("正在读取分割体积", 0.04)
     started_at = time.perf_counter()
-    images, reference, paths = _load_and_validate_subject(subject)
+    load_kwargs = {}
+    if stage_callback is not None:
+        load_kwargs["progress_callback"] = lambda fraction: report(
+            "正在读取分割体积", 0.04 + 0.06 * fraction
+        )
+    images, reference, paths = _load_and_validate_subject(subject, **load_kwargs)
     load_validate_ms = (time.perf_counter() - started_at) * 1000
 
+    report("正在归一化分割体积", 0.10)
     started_at = time.perf_counter()
-    normalized = _zscore_normalize(images)
+    normalize_kwargs = {}
+    if stage_callback is not None:
+        normalize_kwargs["progress_callback"] = lambda fraction: report(
+            "正在归一化分割体积", 0.10 + 0.06 * fraction
+        )
+    normalized = _zscore_normalize(images, **normalize_kwargs)
     normalize_ms = (time.perf_counter() - started_at) * 1000
 
     started_at = time.perf_counter()
     model = model or load_model(resolved_device, weights_path)
     model_setup_ms = (time.perf_counter() - started_at) * 1000
 
+    report("3D 分割推理中", 0.16)
     started_at = time.perf_counter()
     internal_labels = _run_full_volume_inference(
         normalized,
@@ -717,6 +747,7 @@ def predict(
     )
     model_inference_ms = (time.perf_counter() - started_at) * 1000
 
+    report("正在统计分割结果", 0.94)
     started_at = time.perf_counter()
     segmentation = _to_brats_labels(internal_labels)
     regions = _region_statistics(segmentation, reference)
@@ -759,11 +790,13 @@ def predict(
 
     save_ms = 0.0
     if save_nifti is not None:
+        report("正在保存分割结果", 0.98)
         started_at = time.perf_counter()
         result["saved_path"] = str(
             _save_segmentation(segmentation, reference, save_nifti)
         )
         save_ms = (time.perf_counter() - started_at) * 1000
+    report("分割结果已生成", 1.0)
     if return_volume:
         result["segmentation"] = segmentation
     result["timing"] = {

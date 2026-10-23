@@ -69,7 +69,11 @@ def _load_3d_segmentation_model(device_name: str):
     )
 
 
-def classify_volume(modality_paths: dict[str, Path]) -> dict[str, Any]:
+def classify_volume(
+    modality_paths: dict[str, Path],
+    *,
+    progress_callback: Callable[[str, float], None] | None = None,
+) -> dict[str, Any]:
     '''仅使用本地 ViT 执行患者级分类；异常交由任务重试机制处理'''
 
     modality = SETTINGS.volume_classifier_modality
@@ -78,12 +82,24 @@ def classify_volume(modality_paths: dict[str, Path]) -> dict[str, Any]:
     except KeyError as exc:
         raise ValueError(f"3D 分类缺少 {modality} 模态") from exc
 
+    def report(stage: str, fraction: float) -> None:
+        if progress_callback is not None:
+            progress_callback(stage, fraction)
+
+    report("正在读取分类切片", 0.0)
     started_at = perf_counter()
+    prepare_kwargs = {}
+    if progress_callback is not None:
+        prepare_kwargs["progress_callback"] = lambda fraction: report(
+            "正在读取分类切片", 0.125 * fraction
+        )
     prepared = prepare_volume_slices(
         volume_path,
         max_slices=SETTINGS.vit_classifier_max_slices,
+        **prepare_kwargs,
     )
     prepare_ms = (perf_counter() - started_at) * 1000
+    report("正在加载分类模型", 0.125)
     namespace = _load_vit_classifier_namespace()
     torch = namespace["torch"]
     device = resolve_device(torch, SETTINGS.device)
@@ -92,14 +108,22 @@ def classify_volume(modality_paths: dict[str, Path]) -> dict[str, Any]:
     loaded = _load_vit_classifier_model(str(device))
     model_setup_ms = (perf_counter() - started_at) * 1000
 
+    report("3D 分类推理中", 0.25)
     started_at = perf_counter()
+    progress_kwargs = {}
+    if progress_callback is not None:
+        progress_kwargs["progress_callback"] = lambda fraction: report(
+            "3D 分类推理中", 0.25 + 0.625 * fraction
+        )
     predictions = namespace["predict_images"](
         loaded,
         prepared.images,
         batch_size=SETTINGS.vit_classifier_batch_size,
+        **progress_kwargs,
     )
     model_inference_ms = (perf_counter() - started_at) * 1000
 
+    report("正在整理分类结果", 0.875)
     started_at = perf_counter()
     classification = aggregate_mean_slice_predictions(
         prepared.indices,
@@ -117,6 +141,7 @@ def classify_volume(modality_paths: dict[str, Path]) -> dict[str, Any]:
         }
     )
     postprocess_ms = (perf_counter() - started_at) * 1000
+    report("分类结果已生成", 1.0)
     return {
         "model": "models/classification/vit-binary",
         "classification": classification,
@@ -135,9 +160,12 @@ def segment_volume(
     *,
     progress_callback: Callable[[float], None] | None = None,
     cancel_callback: Callable[[], None] | None = None,
+    stage_callback: Callable[[str, float], None] | None = None,
 ) -> dict[str, Any]:
     '''执行四模态完整体积 SuperLightNet 分割'''
 
+    if stage_callback is not None:
+        stage_callback("正在加载 3D 分割模型", 0.0)
     namespace = _load_3d_segmentation_namespace()
     torch = namespace["torch"]
     device = resolve_device(torch, SETTINGS.device)
@@ -145,6 +173,7 @@ def segment_volume(
 
     output_dir.mkdir(parents=True, exist_ok=True)
     mask_path = output_dir / TaskArtifact.SEGMENTATION_MASK
+    stage_kwargs = {"stage_callback": stage_callback} if stage_callback is not None else {}
     prediction = namespace["predict"](
         {
             modality: str(path)
@@ -159,8 +188,13 @@ def segment_volume(
         cuda_accumulator_reserve_bytes=(
             SETTINGS.segmenter_3d_cuda_accumulator_reserve_mb * 1024 * 1024
         ),
-        progress_callback=progress_callback,
+        progress_callback=(
+            (lambda fraction: progress_callback(0.16 + 0.78 * fraction))
+            if progress_callback is not None and stage_callback is not None
+            else progress_callback
+        ),
         cancel_callback=cancel_callback,
+        **stage_kwargs,
     )
     return {
         "model": "models/segmentation3d/superlightnet",

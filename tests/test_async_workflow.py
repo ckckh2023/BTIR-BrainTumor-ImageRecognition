@@ -30,6 +30,7 @@ from services.task_queue import (
 )
 from services.task_runner import (
     TaskCancellationRequested,
+    _run_volume_classification,
     run_task_models,
 )
 from services.task_results import build_frontend_result
@@ -425,6 +426,18 @@ class AsyncQueueTests(unittest.TestCase):
         job.refresh.assert_not_called()
         job.save_meta.assert_not_called()
 
+    def test_progress_preserves_decimals_and_publishes_phase_changes_at_same_percent(self) -> None:
+        job = SimpleNamespace(id="job-decimal", meta={}, save_meta=Mock())
+        _record_job_progress(job, "task-decimal", "分类完成", 44.0, "classification")
+        _record_job_progress(job, "task-decimal", "分类完成", 44.0, "segmentation")
+        self.assertEqual(job.meta["progress_phase"], "segmentation")
+        self.assertEqual(job.save_meta.call_count, 2)
+        _record_job_progress(job, "task-decimal", "分割推理中", 63.375, "segmentation")
+        self.assertEqual(job.meta["progress"], 63.375)
+        _record_job_progress(job, "task-decimal", "完成", 100, "complete")
+        self.assertLess(job.meta["progress"], 100)
+        self.assertEqual(job.meta["progress_phase"], "summary")
+
     def test_cancellation_checker_throttles_backend_refreshes(self) -> None:
         job = Mock()
         task_dir = Path("output") / "task-cancel-checker"
@@ -459,8 +472,9 @@ class AsyncQueueTests(unittest.TestCase):
         )
         rq_job = Mock()
         rq_job.meta = {
-            "progress": 65,
+            "progress": 65.375,
             "progress_stage": "3D 分割推理中",
+            "progress_phase": "segmentation",
         }
 
         with (
@@ -471,8 +485,38 @@ class AsyncQueueTests(unittest.TestCase):
 
         self.assertEqual(
             progress,
-            {"progress": 65, "progress_stage": "3D 分割推理中"},
+            {"progress": 65.375, "progress_stage": "3D 分割推理中", "progress_phase": "segmentation"},
         )
+
+    def test_progress_survives_worker_queue_route_and_response_serialization(self) -> None:
+        from api.routes.tasks import get_task
+
+        record = deepcopy(self.record)
+        record.status = TaskStatus.RUNNING
+        record.job = TaskJobRecord(id="job-decimal", queue="inference", status=JobStatus.RUNNING)
+        job = SimpleNamespace(id="job-decimal", meta={}, save_meta=Mock())
+        _record_job_progress(job, record.task_id, "分割推理中", 63.375, "segmentation")
+        with (
+            patch("services.task_queue.get_redis_client", return_value=Mock()),
+            patch("services.task_queue.Job.fetch", return_value=job),
+            patch("api.routes.tasks.task_repository.load_for_user", return_value=record),
+            patch("api.routes.tasks.require_task_dir", return_value=self.task_dir),
+            patch("api.routes.tasks.reconcile_task_job", return_value=record),
+        ):
+            response = get_task(record.task_id, current_user=SimpleNamespace(user_id="progress-user"))
+        payload = response.model_dump(mode="json")
+        self.assertEqual(payload["progress"], 63.375)
+        self.assertEqual(payload["progress_phase"], "segmentation")
+
+    def test_frontend_and_runner_share_progress_allocation(self) -> None:
+        import asyncio
+        from api.app import frontend_config
+        from core.task_definitions import TASK_PROGRESS_RANGES
+        config = asyncio.run(frontend_config())
+        self.assertEqual(config["inference_progress_ranges"], dict(TASK_PROGRESS_RANGES))
+        self.assertEqual(TASK_PROGRESS_RANGES["classification"], (0, 20))
+        self.assertEqual(TASK_PROGRESS_RANGES["segmentation"], (20, 80))
+        self.assertEqual(TASK_PROGRESS_RANGES["summary"], (80, 100))
 
     def test_job_progress_is_none_without_job(self) -> None:
         record = deepcopy(self.record)
@@ -483,6 +527,26 @@ class AsyncQueueTests(unittest.TestCase):
 
 class TaskRunnerTests(unittest.TestCase):
     '''验证完整推理统一入口的调用顺序与返回结果'''
+
+    def test_classification_batch_progress_stays_within_classification_phase(self) -> None:
+        events = []
+
+        def classify(paths, *, progress_callback):
+            for fraction in (0.0, 1 / 3, 0.5, 1.0):
+                progress_callback("3D 分类推理中", fraction)
+            return {"classification": {"class": "yes"}}
+
+        with (
+            patch("services.task_runner.classify_volume", side_effect=classify),
+            patch("services.task_runner.persist_model_result", side_effect=lambda **kwargs: kwargs["result"]),
+        ):
+            _run_volume_classification(
+                Path("output/test-progress"), {"flair": Path("flair.nii.gz")},
+                progress_callback=lambda stage, percent, phase: events.append((stage, percent, phase)),
+            )
+        for actual, expected in zip([percent for _, percent, _ in events], [0, 20 / 3, 10, 20], strict=True):
+            self.assertAlmostEqual(actual, expected)
+        self.assertTrue(all(phase == "classification" for _, _, phase in events))
 
     def test_runner_dispatches_3d_task_to_volume_classification_and_segmentation(self) -> None:
         task_dir = Path("output") / "task-runner-3d-001"
@@ -597,15 +661,18 @@ class TaskRunnerTests(unittest.TestCase):
             modality: input_dir / f"{modality}.nii.gz"
             for modality in ("flair", "t1ce", "t1", "t2")
         }
-        progress_events: list[tuple[str, int]] = []
+        progress_events: list[tuple[str, float, str]] = []
 
         def capture_progress(
             modality_paths,
             output_dir,
             progress_callback=None,
             cancel_callback=None,
+            stage_callback=None,
         ):
+            stage_callback("正在读取分割体积", 0.04)
             progress_callback(0.5)
+            stage_callback("正在统计分割结果", 0.94)
             return {"mask_path": run_dir / "prediction.nii.gz"}
 
         with (
@@ -636,14 +703,20 @@ class TaskRunnerTests(unittest.TestCase):
         ):
             run_task_models(
                 task_dir,
-                progress_callback=lambda stage, percentage: progress_events.append(
-                    (stage, percentage)
+                progress_callback=lambda stage, percentage, phase: progress_events.append(
+                    (stage, percentage, phase)
                 ),
             )
 
-        self.assertIn(("3D 分类推理中", 36), progress_events)
-        self.assertIn(("3D 分类完成，开始 3D 分割", 44), progress_events)
-        self.assertIn(("3D 分割推理中", 71), progress_events)
+        self.assertIn(("3D 分类推理中", 0, "classification"), progress_events)
+        self.assertIn(("3D 分类完成，开始 3D 分割", 20, "segmentation"), progress_events)
+        self.assertIn(("3D 分割推理中", 50, "segmentation"), progress_events)
+        self.assertIn(("正在读取分割体积", 22.4, "segmentation"), progress_events)
+        self.assertAlmostEqual(next(p for stage, p, _ in progress_events if stage == "正在统计分割结果"), 76.4)
+        self.assertIn(("正在生成综合分析", 80, "summary"), progress_events)
+        self.assertIn(("正在生成影像预览", 94, "summary"), progress_events)
+        percentages = [percent for _, percent, _ in progress_events]
+        self.assertEqual(percentages, sorted(percentages))
 
     def test_runner_cancels_between_segmentation_windows(self) -> None:
         task_dir = Path("output") / "task-runner-window-cancel"

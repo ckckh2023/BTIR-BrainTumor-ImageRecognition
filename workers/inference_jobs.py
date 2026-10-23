@@ -47,11 +47,12 @@ def run_task_job(task_id: str) -> dict[str, Any]:
         run_result = run_task_models(
             task_dir,
             should_cancel=should_cancel,
-            progress_callback=lambda stage, percentage: _record_job_progress(
+            progress_callback=lambda stage, percentage, phase: _record_job_progress(
                 job,
                 task_id,
                 stage,
                 percentage,
+                phase,
             ),
         )
     except TaskCancellationRequested:
@@ -163,14 +164,20 @@ def _record_job_progress(
     job: Any,
     task_id: str,
     stage: str,
-    percentage: int,
+    percentage: float,
+    phase: str | None = None,
 ) -> None:
     '''将真实阶段写入 worker 日志；RQ 可用时同步保存到作业元数据'''
+    # 任务状态成功写入后，前端才显示 100%。
+    percentage = round(min(99.9, percentage), 3)
+    if phase == "complete":
+        phase = "summary"
     metadata = getattr(job, "meta", None)
     if (
         isinstance(metadata, dict)
         and metadata.get("progress") == percentage
         and metadata.get("progress_stage") == stage
+        and metadata.get("progress_phase") == phase
     ):
         return
     refresh = getattr(job, "refresh", None)
@@ -180,6 +187,7 @@ def _record_job_progress(
     if isinstance(metadata, dict):
         metadata["progress"] = percentage
         metadata["progress_stage"] = stage
+        metadata["progress_phase"] = phase
         save_meta = getattr(job, "save_meta", None)
         if callable(save_meta):
             save_meta()

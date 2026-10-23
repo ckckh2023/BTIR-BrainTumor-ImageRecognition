@@ -156,15 +156,18 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("displayProgress", self.html)
         self.assertIn("resultData.progress_stage", self.app_js)
 
-    def test_progress_bar_smooth_and_balanced_phases(self) -> None:
-        self.assertIn("mappedProgressPercent", self.app_js)
-        self.assertIn("startProgressMotion", self.app_js)
-        self.assertIn("progressPhaseCeiling", self.app_js)
-        self.assertIn("progressMotionActive: false", self.app_js)
-        self.assertIn("displayProgress: 0", self.app_js)
-        self.assertIn("mapped = 30 + ((raw - 36) / 8) * 25", self.app_js)
-        self.assertIn("mapped = 55 + ((raw - 44) / 54) * 35", self.app_js)
-        self.assertIn("mapped = 90 + ((raw - 98) / 2) * 10", self.app_js)
+    def test_progress_bar_tracks_reported_progress_without_estimation(self) -> None:
+        self.assertNotIn("mappedProgressPercent", self.app_js)
+        self.assertNotIn("startProgressMotion", self.app_js)
+        self.assertNotIn("progressPhaseCeiling", self.app_js)
+        self.assertIn('role="progressbar"', self.html)
+        self.assertIn(':aria-valuenow="displayProgress"', self.html)
+        self.assertIn("analysis-progress-indeterminate", self.html)
+        self.assertIn("? 30 : analysisProgressWidth) + '%'", self.html)
+        self.assertIn("'analysis-progress-tracking': analysisPolling", self.html)
+        self.assertIn(".analysis-progress-bar.analysis-progress-tracking {\n            transition: none;", self.app_css)
+        self.assertIn('v-for="boundary in analysisProgressStops"', self.html)
+        self.assertIn("inference_progress_ranges", self.app_js)
         self.assertIn("analysis-progress-seg", self.html)
         self.assertIn("analysis-progress-shimmer", self.app_css)
 
@@ -177,12 +180,12 @@ class FrontendContractTests(unittest.TestCase):
 
     def test_analysis_phases_show_classification_regardless_of_poll_timing(self) -> None:
         self.assertIn("analysisPhases", self.app_js)
-        self.assertIn("reached(44)", self.app_js)
+        self.assertIn("resultData.progress_phase", self.app_js)
         self.assertIn("3D 分类", self.app_js)
         self.assertIn("3D 分割", self.app_js)
         self.assertIn("综合分析", self.app_js)
         self.assertIn('v-if="analysisPhases.length"', self.html)
-        self.assertIn("analysis-phase", self.app_css)
+        self.assertIn(".analysis-phase.active", self.app_css)
 
     def test_supplementary_analysis_is_rendered_as_escaped_text(self) -> None:
         self.assertIn("supplementaryAnalysis", self.html)
@@ -294,11 +297,11 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('<template v-for="modality in volumeModalities"', self.html)
         self.assertIn("正在上传 ", self.app_js)
 
-    def test_upload_phase_is_included_in_inference_progress(self) -> None:
+    def test_upload_status_is_separate_from_inference_progress(self) -> None:
         self.assertIn("uploadTaskFiles", self.app_js)
         self.assertIn("xhr.upload.onprogress", self.app_js)
         self.assertIn("正在上传数据", self.app_js)
-        self.assertIn("正在压缩/上传数据", self.app_js)
+        self.assertIn("正在校验上传数据", self.app_js)
 
     def test_result_status_visible_during_upload_before_task_id(self) -> None:
         self.assertIn('class="result-section"', self.html)

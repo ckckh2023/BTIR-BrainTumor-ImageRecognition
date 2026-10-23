@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 import json
@@ -108,14 +109,34 @@ class AiAnalysisProvider:
 def run_supplementary_analysis(
     classification_result: dict[str, Any],
     segmentation_result: dict[str, Any],
+    *,
+    progress_callback: Callable[[str, float], None] | None = None,
 ) -> dict[str, Any]:
     '''生成补充分析结果'''
     if not SETTINGS.ai_analysis_enabled:
         return {"status": "disabled", "message": DISABLED_MESSAGE}
 
     started_at = perf_counter()
+
+    def report(stage: str, fraction: float) -> None:
+        if progress_callback is not None:
+            progress_callback(stage, fraction)
+
+    def unavailable() -> dict[str, Any]:
+        return {
+            "status": "unavailable",
+            "provider": "ai",
+            "message": UNAVAILABLE_MESSAGE,
+            "duration_ms": _elapsed_ms(started_at),
+        }
+
+    report("正在整理综合分析依据", 0.0)
     try:
         evidence = build_supplementary_evidence(classification_result, segmentation_result)
+    except Exception:
+        return unavailable()
+    report("正在生成综合分析", 0.1)
+    try:
         provider = AiAnalysisProvider(
             api_key=SETTINGS.ai_api_key,
             base_url=SETTINGS.ai_base_url,
@@ -128,12 +149,8 @@ def run_supplementary_analysis(
         response = provider.analyze(evidence)
         content = SupplementaryAnalysisContent.model_validate(json.loads(response.content))
     except Exception:
-        return {
-            "status": "unavailable",
-            "provider": "ai",
-            "message": UNAVAILABLE_MESSAGE,
-            "duration_ms": _elapsed_ms(started_at),
-        }
+        return unavailable()
+    report("综合分析结果校验完成", 0.9)
 
     result: dict[str, Any] = {
         "status": "succeeded",
@@ -154,6 +171,7 @@ def run_supplementary_analysis(
         response.usage,
         response.request_id,
     )
+    report("综合分析结果已生成", 1.0)
     return result
 
 

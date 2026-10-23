@@ -62,11 +62,14 @@ class CasePreviewTests(unittest.TestCase):
         self.assertTrue(output.is_file())
 
     def test_preview_series_contains_raw_and_overlay_neighbors(self) -> None:
+        progress = []
         series = render_case_preview_series(
             self.modalities,
             self.mask_path,
             self.tmp / "previews",
+            progress_callback=progress.append,
         )
+        self.assertEqual(progress, [index / 6 for index in range(1, 7)])
         self.assertIsNotNone(series)
         assert series is not None
         self.assertEqual(series["focus_slice"], 5)
@@ -75,17 +78,35 @@ class CasePreviewTests(unittest.TestCase):
             self.assertTrue((self.tmp / frame["raw"]).is_file())
             self.assertTrue((self.tmp / frame["overlay"]).is_file())
 
+    def test_preview_progress_counts_only_slices_inside_volume(self) -> None:
+        mask = np.zeros((20, 20, 12), dtype=np.uint8)
+        mask[8:13, 8:13, 0] = 1
+        nib.save(nib.Nifti1Image(mask, np.eye(4)), self.mask_path)
+        progress = []
+        series = render_case_preview_series(
+            self.modalities, self.mask_path, self.tmp / "boundary-previews",
+            progress_callback=progress.append,
+        )
+        self.assertEqual([frame["offset"] for frame in series["frames"]], [0, 1])
+        self.assertEqual(progress, [0.25, 0.5, 0.75, 1.0])
+
     def test_task_runner_uses_runtime_mask_path_for_preview_artifacts(self) -> None:
         frontend_path = self.tmp / "frontend_result.json"
         frontend_path.write_text(
             json.dumps({"result_files": {"frontend": "frontend_result.json"}}),
             encoding="utf-8",
         )
+        progress = []
         _render_case_preview(
             self.tmp,
             self.modalities,
             {"mask_path": str(self.mask_path)},
+            progress_callback=progress.append,
         )
+        self.assertEqual(progress[0], 0.2)
+        self.assertEqual(progress[-1], 1.0)
+        self.assertEqual(progress, sorted(progress))
+        self.assertEqual(len(progress), 8)
         result = json.loads(frontend_path.read_text(encoding="utf-8"))
         self.assertEqual(result["result_files"]["preview"], "preview.png")
         self.assertEqual(len(result["result_files"]["preview_series"]["frames"]), 3)

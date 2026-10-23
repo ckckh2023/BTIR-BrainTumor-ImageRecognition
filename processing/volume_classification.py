@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from statistics import median, pstdev
@@ -28,6 +29,7 @@ def prepare_volume_slices(
     volume_path: str | Path,
     *,
     max_slices: int,
+    progress_callback: Callable[[float], None] | None = None,
 ) -> PreparedVolumeSlices:
     """Load NIfTI as RAS+ and evenly sample informative axial slices."""
 
@@ -45,6 +47,8 @@ def prepare_volume_slices(
         raise ValueError(f"3D 分类输入必须是三维 NIfTI，收到 shape={data.shape}")
     if not np.isfinite(data).all():
         raise ValueError("3D 分类输入包含 NaN 或无穷值")
+    if progress_callback is not None:
+        progress_callback(0.5)
 
     foreground = data != 0
     if not np.any(foreground):
@@ -60,12 +64,13 @@ def prepare_volume_slices(
     if not np.isfinite(lower) or not np.isfinite(upper) or upper <= lower:
         raise ValueError("3D 分类输入没有有效的强度变化")
 
-    images = tuple(
-        _slice_to_rgb(data[:, :, int(index)], float(lower), float(upper))
-        for index in selected_indices
-    )
+    images = []
+    for index in selected_indices:
+        images.append(_slice_to_rgb(data[:, :, int(index)], float(lower), float(upper)))
+        if progress_callback is not None:
+            progress_callback(0.5 + 0.5 * len(images) / len(selected_indices))
     return PreparedVolumeSlices(
-        images=images,
+        images=tuple(images),
         indices=tuple(int(index) for index in selected_indices),
         canonical_shape=tuple(int(size) for size in data.shape),
         foreground_slice_count=int(candidate_indices.size),

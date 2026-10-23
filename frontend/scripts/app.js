@@ -1,5 +1,11 @@
         const { createApp } = Vue
 
+        const ANALYSIS_PHASES = Object.freeze([
+            { key: 'classification', label: '3D 分类', progressLabel: '3D 分类推理中...' },
+            { key: 'segmentation', label: '3D 分割', progressLabel: '3D 分割推理中...' },
+            { key: 'summary', label: '综合分析', progressLabel: '正在生成综合分析...' },
+        ])
+
         const btirRootOptions = {
             data() {
                 return {
@@ -8,9 +14,12 @@
                     analysisCancelled: false,
                     analysisPolling: false,
                     analysisProgress: null,
-                    displayProgress: 0,
-                    progressAnimFrame: null,
-                    progressMotionActive: false,
+                    analysisProgressDisplayed: null,
+                    analysisProgressTransitionMs: 500,
+                    analysisProgressTiming: null,
+                    analysisProgressHistory: [],
+                    analysisRunSequence: 0,
+                    inferenceProgressRanges: null,
                     statusText: '等待识别...',
                     taskId: '',
                     analysisActive: false,
@@ -191,59 +200,58 @@
                         )
                     )
                 },
-                mappedProgressPercent() {
-                    const progress = this.analysisProgress
-                    if (!progress || typeof progress.percent !== 'number') return 0
-                    const raw = Math.min(100, Math.max(0, progress.percent))
-                    let mapped
-                    if (raw < 36) {
-                        mapped = (raw / 36) * 30
-                    } else if (raw < 44) {
-                        mapped = 30 + ((raw - 36) / 8) * 25
-                    } else if (raw < 98) {
-                        mapped = 55 + ((raw - 44) / 54) * 35
-                    } else {
-                        mapped = 90 + ((raw - 98) / 2) * 10
-                    }
-                    return Math.min(100, Math.max(0, mapped))
+                analysisProgressValue() {
+                    const percent = this.analysisProgress?.percent
+                    return Number.isFinite(percent)
+                        ? Math.min(100, Math.max(0, percent))
+                        : null
                 },
-                progressPhaseCeiling() {
-                    const real = this.analysisProgress?.percent
-                    if (typeof real !== 'number') return 100
-                    if (real >= 100) return 100
-                    if (real >= 98) return 100
-                    if (real >= 44) return 90
-                    return 55
+                displayProgress() {
+                    const percent = this.analysisProgressWidth
+                    return percent === null ? null : Math.floor(percent)
+                },
+                analysisProgressWidth() {
+                    const target = this.analysisProgressValue
+                    return target !== null && ['running', 'succeeded'].includes(this.analysisProgress?.status)
+                        && Number.isFinite(this.analysisProgressDisplayed)
+                        ? Math.min(target, this.analysisProgressDisplayed) : target
                 },
                 analysisProgressLabel() {
-                    return this.analysisProgress?.stage || '推理中...'
+                    const progress = this.analysisProgress
+                    const percent = this.analysisProgressWidth
+                    if (!progress || percent === null
+                        || !['running', 'succeeded'].includes(progress.status)
+                        || this.analysisProgressPhaseIndex === 3) {
+                        return progress?.stage || '推理中...'
+                    }
+                    const phase = ANALYSIS_PHASES[this.analysisProgressPhaseIndex]
+                    for (let index = this.analysisProgressHistory.length - 1; index >= 0; index--) {
+                        const step = this.analysisProgressHistory[index]
+                        if (step.percent <= percent && step.phase === phase?.key) return step.stage
+                    }
+                    return phase?.progressLabel || '正在准备推理...'
+                },
+                analysisProgressStops() {
+                    const ranges = this.inferenceProgressRanges
+                    return ranges ? [ranges.classification[1], ranges.segmentation[1]] : [36, 44, 99]
+                },
+                analysisProgressPhaseIndex() {
+                    const progress = this.analysisProgress
+                    const percent = this.analysisProgressWidth
+                    if (!progress || progress.status === 'queued' || percent === null) return -1
+                    if (progress.status === 'succeeded' && percent >= 100) return 3
+                    const current = this.analysisPhaseIndexAt(percent)
+                    const confirmed = ANALYSIS_PHASES.findIndex(phase => phase.key === progress.phase)
+                    return confirmed < 0 || progress.status === 'succeeded' ? current : Math.min(current, confirmed)
                 },
                 analysisPhases() {
                     if (!this.analysisPolling || !this.taskId) return []
-                    const p = this.analysisProgress?.percent
-                    if (p === undefined || p === null) return []
-                    const reached = (value) => p >= value
-                    return [
-                        {
-                            key: 'classification',
-                            label: '3D 分类',
-                            state: reached(44) ? 'done' : 'active',
-                        },
-                        {
-                            key: 'segmentation',
-                            label: '3D 分割',
-                            state: reached(99)
-                                ? 'done'
-                                : (reached(44) ? 'active' : 'pending'),
-                        },
-                        {
-                            key: 'summary',
-                            label: '综合分析',
-                            state: reached(100)
-                                ? 'done'
-                                : (reached(99) ? 'active' : 'pending'),
-                        },
-                    ]
+                    const current = this.analysisProgressPhaseIndex
+                    return ANALYSIS_PHASES.map(({ key, label }, index) => ({
+                        key, label,
+                        state: current < 0 || index > current ? 'pending'
+                            : index < current ? 'done' : 'active',
+                    }))
                 },
                 taskPage() {
                     return Math.floor(this.taskOffset / this.taskLimit) + 1
@@ -729,11 +737,11 @@
                 },
             },
             watch: {
-                analysisProgress: {
-                    deep: true,
-                    handler() {
-                        this.startProgressMotion()
-                    },
+                API_BASE() {
+                    this.resetAnalysisProgressTiming()
+                },
+                taskId() {
+                    this.resetAnalysisProgressTiming()
                 },
                 probLineRevealed(value) {
                     if (!value) return
@@ -758,43 +766,144 @@
                 },
             },
             methods: {
-                startProgressMotion() {
-                    if (this.progressMotionActive) return
-                    this.progressMotionActive = true
-                    const step = () => {
-                        const real = this.analysisProgress?.percent
-                        if (typeof real !== 'number' && !this.analysisPolling) {
-                            this.progressMotionActive = false
-                            this.progressAnimFrame = null
+                analysisPhaseIndexAt(percent) {
+                    const ranges = this.inferenceProgressRanges
+                    const [start, segmentation, summary] = ranges
+                        ? [ranges.classification[0], ranges.segmentation[0], ranges.summary[0]] : [36, 44, 99]
+                    return percent < start ? -1 : percent < segmentation ? 0 : percent < summary ? 1 : 2
+                },
+                recordAnalysisProgressStep(progress) {
+                    const percent = this.analysisProgressValue
+                    if (percent === null) return
+                    const history = this.analysisProgressHistory
+                    const displayed = this.analysisProgressWidth
+                    // 留下当前说明和仍未显示到的检查点，避免重复轮询积累记录。
+                    while (history.length > 1 && history[1].percent <= displayed) history.shift()
+                    const phase = progress.phase
+                        || ANALYSIS_PHASES[this.analysisPhaseIndexAt(percent)]?.key
+                    const previous = history[history.length - 1]
+                    if (previous?.stage === progress.stage && previous.phase === phase) return
+                    history.push({ percent, phase, stage: progress.stage })
+                },
+                stopAnalysisProgressMotion() {
+                    if (this._analysisProgressFrame != null) {
+                        cancelAnimationFrame(this._analysisProgressFrame)
+                        this._analysisProgressFrame = null
+                    }
+                },
+                resetAnalysisProgressTiming() {
+                    this.stopAnalysisProgressMotion()
+                    this.analysisProgressDisplayed = null
+                    this.analysisProgressTiming = null
+                    this.analysisProgressHistory = []
+                    this.analysisProgressTransitionMs = 500
+                },
+                followAnalysisProgress() {
+                    const target = this.analysisProgressValue
+                    if (this.analysisProgress?.status !== 'running' || target === null) return
+                    const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+                    if (this.analysisProgressDisplayed === null || this.analysisProgressTransitionMs === 0
+                        || reducedMotion()) {
+                        this.stopAnalysisProgressMotion()
+                        this.analysisProgressDisplayed = target
+                        return
+                    }
+                    // 新目标沿用当前动画，只更新追赶上限和时长。
+                    if (this._analysisProgressFrame != null || this.analysisProgressDisplayed === target) return
+                    const timing = this.analysisProgressTiming
+                    let lastAt = performance.now()
+                    const step = now => {
+                        if (this.analysisProgressTiming !== timing) return
+                        this._analysisProgressFrame = null
+                        if (!this.analysisPolling || this.analysisCancelled
+                            || this.analysisProgress?.status !== 'running') return
+                        const confirmed = this.analysisProgressValue
+                        if (confirmed === null) return
+                        const elapsed = Math.max(0, now - lastAt)
+                        lastAt = now
+                        const current = this.analysisProgressDisplayed
+                        if (reducedMotion()) {
+                            this.analysisProgressDisplayed = confirmed
+                            timing.velocity = 0
                             return
                         }
-                        const mapped = this.mappedProgressPercent
-                        const ceiling = this.progressPhaseCeiling
-                        // 全程匀速平推：目标取真实进度映射与“当前位置+基础步进”的较大者，
-                        // 阶段边界不会减速；落后真实进度较多时再快速追赶
-                        const cruise = 0.03
-                        const target = Math.min(
-                            ceiling,
-                            Math.max(mapped, this.displayProgress + cruise),
-                        )
-                        const delta = target - this.displayProgress
-                        if (delta > 0) {
-                            const gapToMapped = Math.max(0, mapped - this.displayProgress)
-                            const velocity = real >= 100
-                                ? 0.35
-                                : (gapToMapped > 3
-                                    ? 0.3
-                                    : Math.max(0.03, Math.min(0.3, delta * 0.05)))
-                            this.displayProgress = Math.min(
-                                target,
-                                this.displayProgress + Math.min(velocity, delta),
-                            )
-                        } else if (target >= 100) {
-                            this.displayProgress = 100
+                        // 未收到新百分比时也调整追赶速度，给阶段等待保留进度余量。
+                        const silence = Math.max(0, now - timing.changedAt)
+                        const horizon = Math.max(500, this.analysisProgressTransitionMs * 1.5, silence * 2)
+                        const omega = 2 / horizon
+                        const gap = Math.max(0, confirmed - current)
+                        const velocity = Math.min(Math.max(0, timing.velocity), omega * gap)
+                        const decay = Math.exp(-omega * elapsed)
+                        const remaining = (gap + (omega * gap - velocity) * elapsed) * decay
+                        const next = Math.min(confirmed, Math.max(current, confirmed - remaining))
+                        timing.velocity = (velocity + omega * (omega * gap - velocity) * elapsed) * decay
+                        this.analysisProgressDisplayed = next
+                        // 不强行追平；新目标到来后沿用当前速度继续移动。
+                        if (confirmed - next > 0.000001) {
+                            this._analysisProgressFrame = requestAnimationFrame(step)
                         }
-                        this.progressAnimFrame = requestAnimationFrame(step)
                     }
-                    this.progressAnimFrame = requestAnimationFrame(step)
+                    this._analysisProgressFrame = requestAnimationFrame(step)
+                },
+                updateAnalysisProgressTiming(resultData, next) {
+                    const value = Number.isFinite(next.percent)
+                        ? Math.min(100, Math.max(0, next.percent)) : null
+                    if (next.status !== 'running' || value === null) {
+                        this.resetAnalysisProgressTiming()
+                        return
+                    }
+                    const now = performance.now()
+                    const attempt = resultData.job?.attempt ?? null
+                    const timing = this.analysisProgressTiming
+                    if (!timing || timing.source !== this.API_BASE || timing.taskId !== this.taskId
+                        || timing.attempt !== attempt || value < timing.percent) {
+                        this.resetAnalysisProgressTiming()
+                        this.analysisProgressTiming = {
+                            source: this.API_BASE, taskId: this.taskId, attempt,
+                            percent: value, changedAt: now, intervalMs: null, rate: null, velocity: 0,
+                        }
+                        // 首个有效值和重试回退直接对齐，避免沿用旧任务的条宽。
+                        this.analysisProgressTransitionMs = 0
+                        return
+                    }
+                    // 重复轮询不算新样本，也不重启正在进行的追赶。
+                    if (value === timing.percent) return
+                    const elapsed = now - timing.changedAt
+                    const delta = value - timing.percent
+                    timing.percent = value
+                    timing.changedAt = now
+                    if (elapsed <= 0) return
+                    const interval = Math.min(elapsed, 10000)
+                    const rate = delta / interval
+                    const weight = 0.35
+                    timing.intervalMs = timing.intervalMs === null ? interval
+                        : timing.intervalMs * (1 - weight) + interval * weight
+                    timing.rate = timing.rate === null ? rate
+                        : timing.rate * (1 - weight) + rate * weight
+                    const previous = this.analysisProgress
+                    const changedStep = next.phase !== previous?.phase || next.stage !== previous?.stage
+                    const cadence = timing.intervalMs * (changedStep ? 1.5 : 1.15)
+                    const catchUp = Math.min(delta / timing.rate, timing.intervalMs * 1.5)
+                    this.analysisProgressTransitionMs = Math.round(
+                        Math.min(3000, Math.max(500, cadence, catchUp))
+                    )
+                },
+                applyTaskProgress(resultData) {
+                    const queued = resultData.status === 'queued'
+                    const next = {
+                        percent: queued ? null : resultData.progress,
+                        stage: queued
+                            ? '任务排队中...'
+                            : resultData.status === 'cancel_requested'
+                                ? '取消中，正在停止推理...'
+                                : (resultData.progress_stage || '正在准备推理...'),
+                        status: resultData.status,
+                        phase: queued ? null : resultData.progress_phase,
+                    }
+                    this.updateAnalysisProgressTiming(resultData, next)
+                    this.analysisProgress = next
+                    this.followAnalysisProgress()
+                    this.recordAnalysisProgressStep(next)
                 },
                 switchRightView(view) {
                     this.activeRightView = view
@@ -1422,17 +1531,15 @@
                         .replace(/>/g, '&gt;')
                 },
                 resetState() {
+                    this.analysisRunSequence += 1
+                    this.resetAnalysisProgressTiming()
                     this.destroyVolumeViewer()
                     this.loading = true
                     this.analysisActive = true
-                    this.displayProgress = 0
                     this.analysisCancelled = false
                     this.analysisPolling = false
-                    this.analysisProgress = {
-                        percent: 0,
-                        stage: '正在压缩/上传数据...',
-                    }
-                    this.statusText = '<span class="loading-spinner"></span>创建任务中...'
+                    this.analysisProgress = null
+                    this.statusText = '<span class="loading-spinner"></span>正在准备上传...'
                     this.taskId = ''
                     this.fileList = []
                     this.downloadFiles = []
@@ -2203,39 +2310,51 @@
                     this.deferCaseVolumeViewer()
                 },
                 async runAndGetResult(taskId) {
+                    const sequence = ++this.analysisRunSequence
+                    const source = this.API_BASE
+                    const ownsRun = () => sequence === this.analysisRunSequence
+                    const isCurrent = () => ownsRun() && source === this.API_BASE && taskId === this.taskId
+                    this.taskId = taskId
+                    this.resetAnalysisProgressTiming()
                     this.analysisCancelled = false
-                    this.statusText = '<span class="loading-spinner"></span>运行3D模型中...'
+                    this.statusText = '<span class="loading-spinner"></span>正在提交推理任务...'
+                    this.analysisProgress = { percent: null, stage: '正在提交推理任务...' }
 
-                    const runResponse = await fetch(`${this.API_BASE}/tasks/${taskId}/run-async`, {
-                        method: 'POST',
-                        headers: this.authHeaders,
-                    })
-
-                    if (!runResponse.ok) {
-                        throw new Error(await this.responseError(runResponse, '运行模型'))
-                    }
-
-                    this.analysisPolling = true
-                    this.startProgressMotion()
                     try {
+                        const runResponse = await fetch(`${source}/tasks/${taskId}/run-async`, {
+                            method: 'POST',
+                            headers: this.authHeaders,
+                        })
+
+                        if (!isCurrent()) return
+                        if (!runResponse.ok) {
+                            throw new Error(await this.responseError(runResponse, '运行模型'))
+                        }
+
+                        this.analysisPolling = true
                         const pollingStartedAt = Date.now()
                         const deadline = pollingStartedAt + 30 * 60 * 1000
                         while (Date.now() < deadline) {
+                            if (!isCurrent()) return
                             if (this.analysisCancelled) {
                                 this.statusText =
                                     `<span class="status-error">✗ 已取消任务 ${taskId}</span>`
                                 return
                             }
-                            const resultResponse = await fetch(`${this.API_BASE}/tasks/${taskId}`, {
+                            const pollStartedAt = Date.now()
+                            const resultResponse = await fetch(`${source}/tasks/${taskId}`, {
                                 headers: this.authHeaders,
+                                cache: 'no-store',
                             })
+                            if (!isCurrent()) return
                             if (!resultResponse.ok) {
                                 throw new Error(`获取结果失败: ${resultResponse.status}`)
                             }
 
                             const resultData = await resultResponse.json()
+                            if (this.analysisCancelled || !isCurrent()) return
                             if (resultData.status === 'succeeded') {
-                                await this.settleAndPresentResult(resultData)
+                                await this.settleAndPresentResult(resultData, isCurrent)
                                 return
                             }
                             if (resultData.status === 'failed') {
@@ -2252,77 +2371,87 @@
                                 : resultData.status === 'cancel_requested'
                                     ? '<span class="loading-spinner"></span>取消中，正在停止推理...'
                                     : '<span class="loading-spinner"></span>3D分析推理中...'
-                            if (
-                                resultData.progress !== null
-                                && resultData.progress !== undefined
-                            ) {
-                                this.analysisProgress = {
-                                    percent: Math.max(
-                                        this.analysisProgress?.percent || 0,
-                                        Math.min(
-                                            100,
-                                            Math.max(
-                                                0,
-                                                Math.round(
-                                                    Number(resultData.progress) || 0
-                                                )
-                                            )
-                                        )
-                                    ),
-                                    stage: resultData.progress_stage || '',
-                                }
-                            }
+                            this.applyTaskProgress(resultData)
                             const elapsedPollingMs = Date.now() - pollingStartedAt
-                            const pollInterval = elapsedPollingMs < 15_000
+                            const pollInterval = resultData.status !== 'queued'
                                 ? 500
-                                : (elapsedPollingMs < 60_000 ? 1500 : 3000)
-                            await new Promise(resolve => setTimeout(resolve, pollInterval))
+                                : elapsedPollingMs < 15_000
+                                    ? 500
+                                    : (elapsedPollingMs < 60_000 ? 1500 : 3000)
+                            const remainingDelay = Math.max(0, pollInterval - (Date.now() - pollStartedAt))
+                            await new Promise(resolve => setTimeout(resolve, remainingDelay))
                         }
 
                         throw new Error('识别任务超时，请稍后重试')
+                    } catch (error) {
+                        if (isCurrent()) throw error
                     } finally {
-                        this.analysisPolling = false
-                        this.analysisProgress = null
+                        if (ownsRun()) {
+                            this.analysisPolling = false
+                            this.analysisProgress = null
+                            this.resetAnalysisProgressTiming()
+                        }
                     }
                 },
-                async settleAndPresentResult(resultData) {
+                async settleAndPresentResult(resultData, isCurrent = () => true) {
+                    const initial = this.analysisProgressWidth ?? 0
+                    const duration = Math.min(800, Math.max(200, (100 - initial) * 40))
+                    this.stopAnalysisProgressMotion()
+                    this.analysisProgressDisplayed = initial
                     this.analysisProgress = {
                         percent: 100,
                         stage: '3D 分割与综合分析完成',
+                        status: 'succeeded',
+                        phase: 'complete',
                     }
-                    this.statusText = '分析完成，正在呈现结果...'
-                    // 等待进度条真正推到 100%（短暂停留后渐隐），最多等 2.5 秒兜底
-                    const settleStartedAt = Date.now()
-                    const minHoldMs = 400
-                    const settleDeadline = settleStartedAt + 2500
-                    while (
-                        Date.now() < settleDeadline
-                        && (
-                            this.displayProgress < 99.5
-                            || Date.now() - settleStartedAt < minHoldMs
-                        )
-                    ) {
-                        await new Promise(resolve => setTimeout(resolve, 50))
+                    const completedText = '分析完成，正在呈现结果...'
+                    this.statusText = initial >= 100 ? completedText
+                        : '<span class="loading-spinner"></span>3D分析推理中...'
+                    const startedAt = performance.now()
+                    const step = now => {
+                        if (!isCurrent() || this.analysisCancelled) return
+                        this._analysisProgressFrame = null
+                        const fraction = Math.min(1, Math.max(0, (now - startedAt) / duration))
+                        this.analysisProgressDisplayed = initial + (100 - initial) * (1 - (1 - fraction) ** 3)
+                        if (fraction === 1) this.statusText = completedText
+                        if (fraction < 1) this._analysisProgressFrame = requestAnimationFrame(step)
                     }
+                    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+                        this.analysisProgressDisplayed = 100
+                        this.statusText = completedText
+                    } else {
+                        this._analysisProgressFrame = requestAnimationFrame(step)
+                    }
+                    await new Promise(resolve => setTimeout(resolve, Math.max(400, duration + 50)))
+                    if (!isCurrent() || this.analysisCancelled) return
+                    this.stopAnalysisProgressMotion()
+                    this.analysisProgressDisplayed = 100
                     this.statusText = ''
                     this.analysisProgress = null
                     this.analysisPolling = false
-                    await new Promise(resolve => setTimeout(resolve, 350))
                     this.presentTaskResult(resultData)
                 },
                 async cancelCurrentAnalysis() {
                     if (!this.taskId || this.analysisCancelled) return
+                    const taskId = this.taskId
+                    const source = this.API_BASE
+                    const sequence = this.analysisRunSequence
+                    const isCurrent = () => sequence === this.analysisRunSequence
+                        && taskId === this.taskId && source === this.API_BASE
                     this.analysisCancelled = true
+                    this.resetAnalysisProgressTiming()
                     try {
                         const response = await fetch(
-                            `${this.API_BASE}/tasks/${encodeURIComponent(this.taskId)}/cancel`,
+                            `${source}/tasks/${encodeURIComponent(taskId)}/cancel`,
                             { method: 'POST', headers: this.authHeaders }
                         )
+                        if (!isCurrent()) return
                         if (!response.ok) {
                             this.analysisCancelled = false
                             throw new Error(await this.responseError(response, '取消任务'))
                         }
                         const payload = await response.json()
+                        if (!isCurrent()) return
                         this.statusText = payload.status === 'cancel_requested'
                             ? `<span class="status-error">✗ 已请求取消任务 ${this.taskId}</span>`
                             : `<span class="status-error">✗ 任务 ${this.taskId} 已取消</span>`
@@ -2330,6 +2459,7 @@
                         this.analysisPolling = false
                         this.analysisProgress = null
                     } catch (error) {
+                        if (!isCurrent()) return
                         this.statusText =
                             `<span class="status-error">✗ ${this.escapeHtml(error.message)}</span>`
                     }
@@ -2575,7 +2705,7 @@
                         this.archiveSelections[modality] = ''
                     }
                 },
-                async gzipVolumeFileForUpload(file, label, fileIndex = 0, fileCount = 1) {
+                async gzipVolumeFileForUpload(file, label) {
                     if (!/\.nii$/i.test(file.name)) return file
                     if (typeof CompressionStream === 'undefined') return file
                     try {
@@ -2610,15 +2740,6 @@
                                 `<span class="loading-spinner"></span>`
                                 + `正在压缩 ${label}`
                                 + `（${this.escapeHtml(file.name)}）... ${percent}%`
-                            this.analysisProgress = {
-                                percent: Math.min(
-                                    12,
-                                    Math.round(
-                                        ((fileIndex + fileFraction) / fileCount) * 12
-                                    )
-                                ),
-                                stage: '正在压缩/上传数据...',
-                            }
                         }
                         await writer.close()
                         await readPromise
@@ -2630,6 +2751,8 @@
                     }
                 },
                 uploadTaskFiles(formData, endpoint = '/tasks/3d') {
+                    this.analysisProgress = null
+                    this.statusText = '<span class="loading-spinner"></span>正在上传数据...'
                     return new Promise((resolve, reject) => {
                         const xhr = new XMLHttpRequest()
                         xhr.open('POST', `${this.API_BASE}${endpoint}`)
@@ -2639,17 +2762,12 @@
                         }
                         xhr.upload.onprogress = (event) => {
                             if (event.lengthComputable && event.total > 0) {
-                                const base = this.analysisProgress?.percent || 0
-                                this.analysisProgress = {
-                                    percent: Math.min(
-                                        36,
-                                        base + Math.round(
-                                            (event.loaded / event.total) * (36 - base)
-                                        )
-                                    ),
-                                    stage: '正在上传数据...',
-                                }
+                                const percent = Math.min(100, Math.max(0, Math.floor(event.loaded / event.total * 100)))
+                                this.statusText = '<span class="loading-spinner"></span>正在上传数据... ' + percent + '%'
                             }
+                        }
+                        xhr.upload.onload = () => {
+                            this.statusText = '<span class="loading-spinner"></span>正在校验上传数据...'
                         }
                         xhr.onload = () => {
                             let payload = null
@@ -2719,17 +2837,10 @@
                             }
                             endpoint = '/tasks/3d/archive'
                         } else {
-                            for (
-                                let index = 0;
-                                index < this.volumeModalities.length;
-                                index++
-                            ) {
-                                const modality = this.volumeModalities[index]
+                            for (const modality of this.volumeModalities) {
                                 const uploadFile = await this.gzipVolumeFileForUpload(
                                     this.volumeFiles[modality.key],
                                     modality.label,
-                                    index,
-                                    this.volumeModalities.length
                                 )
                                 formData.append(modality.key, uploadFile)
                             }
@@ -2808,12 +2919,20 @@
                         const response = await fetch(`${this.API_BASE}/frontend-config`)
                         if (!response.ok) return
                         const config = await response.json()
+                        const ranges = config.inference_progress_ranges
+                        if (ANALYSIS_PHASES.every(({ key }) => Array.isArray(ranges?.[key]) && ranges[key].length === 2
+                            && ranges[key].every(Number.isFinite) && ranges[key][1] > ranges[key][0])
+                            && ranges.classification[0] === 0 && ranges.summary[1] === 100
+                            && ranges.classification[1] === ranges.segmentation[0]
+                            && ranges.segmentation[1] === ranges.summary[0]) {
+                            this.inferenceProgressRanges = ranges
+                        }
                         const seconds = Number(config.report_export_cooldown_seconds)
                         if (Number.isFinite(seconds) && seconds >= 0) {
                             this.reportExportCooldownMs = Math.round(seconds * 1000)
                         }
                     } catch {
-                        // 静态预览或旧版服务未提供配置时，沿用默认的 5 秒冷却时间。
+                        // 静态预览或旧版服务未提供配置时，沿用默认配置。
                     }
                 },
                 applyTheme() {
@@ -2961,12 +3080,10 @@
                 await this.loadFrontendRuntimeConfig()
                 await this.restoreWorkspaceState()
             },
-                beforeUnmount() {
+            beforeUnmount() {
+                this.analysisRunSequence += 1
+                this.resetAnalysisProgressTiming()
                 this._revealObserver?.disconnect()
-                if (this.progressAnimFrame) {
-                    cancelAnimationFrame(this.progressAnimFrame)
-                    this.progressAnimFrame = null
-                }
                 document.removeEventListener('click', this.handleGlobalClick)
                 this.stopResultSplitResize()
                 window.removeEventListener('resize', this.updateResultSplitViewport)

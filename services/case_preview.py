@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import logging
 from pathlib import Path
 from typing import Any
@@ -175,6 +176,8 @@ def render_case_preview_series(
     modality_paths: dict[str, Any],
     mask_path: Path,
     output_dir: Path,
+    *,
+    progress_callback: Callable[[float], None] | None = None,
 ) -> dict[str, Any] | None:
     '''生成最大病灶层及相邻层的原图与掩码叠加图'''
     prepared = _load_preview_data(modality_paths, mask_path)
@@ -183,10 +186,10 @@ def render_case_preview_series(
     mask_data, modalities = prepared
     focus = _focus_slice(mask_data)
     frames: list[dict[str, int | str]] = []
-    for offset in PREVIEW_OFFSETS:
+    offsets = [offset for offset in PREVIEW_OFFSETS if 0 <= focus + offset < mask_data.shape[2]]
+    completed_images = 0
+    for offset in offsets:
         slice_index = focus + offset
-        if slice_index < 0 or slice_index >= mask_data.shape[2]:
-            continue
         raw_name = f"slice-{slice_index:03d}-raw.png"
         overlay_name = f"slice-{slice_index:03d}-overlay.png"
         _save_montage(
@@ -196,6 +199,9 @@ def render_case_preview_series(
             slice_index,
             show_mask=False,
         )
+        completed_images += 1
+        if progress_callback is not None:
+            progress_callback(completed_images / (2 * len(offsets)))
         _save_montage(
             output_dir / overlay_name,
             modalities,
@@ -203,6 +209,9 @@ def render_case_preview_series(
             slice_index,
             show_mask=True,
         )
+        completed_images += 1
+        if progress_callback is not None:
+            progress_callback(completed_images / (2 * len(offsets)))
         frames.append(
             {
                 "slice_index": slice_index,

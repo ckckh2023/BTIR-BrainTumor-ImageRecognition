@@ -47,6 +47,11 @@ class ModelName(StrEnum):
 
 
 ALL_MODELS = frozenset(ModelName)
+TASK_PROGRESS_RANGES = MappingProxyType({
+    "classification": (0.0, 20.0),
+    "segmentation": (20.0, 80.0),
+    "summary": (80.0, 100.0),
+})
 VOLUME_MODALITIES = tuple(VolumeModality)
 ACTIVE_ASYNC_TASK_STATUSES = frozenset(
     {

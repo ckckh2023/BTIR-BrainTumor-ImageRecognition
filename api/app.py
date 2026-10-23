@@ -13,6 +13,7 @@ from api.routes.admin import router as admin_router
 from api.routes.runtime import router as runtime_router
 from api.routes.tasks import router as tasks_router
 from core.settings import SETTINGS
+from core.task_definitions import TASK_PROGRESS_RANGES
 from repositories.task_repository_contracts import (
     TaskNotFoundError,
     TaskRepositoryUnavailableError,
@@ -87,10 +88,11 @@ async def root():
 
 
 @app.get("/frontend-config")
-async def frontend_config() -> dict[str, int]:
+async def frontend_config() -> dict[str, object]:
     '''暴露不含敏感信息的前端运行配置'''
     return {
         "report_export_cooldown_seconds": SETTINGS.report_export_cooldown_seconds,
+        "inference_progress_ranges": dict(TASK_PROGRESS_RANGES),
     }
 
 

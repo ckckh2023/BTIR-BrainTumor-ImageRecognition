@@ -58,6 +58,13 @@ class VolumeClassificationTests(unittest.TestCase):
             path = Path(directory) / "flair.nii.gz"
             nib.save(nib.Nifti1Image(data, affine), path)
             prepared = prepare_volume_slices(path, max_slices=3)
+            progress = []
+            with_progress = prepare_volume_slices(path, max_slices=3, progress_callback=progress.append)
+
+        self.assertEqual(progress, [0.5, 0.5 + 0.5 / 3, 0.5 + 1 / 3, 1.0])
+        self.assertEqual(with_progress.indices, prepared.indices)
+        for actual, expected in zip(with_progress.images, prepared.images, strict=True):
+            np.testing.assert_array_equal(np.asarray(actual), np.asarray(expected))
 
         self.assertEqual(prepared.canonical_shape, (10, 12, 8))
         self.assertEqual(len(prepared.images), 3)
@@ -98,6 +105,54 @@ class VolumeClassificationTests(unittest.TestCase):
         self.assertEqual(len(predictions), 2)
         self.assertTrue(all(item["class"] == "yes" for item in predictions))
         self.assertTrue(all(item["probabilities"]["yes"] > 0.8 for item in predictions))
+
+    def test_classification_reports_completed_batches_without_changing_predictions(self) -> None:
+        loaded = LoadedBinarySliceClassifier(
+            model=_FakeVitModel(), processor=_FakeVitProcessor(),
+            no_index=0, yes_index=1, device=torch.device("cpu"),
+            checkpoint_name="model.safetensors",
+        )
+        images = [Image.new("RGB", (20, 20)) for _ in range(5)]
+        progress = []
+        expected = predict_images(loaded, images, batch_size=2)
+        actual = predict_images(loaded, images, batch_size=2, progress_callback=progress.append)
+        self.assertEqual(actual, expected)
+        self.assertEqual(progress, [0.4, 0.8, 1.0])
+
+    def test_classification_service_reports_preparation_loading_and_inference(self) -> None:
+        loaded = LoadedBinarySliceClassifier(
+            model=_FakeVitModel(), processor=_FakeVitProcessor(),
+            no_index=0, yes_index=1, device=torch.device("cpu"),
+            checkpoint_name="model.safetensors",
+        )
+        prepared = SimpleNamespace(
+            images=[Image.new("RGB", (20, 20)) for _ in range(3)],
+            indices=(0, 1, 2), canonical_shape=(20, 20, 3),
+            foreground_slice_count=3, intensity_window=(0.0, 1.0),
+        )
+        settings = SimpleNamespace(
+            volume_classifier_modality="flair", vit_classifier_max_slices=3,
+            vit_classifier_batch_size=2, vit_classifier_threshold=0.5,
+            device="cpu",
+        )
+        events = []
+        with (
+            patch("services.inference_service.SETTINGS", settings),
+            patch("services.inference_service.prepare_volume_slices", return_value=prepared),
+            patch("services.inference_service._load_vit_classifier_namespace",
+                  return_value={"torch": torch, "predict_images": predict_images}),
+            patch("services.inference_service._load_vit_classifier_model", return_value=loaded),
+        ):
+            result = classify_volume(
+                {"flair": Path("flair.nii.gz")},
+                progress_callback=lambda stage, fraction: events.append((stage, fraction)),
+            )
+        self.assertEqual(events[0], ("正在读取分类切片", 0.0))
+        self.assertIn(("正在加载分类模型", 0.125), events)
+        self.assertIn(("3D 分类推理中", 0.25 + 0.625 * (2 / 3)), events)
+        self.assertEqual(events[-1], ("分类结果已生成", 1.0))
+        self.assertEqual([fraction for _, fraction in events], sorted(fraction for _, fraction in events))
+        self.assertEqual(result["classification"]["evaluated_slices"], 3)
 
     def test_mean_aggregation_uses_all_slices_and_configured_threshold(self) -> None:
         result = aggregate_mean_slice_predictions(

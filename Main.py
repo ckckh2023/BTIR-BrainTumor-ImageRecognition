@@ -104,7 +104,7 @@ def main(argv: list[str] | None = None) -> int:
         progress = ConsoleProgress()
         run_result = run_task_models(
             task_dir,
-            progress_callback=progress.update,
+            progress_callback=lambda stage, percentage, phase: progress.update(stage, percentage),
         )
         classification = run_result.classification_result
         segmentation = run_result.segmentation_result

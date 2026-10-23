@@ -13,9 +13,73 @@ import torch
 
 from models.segmentation3d import inference
 from superlightnet import THPAEncFR3
+from services.inference_service import segment_volume
 
 
 class Segmentation3DTests(unittest.TestCase):
+    def test_segmentation_service_reserves_progress_for_preparation_and_saving(self) -> None:
+        progress, stages = [], []
+
+        def predict(subject, **kwargs):
+            kwargs["progress_callback"](1 / 3)
+            if kwargs.get("stage_callback"):
+                kwargs["stage_callback"]("正在保存分割结果", 0.98)
+            return {"device": "cpu", "model": {}, "spatial": {}, "labels": {},
+                    "regions": {}, "saved_path": "mask.nii.gz", "timing": {}}
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch("services.inference_service._load_3d_segmentation_namespace", return_value={"torch": torch, "predict": predict}),
+            patch("services.inference_service._load_3d_segmentation_model", return_value=Mock()),
+            patch("services.inference_service.resolve_device", return_value="cpu"),
+        ):
+            segment_volume({}, Path(directory), progress_callback=progress.append,
+                           stage_callback=lambda stage, fraction: stages.append((stage, fraction)))
+            self.assertAlmostEqual(progress[0], 0.16 + 0.78 / 3)
+            self.assertEqual(stages, [("正在加载 3D 分割模型", 0.0), ("正在保存分割结果", 0.98)])
+            progress.clear()
+            segment_volume({}, Path(directory), progress_callback=progress.append)
+            self.assertEqual(progress, [1 / 3])
+
+    def test_loading_reports_completed_modalities_and_preserves_channel_order(self) -> None:
+        progress = []
+        with tempfile.TemporaryDirectory() as directory:
+            paths = {}
+            for index, modality in enumerate(inference.MODALITIES):
+                path = Path(directory) / f"{modality}.nii.gz"
+                nib.save(nib.Nifti1Image(np.full((8, 8, 8), index + 1, dtype=np.float32), np.eye(4)), path)
+                paths[modality] = path
+            actual, _, _ = inference._load_and_validate_subject(paths, progress_callback=progress.append)
+        self.assertEqual(progress, [0.25, 0.5, 0.75, 1.0])
+        for index in range(4):
+            np.testing.assert_array_equal(actual[..., index], np.full((8, 8, 8), index + 1))
+
+    def test_predict_reports_preparation_and_postprocessing_stages(self) -> None:
+        images = np.arange(8 * 8 * 8 * 4, dtype=np.float32).reshape(8, 8, 8, 4) + 1
+        reference = nib.Nifti1Image(np.zeros((8, 8, 8), dtype=np.float32), np.eye(4))
+        paths = {name: Path(f"{name}.nii.gz") for name in inference.MODALITIES}
+        stages = []
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(inference, "_configure_inference_runtime"),
+            patch.object(inference, "_load_and_validate_subject", return_value=(images, reference, paths)),
+            patch.object(inference, "_run_full_volume_inference", return_value=np.zeros((8, 8, 8), dtype=np.uint8)),
+        ):
+            output = Path(directory) / "prediction.nii.gz"
+            inference.predict(
+                paths, device="cpu", model=torch.nn.Identity(),
+                save_nifti=output, stage_callback=lambda stage, fraction: stages.append((stage, fraction)),
+            )
+            saved = np.asarray(nib.load(output).dataobj)
+            np.testing.assert_array_equal(saved, np.zeros((8, 8, 8), dtype=np.uint8))
+        self.assertEqual(stages[0], ("正在读取分割体积", 0.04))
+        self.assertIn(("3D 分割推理中", 0.16), stages)
+        self.assertIn(("正在统计分割结果", 0.94), stages)
+        self.assertIn(("正在保存分割结果", 0.98), stages)
+        self.assertEqual(stages[-1], ("分割结果已生成", 1.0))
+        normalized = [fraction for stage, fraction in stages if stage == "正在归一化分割体积"]
+        np.testing.assert_allclose(normalized, [0.10, 0.115, 0.13, 0.145, 0.16])
+
     def test_runtime_mode_switches_between_deterministic_and_fast(self) -> None:
         original_deterministic = torch.are_deterministic_algorithms_enabled()
         original_benchmark = torch.backends.cudnn.benchmark

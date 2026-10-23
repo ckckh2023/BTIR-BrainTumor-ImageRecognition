@@ -73,11 +73,11 @@ class Console:
             self.emit(message)
 
     def worker_event(self, line: str) -> None:
-        progress = re.search(r"任务推理进度 任务=(\S+) 作业=\S+ 进度=(\d+)% 阶段=(.+)", line)
+        progress = re.search(r"任务推理进度 任务=(\S+) 作业=\S+ 进度=(\d+(?:\.\d+)?)% 阶段=(.+)", line)
         if progress:
             self.task_active = True
             task_id, percentage, stage = progress.groups()
-            self.set_status(f"任务 {task_id} · {percentage}% · {stage}")
+            self.set_status(f"任务 {task_id} · {int(float(percentage))}% · {stage}")
             return
         outcome = re.search(r"(任务推理完成|任务推理失败|任务推理已取消) 任务=(\S+)", line)
         if outcome:

@@ -356,17 +356,32 @@
                                 </span>
                             </div>
                             <div class="analysis-progress" v-if="analysisProgress">
-                                <div class="analysis-progress-track">
+                                <div
+                                    class="analysis-progress-track"
+                                    role="progressbar"
+                                    aria-label="分析进度"
+                                    aria-valuemin="0"
+                                    aria-valuemax="100"
+                                    :aria-valuenow="displayProgress"
+                                    :aria-valuetext="analysisProgressLabel"
+                                >
                                     <div
                                         class="analysis-progress-bar"
-                                        :style="{ width: displayProgress + '%' }"
+                                        :class="{ 'analysis-progress-indeterminate': displayProgress === null, 'analysis-progress-tracking': analysisPolling }"
+                                        :style="{ width: (analysisProgressWidth === null ? 30 : analysisProgressWidth) + '%' }"
                                     ></div>
-                                    <span class="analysis-progress-seg" style="left: 30%"></span>
-                                    <span class="analysis-progress-seg" style="left: 55%"></span>
-                                    <span class="analysis-progress-seg" style="left: 90%"></span>
+                                    <template v-if="displayProgress !== null">
+                                        <span
+                                            v-for="boundary in analysisProgressStops"
+                                            :key="boundary"
+                                            class="analysis-progress-seg"
+                                            :style="{ left: boundary + '%' }"
+                                        ></span>
+                                    </template>
                                 </div>
                                 <span class="analysis-progress-label">
-                                    {{ analysisProgressLabel }}
+                                    <span>{{ analysisProgressLabel }}</span>
+                                    <span class="analysis-progress-percent" v-if="displayProgress !== null">{{ displayProgress }}%</span>
                                 </span>
                             </div>
                         </div>

@@ -654,6 +654,7 @@ def get_task(
         frontend_result=frontend_result,
         progress=progress["progress"] if progress else None,
         progress_stage=progress["progress_stage"] if progress else None,
+        progress_phase=progress.get("progress_phase") if progress else None,
     )
 
 

@@ -157,12 +157,16 @@ class SupplementaryAnalysisTests(unittest.TestCase):
             usage={"total_tokens": 42},
             request_id="request-123",
         )
+        progress = []
         with (
             patch("services.supplementary_analysis.SETTINGS", settings),
             patch("services.supplementary_analysis.AiAnalysisProvider.analyze", return_value=response),
         ):
-            result = run_supplementary_analysis(self.classification, self.segmentation)
+            result = run_supplementary_analysis(self.classification, self.segmentation,
+                progress_callback=lambda stage, fraction: progress.append((stage, fraction)))
 
+        self.assertEqual([fraction for _, fraction in progress], [0.0, 0.1, 0.9, 1.0])
+        self.assertIn(("综合分析结果校验完成", 0.9), progress)
         self.assertEqual(result["status"], "succeeded")
         self.assertEqual(result["content"]["consistency"], "inconclusive")
         self.assertIn("影像复核", result["content"]["follow_up"])

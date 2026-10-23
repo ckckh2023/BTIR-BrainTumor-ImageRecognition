@@ -14,13 +14,16 @@ class ConsoleOutputTests(unittest.TestCase):
         progress = ConsoleProgress(stream, width=4)
 
         progress.update("分类推理中", 0)
-        progress.update("分类完成，开始分割", 50)
+        progress.update("分类完成，开始分割", 50.375)
+        progress.update("结果保存中", 99.9)
         progress.update("推理完成", 100)
 
         output = stream.getvalue()
         self.assertIn("[----]   0% 分类推理中", output)
         self.assertIn("[##--]  50% 分类完成，开始分割", output)
         self.assertIn("[####] 100% 推理完成", output)
+        self.assertIn("99% 结果保存中", output)
+        self.assertNotIn("50.375%", output)
         self.assertNotIn("\033[", output)
 
     def test_non_interactive_event_is_plain_text(self) -> None:

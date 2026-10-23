@@ -439,7 +439,9 @@ def get_task_job_progress(record: TaskRecord) -> dict[str, object] | None:
     progress_stage = metadata.get("progress_stage")
     if not isinstance(progress, (int, float)) or not isinstance(progress_stage, str):
         return None
+    phase = metadata.get("progress_phase")
     return {
-        "progress": int(progress),
+        "progress": progress,
         "progress_stage": progress_stage,
+        "progress_phase": phase if phase in {"classification", "segmentation", "summary"} else None,
     }

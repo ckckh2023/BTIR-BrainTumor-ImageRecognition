@@ -38,11 +38,11 @@ class ConsoleProgress:
         self.width = width
         self._interactive = bool(getattr(self.stream, "isatty", lambda: False)())
 
-    def update(self, stage: str, percentage: int) -> None:
+    def update(self, stage: str, percentage: float) -> None:
         percentage = max(0, min(100, percentage))
         filled = round(self.width * percentage / 100)
         bar = f"{'#' * filled}{'-' * (self.width - filled)}"
-        text = f"[BTIR] [{bar}] {percentage:>3}% {stage}"
+        text = f"[BTIR] [{bar}] {int(percentage):>3}% {stage}"
         if _supports_color(self.stream):
             text = f"{_COLORS['info']}{text}{_COLORS['reset']}"
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
@@ -82,6 +83,7 @@ def predict_images(
     images: Sequence[Image],
     *,
     batch_size: int,
+    progress_callback: Callable[[float], None] | None = None,
 ) -> list[dict[str, Any]]:
     """Classify in-memory MRI slices using the model's saved processor."""
 
@@ -123,4 +125,6 @@ def predict_images(
                         },
                     }
                 )
+            if progress_callback is not None:
+                progress_callback(len(predictions) / len(images))
     return predictions
